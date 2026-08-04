@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vínculos — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --blue: #2563EB; --blue-dim: #EFF6FF; --blue-mid: #93C5FD;
+    --green: #16a34a; --green-dim: #F0FDF4;
+    --red: #DC2626; --red-dim: #FEF2F2;
+    --amber: #D97706; --amber-dim: #FFFBEB;
+    --bg: #F8FAFC; --bg2: #F1F5F9; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --card: #FFFFFF;
+    --sidebar-bg: #0F172A; --sidebar-tx: #94A3B8; --sidebar-w: 230px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .sidebar-bottom button:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .main { flex:1; padding:32px; max-width:920px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  h2 { font-size:1.02rem; font-weight:700; margin-bottom:4px; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:14px; }
+  section { margin-bottom:34px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; }
+  .btn-primary { background:var(--blue); color:#fff; }
+  .btn-primary:hover { background:#1d4ed8; }
+  .btn-ghost { background:var(--card); color:var(--text); border-color:var(--border); }
+  .btn-sm { padding:5px 10px; font-size:.78rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .card-pad { padding:20px; }
+  table { width:100%; border-collapse:collapse; font-size:.86rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase;
+       letter-spacing:.03em; padding:12px; border-bottom:1.5px solid var(--border); }
+  td { padding:12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  .badge { font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .badge-blue { background:var(--blue-dim); color:var(--blue); }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  .badge-amber { background:var(--amber-dim); color:var(--amber); }
+  label { font-size:.78rem; font-weight:600; display:block; margin-bottom:6px; }
+  input[type=text], input[type=file], select { width:100%; padding:9px 12px; border:1.5px solid var(--border);
+        border-radius:6px; background:var(--bg); color:var(--text); font-size:.88rem; font-family:inherit; }
+  input:focus, select:focus { outline:none; border-color:var(--blue); background:var(--card); }
+  .campo-com-botao { display:flex; gap:8px; }
+  .campo-com-botao input { flex:1; }
+  .check-row { display:flex; align-items:center; gap:8px; font-size:.84rem; }
+  .radio-row { display:flex; gap:16px; }
+  .radio-row label { display:flex; align-items:center; gap:6px; font-weight:500; margin:0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .field { margin-bottom:14px; }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-bottom:12px; }
+  .msg-erro { background:var(--red-dim); color:var(--red); }
+  .msg-ok { background:var(--green-dim); color:var(--green); }
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100;
+              align-items:center; justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:var(--card); border-radius:12px; padding:20px; width:100%; max-width:460px;
+           max-height:80vh; display:flex; flex-direction:column; gap:12px; }
+  .modal-header { display:flex; justify-content:space-between; align-items:center; }
+  .modal-header h3 { font-size:1rem; font-weight:700; }
+  .modal-header button { background:none; border:none; font-size:1.1rem; cursor:pointer; color:var(--text2); }
+  .modal-lista { overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+  .modal-item { padding:10px 12px; border:1px solid var(--border); border-radius:8px; cursor:pointer;
+                display:flex; justify-content:space-between; gap:10px; font-size:.86rem; }
+  .modal-item:hover { background:var(--blue-dim); border-color:var(--blue-mid); }
+  .aviso { color:var(--text2); font-size:.84rem; padding:10px; }
+  .empty { text-align:center; color:var(--text2); padding:24px; }
+  .drop { border:1.5px dashed var(--border); border-radius:8px; padding:16px; text-align:center;
+          cursor:pointer; font-size:.84rem; color:var(--text2); }
+  .drop:hover { border-color:var(--blue-mid); }
+  .item-row { border:1px solid var(--border); border-radius:8px; padding:10px 12px; display:flex;
+              justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
+  .item-desc { font-weight:600; font-size:.86rem; }
+  .item-meta { color:var(--text2); font-size:.78rem; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom">
+      <button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <h1>Vínculos item ↔ catálogo Harmonit</h1>
+      <button class="btn btn-primary" onclick="abrirModalVinculo()"><i class="bi bi-plus-lg"></i> Novo vínculo</button>
+    </div>
+
+    <section>
+      <h2>Testar extração</h2>
+      <p class="sub">Sobe um PDF de contrato e mostra os itens extraídos com o status de vínculo de cada um, sem gerar OS nenhuma.</p>
+      <div class="card card-pad">
+        <div class="grid2" style="margin-bottom:14px">
+          <div class="field" style="margin-bottom:0">
+            <label for="perfilTeste">Tipo de operação</label>
+            <select id="perfilTeste"></select>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Contrato (PDF)</label>
+            <div class="drop" id="dropTeste" onclick="document.getElementById('arquivoTeste').click()">
+              <span id="dropTesteLabel">Clique para escolher o PDF</span>
+              <input type="file" id="arquivoTeste" accept="application/pdf" style="display:none">
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-ghost" onclick="testarExtracao()">Extrair e revisar</button>
+        <div id="resultadoTeste" style="margin-top:16px"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Vínculos cadastrados</h2>
+      <p class="sub">Nome do item como aparece no contrato → item correspondente no catálogo Harmonit (ou marcado como oculto, se não deve virar material de OS).</p>
+      <div class="card">
+        <table>
+          <thead><tr><th>Nome no contrato</th><th>Vínculo Harmonit</th><th>Status</th><th></th></tr></thead>
+          <tbody id="tbodyVinculos"><tr><td colspan="4" class="empty">Carregando...</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Modal: novo/editar vínculo -->
+<div class="modal-bg" id="modalVinculo" onclick="if(event.target===this)fecharModal('modalVinculo')">
+  <div class="modal">
+    <div class="modal-header"><h3>Vínculo de item</h3><button onclick="fecharModal('modalVinculo')">✕</button></div>
+    <div class="msg msg-erro" id="erroVinculo"></div>
+    <div class="field" style="margin-bottom:0">
+      <label for="vinculoNome">Nome do item no contrato</label>
+      <input type="text" id="vinculoNome" placeholder="Ex: RASTREADOR GPS">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <div class="check-row">
+        <input type="checkbox" id="vinculoOculto" onchange="alternarOcultoModal()">
+        <label for="vinculoOculto" style="margin:0">Ocultar (nunca vira material de OS)</label>
+      </div>
+    </div>
+    <div id="vinculoHarmonitWrap">
+      <div class="field" style="margin-bottom:10px">
+        <label>Tipo no Harmonit</label>
+        <div class="radio-row">
+          <label><input type="radio" name="vinculoTipo" value="produto" checked> Produto</label>
+          <label><input type="radio" name="vinculoTipo" value="servico"> Serviço</label>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label>Item no Harmonit</label>
+        <div class="campo-com-botao">
+          <input type="text" id="vinculoHarmonitCampo" placeholder="Nenhum item selecionado" readonly>
+          <button class="btn btn-ghost" type="button" onclick="abrirModalBuscaHarmonit()">Buscar</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="salvarVinculo()">Salvar</button>
+  </div>
+</div>
+
+<!-- Modal: buscar produto/serviço no Harmonit -->
+<div class="modal-bg" id="modalBuscaHarmonit" onclick="if(event.target===this)fecharModal('modalBuscaHarmonit')">
+  <div class="modal">
+    <div class="modal-header"><h3 id="tituloBuscaHarmonit">Buscar no Harmonit</h3><button onclick="fecharModal('modalBuscaHarmonit')">✕</button></div>
+    <input type="text" id="buscaHarmonit" placeholder="Nome do item">
+    <div class="modal-lista" id="harmonitResultado"></div>
+  </div>
+</div>
+
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('vinculos');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function escapeHtml(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+// ── Perfis (mesmo select usado em Gerar OS) ─────────────────────────────────
+async function carregarPerfis() {
+  const res = await fetch('/painel/api/perfis', { headers: auth() });
+  const perfis = await res.json();
+  const sel = document.getElementById('perfilTeste');
+  sel.innerHTML = Object.entries(perfis).map(([chave, p]) =>
+    `<option value="${escapeHtml(chave)}">${escapeHtml(p.label)}</option>`).join('');
+}
+carregarPerfis();
+
+document.getElementById('arquivoTeste').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  document.getElementById('dropTesteLabel').textContent = f ? f.name : 'Clique para escolher o PDF';
+});
+
+async function testarExtracao() {
+  const perfil = document.getElementById('perfilTeste').value;
+  const arquivo = document.getElementById('arquivoTeste').files[0];
+  const div = document.getElementById('resultadoTeste');
+  if (!arquivo) { div.innerHTML = '<div class="msg msg-erro" style="display:block">Escolha um PDF primeiro.</div>'; return; }
+  div.innerHTML = '<div class="aviso">Extraindo...</div>';
+  const fd = new FormData();
+  fd.append('arquivo', arquivo);
+  const res = await fetch(`/painel/api/vinculos/extrair-preview?perfil=${encodeURIComponent(perfil)}`, {
+    method: 'POST', headers: auth(), body: fd,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    div.innerHTML = `<div class="msg msg-erro" style="display:block">${escapeHtml(data.detail || 'Falha ao extrair o PDF')}</div>`;
+    return;
+  }
+  const campos = await res.json();
+  const itens = campos.itens || [];
+  if (!itens.length) { div.innerHTML = '<div class="aviso">Nenhum item extraído deste PDF.</div>'; return; }
+  div.innerHTML = itens.map((item) => {
+    const v = item.vinculo;
+    let badge, meta;
+    if (!v) {
+      badge = '<span class="badge badge-red">Sem vínculo</span>';
+      meta = 'Este item nunca foi visto -- toda OS gerada com ele vai pedir confirmação manual.';
+    } else if (v.oculto) {
+      badge = '<span class="badge badge-amber">Oculto</span>';
+      meta = 'Configurado para nunca virar material de OS.';
+    } else {
+      badge = '<span class="badge badge-green">Vinculado</span>';
+      meta = `${escapeHtml(v.harmonit_tipo)} #${escapeHtml(v.harmonit_id)} — ${escapeHtml(v.harmonit_descricao || '')}`;
+    }
+    const tipo = (item.comodato_ou_aquisicao || '').trim();
+    const badgeTipo = tipo ? `<span class="badge badge-blue">${escapeHtml(tipo)}</span>` : '';
+    return `<div class="item-row">
+      <div>
+        <div class="item-desc">${escapeHtml(item.descricao)}</div>
+        <div class="item-meta">${meta}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${badgeTipo}
+        ${badge}
+        <button class="btn btn-ghost btn-sm" onclick='abrirModalVinculo(${JSON.stringify(item.descricao)})'>Vincular</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Tabela de vínculos cadastrados ──────────────────────────────────────────
+async function carregarVinculos() {
+  const res = await fetch('/painel/api/vinculos', { headers: auth() });
+  if (res.status === 401) { window.location.href = '/painel'; return; }
+  const lista = await res.json();
+  const tbody = document.getElementById('tbodyVinculos');
+  if (!lista.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty">Nenhum vínculo cadastrado ainda.</td></tr>'; return; }
+  tbody.innerHTML = lista.map((v) => {
+    const harmonit = v.oculto
+      ? '<span style="color:var(--text2)">—</span>'
+      : `${escapeHtml(v.harmonit_tipo || '')} #${escapeHtml(v.harmonit_id ?? '')} — ${escapeHtml(v.harmonit_descricao || '')}`;
+    const status = v.oculto
+      ? '<span class="badge badge-amber">Oculto</span>'
+      : '<span class="badge badge-green">Vinculado</span>';
+    return `<tr>
+      <td><strong>${escapeHtml(v.nome_contrato)}</strong></td>
+      <td>${harmonit}</td>
+      <td>${status}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick='abrirModalVinculo(${JSON.stringify(v.nome_contrato)})'>Editar</button></td>
+    </tr>`;
+  }).join('');
+}
+carregarVinculos();
+
+// ── Modal novo/editar vínculo ────────────────────────────────────────────────
+let harmonitSelecionado = null;
+
+async function abrirModalVinculo(nomePreenchido) {
+  document.getElementById('erroVinculo').style.display = 'none';
+  document.getElementById('vinculoNome').value = nomePreenchido || '';
+  document.getElementById('vinculoOculto').checked = false;
+  document.getElementById('vinculoHarmonitCampo').value = '';
+  document.querySelector('input[name=vinculoTipo][value=produto]').checked = true;
+  harmonitSelecionado = null;
+  alternarOcultoModal();
+
+  if (nomePreenchido) {
+    const res = await fetch(`/painel/api/vinculos`, { headers: auth() });
+    const lista = await res.json();
+    const nomeNorm = nomePreenchido.trim().toUpperCase();
+    const existente = lista.find((v) => v.nome_contrato === nomeNorm);
+    if (existente) {
+      document.getElementById('vinculoOculto').checked = existente.oculto;
+      if (!existente.oculto) {
+        document.querySelector(`input[name=vinculoTipo][value=${existente.harmonit_tipo}]`).checked = true;
+        document.getElementById('vinculoHarmonitCampo').value = existente.harmonit_descricao || '';
+        harmonitSelecionado = { id: existente.harmonit_id, descricao: existente.harmonit_descricao };
+      }
+      alternarOcultoModal();
+    }
+  }
+  abrirModal('modalVinculo');
+}
+
+function alternarOcultoModal() {
+  const oculto = document.getElementById('vinculoOculto').checked;
+  document.getElementById('vinculoHarmonitWrap').style.display = oculto ? 'none' : 'block';
+}
+
+async function salvarVinculo() {
+  const nome_contrato = document.getElementById('vinculoNome').value.trim();
+  const oculto = document.getElementById('vinculoOculto').checked;
+  const erro = document.getElementById('erroVinculo');
+  erro.style.display = 'none';
+  if (!nome_contrato) { erro.textContent = 'Informe o nome do item.'; erro.style.display = 'block'; return; }
+  if (!oculto && !harmonitSelecionado) { erro.textContent = 'Busque e selecione um item do Harmonit, ou marque oculto.'; erro.style.display = 'block'; return; }
+
+  const tipo = document.querySelector('input[name=vinculoTipo]:checked').value;
+  const body = {
+    nome_contrato,
+    oculto,
+    harmonit_id: oculto ? null : harmonitSelecionado.id,
+    harmonit_tipo: oculto ? null : tipo,
+    harmonit_descricao: oculto ? null : harmonitSelecionado.descricao,
+  };
+  const res = await fetch('/painel/api/vinculos', {
+    method: 'POST',
+    headers: { ...auth(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    erro.textContent = data.detail || 'Erro ao salvar vínculo';
+    erro.style.display = 'block';
+    return;
+  }
+  fecharModal('modalVinculo');
+  carregarVinculos();
+  testarExtracaoSeAtivo();
+}
+
+function testarExtracaoSeAtivo() {
+  if (document.getElementById('resultadoTeste').innerHTML.trim()) testarExtracao();
+}
+
+// ── Modal buscar produto/serviço no Harmonit ────────────────────────────────
+let buscaHarmonitTimeout;
+
+function abrirModalBuscaHarmonit() {
+  const tipo = document.querySelector('input[name=vinculoTipo]:checked').value;
+  document.getElementById('tituloBuscaHarmonit').textContent =
+    tipo === 'produto' ? 'Buscar produto no Harmonit' : 'Buscar serviço no Harmonit';
+  document.getElementById('buscaHarmonit').value = '';
+  document.getElementById('harmonitResultado').innerHTML = '';
+  abrirModal('modalBuscaHarmonit');
+  buscarHarmonit('');
+}
+
+document.getElementById('buscaHarmonit').addEventListener('input', (e) => {
+  clearTimeout(buscaHarmonitTimeout);
+  buscaHarmonitTimeout = setTimeout(() => buscarHarmonit(e.target.value), 400);
+});
+
+async function buscarHarmonit(q) {
+  const tipo = document.querySelector('input[name=vinculoTipo]:checked').value;
+  const endpoint = tipo === 'produto' ? '/painel/api/produtos/buscar' : '/painel/api/servicos/buscar';
+  const res = await fetch(`${endpoint}?q=${encodeURIComponent(q || '')}`, { headers: auth() });
+  const data = await res.json();
+  const div = document.getElementById('harmonitResultado');
+  if (!data.resultados.length) { div.innerHTML = '<div class="aviso">Nenhum item encontrado.</div>'; return; }
+  div.innerHTML = '';
+  data.resultados.forEach((item) => {
+    const el = document.createElement('div');
+    el.className = 'modal-item';
+    el.innerHTML = `<span>${escapeHtml(item.descricao)}</span><span style="color:var(--text2)">#${escapeHtml(item.id)}</span>`;
+    el.onclick = () => {
+      harmonitSelecionado = { id: item.id, descricao: item.descricao };
+      document.getElementById('vinculoHarmonitCampo').value = item.descricao;
+      fecharModal('modalBuscaHarmonit');
+    };
+    div.appendChild(el);
+  });
+}
+</script>
+</body>
+</html>

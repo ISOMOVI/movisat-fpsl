@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Configurações — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --blue: #2563EB; --blue-dim: #EFF6FF;
+    --green: #16a34a; --green-dim: #F0FDF4;
+    --red: #DC2626; --red-dim: #FEF2F2;
+    --amber: #D97706; --amber-dim: #FFFBEB;
+    --bg: #F8FAFC; --bg2: #F1F5F9; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --card: #FFFFFF;
+    --sidebar-bg: #0F172A; --sidebar-tx: #94A3B8; --sidebar-w: 230px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .sidebar-bottom button:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .main { flex:1; padding:32px; max-width:720px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  h2 { font-size:1.02rem; font-weight:700; margin-bottom:4px; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:14px; }
+  section { margin-bottom:34px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .card-pad { padding:20px; }
+  .toggle-row { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .toggle-info h3 { font-size:.92rem; font-weight:700; margin-bottom:4px; }
+  .toggle-info p { font-size:.8rem; color:var(--text2); }
+  .switch { position:relative; width:46px; height:26px; flex-shrink:0; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; cursor:pointer; inset:0; background-color:#CBD5E1; transition:.2s; border-radius:999px; }
+  .slider:before { position:absolute; content:""; height:20px; width:20px; left:3px; bottom:3px;
+                    background-color:#fff; transition:.2s; border-radius:50%; }
+  input:checked + .slider { background-color:var(--green); }
+  input:checked + .slider:before { transform:translateX(20px); }
+  .badge { font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-top:14px; }
+  .msg-erro { background:var(--red-dim); color:var(--red); }
+  .msg-ok { background:var(--green-dim); color:var(--green); }
+  .alerta { font-size:.8rem; padding:10px 12px; border-radius:8px; background:var(--amber-dim); color:var(--amber); margin-bottom:14px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()">Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top"><h1>Configurações</h1></div>
+
+    <section>
+      <h2>Sincronização Oficina → WESO</h2>
+      <p class="sub">Controla se a sincronização Oficina → WESO grava de verdade, ou só simula.</p>
+      <div class="card card-pad">
+        <div class="alerta">⚠️ Estamos em produção. Mantenha desligado até validar o fluxo com dados reais.</div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <h3>Disparar integração WESO ao sincronizar Oficina</h3>
+            <p>Desligado: a tela de Oficina só simula o que faria. Ligado: grava de verdade na WESO.</p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggleAtivo" onchange="alterarToggle()">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <div class="msg" id="msgErro"></div>
+    <div class="msg" id="msgOk"></div>
+  </main>
+</div>
+
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('config');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+
+async function carregarToggle() {
+  try {
+    const res = await fetch('/painel/api/oficina/config/ativo', { headers: auth() });
+    if (res.status === 403) {
+      document.querySelector('.main').innerHTML = '<h1>Acesso restrito a administradores.</h1>';
+      return;
+    }
+    const data = await res.json();
+    document.getElementById('toggleAtivo').checked = data.ativo;
+  } catch (err) {
+    mostrarErro('Falha ao carregar configuração: ' + err.message);
+  }
+}
+
+async function alterarToggle() {
+  const ativo = document.getElementById('toggleAtivo').checked;
+  limparMsgs();
+  try {
+    const res = await fetch('/painel/api/oficina/config/ativo', {
+      method: 'PUT',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ativo }),
+    });
+    if (!res.ok) throw new Error('Falha ao salvar');
+    mostrarOk(ativo ? 'Integração WESO ativada.' : 'Integração WESO desativada (modo simulação).');
+  } catch (err) {
+    document.getElementById('toggleAtivo').checked = !ativo;
+    mostrarErro('Falha ao salvar: ' + err.message);
+  }
+}
+
+function mostrarErro(msg) {
+  const el = document.getElementById('msgErro');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('msgOk').style.display = 'none';
+}
+function mostrarOk(msg) {
+  const el = document.getElementById('msgOk');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('msgErro').style.display = 'none';
+}
+function limparMsgs() {
+  document.getElementById('msgErro').style.display = 'none';
+  document.getElementById('msgOk').style.display = 'none';
+}
+
+carregarToggle();
+</script>
+</body>
+</html>

@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gerar OS — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --yellow: #D97706; --yellow-dim: #FFFBEB;
+    --green: #16a34a; --green-dim: #F0FDF4;
+    --blue: #2563EB; --blue-dim: #EFF6FF; --blue-mid: #BFDBFE;
+    --red: #DC2626; --red-dim: #FEF2F2;
+    --bg: #F8FAFC; --bg2: #F1F5F9; --bg3: #E2E8F0; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --card: #FFFFFF; --radius: 8px;
+    --sidebar-bg: #0F172A; --sidebar-tx: #94A3B8; --sidebar-w: 230px; --header-h: 56px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .sidebar-bottom button:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .main { flex:1; padding:32px; max-width:820px; }
+  h1 { font-size:1.3rem; font-weight:700; margin-bottom:20px; }
+  .steps { display:flex; align-items:center; gap:6px; margin-bottom:24px; }
+  .step-dot { width:26px; height:26px; border-radius:50%; background:var(--card); color:var(--text2);
+              font-size:.74rem; font-weight:700; display:flex; align-items:center; justify-content:center;
+              border:1.5px solid var(--border); flex-shrink:0; }
+  .step-dot.active { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .step-dot.done { background:var(--green-dim); color:var(--green); border-color:var(--green); }
+  .step-line { flex:1; height:1.5px; background:var(--border); }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px; }
+  .panel { display:none; flex-direction:column; gap:16px; }
+  .panel.active { display:flex; }
+  label { font-size:.78rem; font-weight:600; display:block; margin-bottom:6px; }
+  select, input[type=text] { width:100%; padding:9px 12px; border:1.5px solid var(--border); border-radius:6px;
+          background:var(--bg); color:var(--text); font-size:.88rem; font-family:inherit; }
+  select:focus, input:focus { outline:none; border-color:var(--blue); background:var(--card); }
+  .campo-com-botao { display:flex; gap:8px; }
+  .campo-com-botao input { flex:1; }
+  .drop { border:2px dashed var(--border); border-radius:10px; padding:32px; text-align:center;
+          color:var(--text2); font-size:.86rem; cursor:pointer; }
+  .drop:hover { border-color:var(--blue-mid); background:var(--blue-dim); }
+  .drop input { display:none; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:10px 18px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; }
+  .btn-primary { background:var(--blue); color:#fff; }
+  .btn-primary:hover { background:#1d4ed8; }
+  .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-ghost { background:var(--card); color:var(--text); border-color:var(--border); }
+  .footer-nav { display:flex; justify-content:space-between; margin-top:20px; }
+  table { width:100%; border-collapse:collapse; font-size:.84rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase;
+       letter-spacing:.03em; padding:8px; border-bottom:1.5px solid var(--border); }
+  td { padding:8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .badge { font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .badge-blue { background:var(--blue-dim); color:var(--blue); }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; }
+  .msg-erro { background:var(--red-dim); color:var(--red); }
+  .msg-ok { background:var(--green-dim); color:var(--green); }
+  .aviso { font-size:.78rem; color:var(--yellow); background:var(--yellow-dim); padding:8px 12px; border-radius:6px; }
+
+  /* modal */
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100;
+              align-items:center; justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:var(--card); border-radius:12px; padding:20px; width:100%; max-width:460px;
+           max-height:80vh; display:flex; flex-direction:column; gap:12px; }
+  .modal-header { display:flex; justify-content:space-between; align-items:center; }
+  .modal-header h3 { font-size:1rem; font-weight:700; }
+  .modal-header button { background:none; border:none; font-size:1.1rem; cursor:pointer; color:var(--text2); }
+  .modal-lista { overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+  .modal-item { padding:10px 12px; border:1px solid var(--border); border-radius:8px; cursor:pointer;
+                font-size:.86rem; display:flex; justify-content:space-between; }
+  .modal-item:hover { background:var(--blue-dim); border-color:var(--blue-mid); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom">
+      <button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <h1>Gerar OS por contrato</h1>
+    <div class="steps">
+      <div class="step-dot active" id="dot-1">1</div>
+      <div class="step-line"></div>
+      <div class="step-dot" id="dot-2">2</div>
+      <div class="step-line"></div>
+      <div class="step-dot" id="dot-3">3</div>
+    </div>
+
+    <div class="card">
+
+      <!-- ETAPA 1 -->
+      <div class="panel active" id="panel-1">
+        <div>
+          <label for="perfil">Tipo de operação</label>
+          <select id="perfil"></select>
+        </div>
+        <div>
+          <label>Contrato (PDF)</label>
+          <div class="drop" id="drop" onclick="document.getElementById('arquivo').click()">
+            <div id="dropLabel">Clique ou arraste o PDF do contrato aqui</div>
+            <input type="file" id="arquivo" accept="application/pdf">
+          </div>
+        </div>
+        <div id="extraidoMsg"></div>
+        <div id="alertaTransferencia"></div>
+        <div id="itensRevisao"></div>
+        <div class="footer-nav">
+          <span></span>
+          <button class="btn btn-primary" id="btnExtrair" onclick="extrair()">Extrair dados →</button>
+        </div>
+      </div>
+
+      <!-- ETAPA 2 -->
+      <div class="panel" id="panel-2">
+        <div>
+          <label for="clienteCampo">Cliente</label>
+          <div class="campo-com-botao">
+            <input type="text" id="clienteCampo" placeholder="Nenhum cliente selecionado" readonly>
+            <button class="btn btn-ghost" onclick="abrirModalCliente('origem')">Buscar</button>
+          </div>
+        </div>
+        <div id="clienteDestinoWrap" style="display:none">
+          <label for="clienteDestinoCampo">Cliente destino (recebe o veículo)</label>
+          <div class="campo-com-botao">
+            <input type="text" id="clienteDestinoCampo" placeholder="Nenhum cliente selecionado" readonly>
+            <button class="btn btn-ghost" onclick="abrirModalCliente('destino')">Buscar</button>
+          </div>
+        </div>
+        <div>
+          <label for="servicoCampo">Serviço (produtoServicoId)</label>
+          <div class="campo-com-botao">
+            <input type="text" id="servicoCampo" placeholder="Nenhum serviço selecionado" readonly>
+            <button class="btn btn-ghost" onclick="abrirModalServico()">Buscar</button>
+          </div>
+        </div>
+        <div>
+          <label for="termo">Termo (nº do contrato)</label>
+          <input type="text" id="termo">
+        </div>
+        <div>
+          <label for="prioridadeCampo">Prioridade das OS operacionais (a financeira sai sempre Normal)</label>
+          <select id="prioridadeCampo" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:.86rem"></select>
+        </div>
+        <div>
+          <label for="solucaoTecnica">Contexto da extração (vai pro campo "solução técnica" da OS -- o técnico preenche o resultado do serviço abaixo do separador)</label>
+          <textarea id="solucaoTecnica" rows="2" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:.86rem;font-family:inherit"></textarea>
+        </div>
+        <div>
+          <label for="motivoFinanceira">Motivo — financeira sem custo (só usado se a OS financeira sair saldo 0)</label>
+          <input type="text" id="motivoFinanceira" placeholder="ex.: por conta do técnico / acordo interno / liberado pela gestão">
+        </div>
+        <div class="footer-nav">
+          <button class="btn btn-ghost" onclick="irPara(1)">← Voltar</button>
+          <button class="btn btn-primary" id="btnMontar" onclick="montarResumo()" disabled>Ver resumo →</button>
+        </div>
+      </div>
+
+      <!-- ETAPA 3 -->
+      <div class="panel" id="panel-3">
+        <div id="resumoInfo"></div>
+        <div id="resumoAvisos"></div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Cliente</th><th>Placa</th><th>Veículo</th><th>Tipo</th><th>Descrição</th><th>Materiais</th></tr></thead>
+            <tbody id="resumoTbody"></tbody>
+          </table>
+        </div>
+        <div id="resultadoFinal"></div>
+        <div class="footer-nav">
+          <button class="btn btn-ghost" onclick="irPara(2)">← Voltar</button>
+          <button class="btn btn-primary" id="btnGerar" onclick="gerarOs()" disabled>Gerar OS</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Modal: buscar cliente -->
+<div class="modal-bg" id="modalCliente" onclick="if(event.target===this)fecharModal('modalCliente')">
+  <div class="modal">
+    <div class="modal-header"><h3>Buscar cliente no Harmonit</h3><button onclick="fecharModal('modalCliente')">✕</button></div>
+    <input type="text" id="buscaCliente" placeholder="Nome, CNPJ ou CPF (mín. 3 caracteres)">
+    <div class="modal-lista" id="clientesResultado"></div>
+  </div>
+</div>
+
+<!-- Modal: buscar serviço -->
+<div class="modal-bg" id="modalServico" onclick="if(event.target===this)fecharModal('modalServico')">
+  <div class="modal">
+    <div class="modal-header"><h3>Buscar serviço no Harmonit</h3><button onclick="fecharModal('modalServico')">✕</button></div>
+    <input type="text" id="buscaServico" placeholder="Nome do serviço">
+    <div class="modal-lista" id="servicosResultado"></div>
+  </div>
+</div>
+
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('gerar_os');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Texto extraído do PDF (veículo, item, alerta) e resultado de busca no
+// Harmonit vão pra innerHTML em vários lugares -- sem escape, um PDF
+// malicioso com "<img onerror=...>" num campo de descrição executaria script
+// na sessão autenticada do admin (que tem permissão de escrita no Harmonit).
+// Achado na auditoria de 2026-07-15, aplicado em todo innerHTML com dado
+// externo deste arquivo.
+function escapeHtml(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+let PERFIS = {};
+let extraido = null;
+let clienteSelecionado = null;
+let clienteDestinoSelecionado = null;
+let servicoSelecionado = null;
+let placasEditaveis = [];
+let modalClienteAlvo = 'origem';
+let payloadResumo = null; // payload exato usado no dry-run -- reaproveitado em gerarOs() pra garantir que o preview bate com o que é enviado de verdade
+
+async function init() {
+  const res = await fetch('/painel/api/perfis', { headers: auth() });
+  if (res.status === 401) { window.location.href = '/painel'; return; }
+  PERFIS = await res.json();
+  const sel = document.getElementById('perfil');
+  Object.entries(PERFIS).forEach(([chave, p]) => {
+    const o = document.createElement('option');
+    o.value = chave;
+    o.textContent = p.label + (p.agrupado ? ` (${p.os_por_placa} OS agrupadas)` : p.os_por_placa > 1 ? ` (${p.os_por_placa} OS por placa)` : '');
+    sel.appendChild(o);
+  });
+  // Prioridades (Etapa 2) -- default Normal
+  try {
+    const pr = await fetch('/painel/api/prioridades', { headers: auth() });
+    if (pr.ok) {
+      const data = await pr.json();
+      const psel = document.getElementById('prioridadeCampo');
+      (data.prioridades || []).forEach((p) => {
+        const o = document.createElement('option');
+        o.value = p.id; o.textContent = p.descricao;
+        if (p.id === data.default) o.selected = true;
+        psel.appendChild(o);
+      });
+    }
+  } catch (e) { /* mantém select vazio -> backend usa default Normal */ }
+}
+init();
+
+document.getElementById('arquivo').addEventListener('change', (e) => {
+  if (e.target.files[0]) document.getElementById('dropLabel').textContent = e.target.files[0].name;
+});
+
+function irPara(n) {
+  [1, 2, 3].forEach((i) => {
+    document.getElementById('panel-' + i).classList.toggle('active', i === n);
+    const dot = document.getElementById('dot-' + i);
+    dot.classList.toggle('active', i === n);
+    dot.classList.toggle('done', i < n);
+  });
+}
+
+async function extrair() {
+  const arquivo = document.getElementById('arquivo').files[0];
+  if (!arquivo) { alert('Escolha um PDF primeiro.'); return; }
+  const perfil = document.getElementById('perfil').value;
+  const btn = document.getElementById('btnExtrair');
+  btn.disabled = true; btn.textContent = 'Extraindo...';
+  const fd = new FormData();
+  fd.append('arquivo', arquivo);
+  try {
+    const res = await fetch(`/painel/api/extrair?perfil=${perfil}`, { method: 'POST', headers: auth(), body: fd });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Falha na extração');
+    extraido = await res.json();
+
+    // Forma dos dados de veículo muda por perfil -- Substituição vem pareada
+    // (pares[].placa_saida/placa_entrada), Rescisão/Transferência vem em
+    // "veiculos" (com documento_referencia e possível sem_placa), os demais
+    // em "placas" (coluna mesclada, com sem_bloqueio).
+    if (perfil === 'substituicao') {
+      placasEditaveis = (extraido.pares || []).map((par) => ({
+        placa: par.placa_saida, veiculo: par.veiculo_saida,
+        placa_entrada: par.placa_entrada, veiculo_entrada: par.veiculo_entrada,
+        sem_bloqueio: false,
+      }));
+    } else {
+      // Mantém tudo que tem algo na coluna PLACA, inclusive identificador
+      // não-convencional (perfuratriz por nº de série, escavadeira por modelo).
+      // Decisão do usuário 2026-07-29: "o que tiver no campo placa é a placa".
+      // Antes filtrava por formato e as máquinas sumiam, gerando falsa
+      // divergência contra a quantidade de rastreadores do contrato.
+      placasEditaveis = (extraido.placas || extraido.veiculos || [])
+        .filter((p) => p.placa)
+        .map((p) => ({ ...p }));
+    }
+
+    document.getElementById('termo').value = extraido.termo || '';
+    const nTotal = (extraido.pares || extraido.placas || extraido.veiculos || []).length;
+    let msg = `<div class="msg msg-ok">Extraído: Termo ${escapeHtml(extraido.termo) || '—'}, ${placasEditaveis.length} de ${nTotal} veículo(s), ${(extraido.itens || []).length} item(ns)</div>`;
+    if (!extraido.cnpj) msg += '<div class="aviso" style="margin-top:8px">CNPJ não encontrado — confirme o cliente manualmente na próxima etapa.</div>';
+    // Placa fora do padrão convencional ENTRA na geração; o aviso é só para
+    // conferência visual, porque errar a leitura de um nº de série é mais
+    // fácil que errar uma placa Mercosul.
+    const naoConvencionais = placasEditaveis.filter((p) => p.placa_convencional === false);
+    if (naoConvencionais.length) {
+      const lista = naoConvencionais.map((p) => escapeHtml(p.placa)).join(', ');
+      msg += `<div class="aviso" style="margin-top:8px">${naoConvencionais.length} placa(s) fora do padrão convencional (máquina identificada por nº de série ou modelo): ${lista} — entram normalmente na geração, confira a grafia.</div>`;
+    }
+    const semNadaCount = nTotal - placasEditaveis.length;
+    if (semNadaCount > 0) msg += `<div class="aviso" style="margin-top:8px">${semNadaCount} linha(s) sem nada na coluna PLACA — verifique o documento.</div>`;
+    document.getElementById('extraidoMsg').innerHTML = msg;
+
+    // Alerta de transferência disfarçada -- achado 2026-07-15 ("termo
+    // errado.pdf"): Rescisão cujo conteúdo é na verdade transferência de
+    // titularidade pra outro cliente. Não bloqueia, só avisa.
+    const alertaDiv = document.getElementById('alertaTransferencia');
+    if (extraido.alerta_transferencia) {
+      alertaDiv.innerHTML = `<div class="aviso">⚠ Este termo menciona transferência de titularidade: "...${escapeHtml(extraido.alerta_transferencia)}..." — confirme se o lado correspondente (origem ou destino) já foi ou será processado separadamente.</div>`;
+      document.getElementById('solucaoTecnica').value = `Termo menciona transferência de titularidade: "${extraido.alerta_transferencia}". Confirmar lado correspondente.`;
+    } else {
+      alertaDiv.innerHTML = '';
+      document.getElementById('solucaoTecnica').value = '';
+    }
+
+    // Revisão de itens x vínculo -- mostra já na Etapa 1 pra não surpreender
+    // só no final (geração bloqueia com 409 se algum item não tiver vínculo).
+    const itensDiv = document.getElementById('itensRevisao');
+    if ((extraido.itens || []).length) {
+      const linhas = extraido.itens.map((it) => {
+        const v = it.vinculo;
+        const badge = !v ? '<span class="badge badge-red">sem vínculo</span>'
+          : v.oculto ? '<span class="badge badge-blue">oculto (não vira material)</span>'
+          : '<span class="badge badge-green">vinculado</span>';
+        return `<tr><td>${escapeHtml(it.descricao)}</td><td>${escapeHtml(it.quantidade) || '—'}</td><td>${escapeHtml(it.comodato_ou_aquisicao) || '—'}</td><td>${badge}</td></tr>`;
+      }).join('');
+      itensDiv.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>Item do contrato</th><th>Qtd</th><th>Tipo</th><th>Vínculo Harmonit</th></tr></thead><tbody>${linhas}</tbody></table></div>`;
+    } else {
+      itensDiv.innerHTML = '';
+    }
+
+    // Mostra/esconde campo de cliente destino conforme o perfil
+    document.getElementById('clienteDestinoWrap').style.display = perfil === 'transferencia' ? '' : 'none';
+    clienteDestinoSelecionado = null;
+    document.getElementById('clienteDestinoCampo').value = '';
+
+    // pré-seleciona cliente pelo CNPJ, se achou
+    if (extraido.cnpj) {
+      const r = await fetch(`/painel/api/clientes/buscar?q=${extraido.cnpj}`, { headers: auth() });
+      const d = await r.json();
+      if (d.resultados.length) selecionarCliente(d.resultados[0], 'origem');
+    }
+    // deixa o nome sugerido pronto pra busca manual, mesmo sem CNPJ
+    if (!clienteSelecionado && extraido.cliente_nome_sugerido) {
+      document.getElementById('buscaCliente').value = extraido.cliente_nome_sugerido;
+    }
+    checarPodeAvancar();
+    irPara(2);
+  } catch (err) {
+    document.getElementById('extraidoMsg').innerHTML = `<div class="msg msg-erro">${escapeHtml(err.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Extrair dados →';
+  }
+}
+
+function abrirModalCliente(alvo) {
+  modalClienteAlvo = alvo || 'origem';
+  abrirModal('modalCliente');
+  if (modalClienteAlvo === 'origem' && extraido && extraido.cliente_nome_sugerido && !document.getElementById('buscaCliente').value) {
+    document.getElementById('buscaCliente').value = extraido.cliente_nome_sugerido;
+  }
+  if (document.getElementById('buscaCliente').value.length >= 3) buscarCliente(document.getElementById('buscaCliente').value);
+}
+
+let buscaClienteTimeout;
+document.getElementById('buscaCliente').addEventListener('input', (e) => {
+  clearTimeout(buscaClienteTimeout);
+  buscaClienteTimeout = setTimeout(() => buscarCliente(e.target.value), 400);
+});
+
+async function buscarCliente(q) {
+  if (!q || q.length < 3) return;
+  const res = await fetch(`/painel/api/clientes/buscar?q=${encodeURIComponent(q)}`, { headers: auth() });
+  const data = await res.json();
+  const div = document.getElementById('clientesResultado');
+  if (!data.resultados.length) { div.innerHTML = '<div class="aviso">Nenhum cliente encontrado.</div>'; return; }
+  div.innerHTML = '';
+  data.resultados.forEach((c) => {
+    const el = document.createElement('div');
+    el.className = 'modal-item';
+    el.innerHTML = `<span>${escapeHtml(c.nome)}</span><span style="color:var(--text2)">${escapeHtml(c.cnpjCpf) || ''}</span>`;
+    el.onclick = () => { selecionarCliente(c, modalClienteAlvo); fecharModal('modalCliente'); };
+    div.appendChild(el);
+  });
+}
+
+function selecionarCliente(c, alvo) {
+  if (alvo === 'destino') {
+    clienteDestinoSelecionado = c;
+    document.getElementById('clienteDestinoCampo').value = c.nome;
+  } else {
+    clienteSelecionado = c;
+    document.getElementById('clienteCampo').value = c.nome;
+  }
+  checarPodeAvancar();
+}
+
+function abrirModalServico() {
+  abrirModal('modalServico');
+  buscarServico(document.getElementById('buscaServico').value || '');
+}
+
+let buscaServicoTimeout;
+document.getElementById('buscaServico').addEventListener('input', (e) => {
+  clearTimeout(buscaServicoTimeout);
+  buscaServicoTimeout = setTimeout(() => buscarServico(e.target.value), 400);
+});
+
+async function buscarServico(q) {
+  const res = await fetch(`/painel/api/servicos/buscar?q=${encodeURIComponent(q || '')}`, { headers: auth() });
+  const data = await res.json();
+  const div = document.getElementById('servicosResultado');
+  if (!data.resultados.length) { div.innerHTML = '<div class="aviso">Nenhum serviço encontrado.</div>'; return; }
+  div.innerHTML = '';
+  data.resultados.forEach((s) => {
+    const el = document.createElement('div');
+    el.className = 'modal-item';
+    el.innerHTML = `<span>${escapeHtml(s.descricao)}</span><span style="color:var(--text2)">#${escapeHtml(s.id)}</span>`;
+    el.onclick = () => { selecionarServico(s); fecharModal('modalServico'); };
+    div.appendChild(el);
+  });
+}
+
+function selecionarServico(s) {
+  servicoSelecionado = s;
+  document.getElementById('servicoCampo').value = `${s.descricao} (#${s.id})`;
+  checarPodeAvancar();
+}
+
+function checarPodeAvancar() {
+  const perfil = document.getElementById('perfil').value;
+  const precisaDestino = perfil === 'transferencia';
+  document.getElementById('btnMontar').disabled = !(
+    clienteSelecionado && servicoSelecionado && (!precisaDestino || clienteDestinoSelecionado)
+  );
+}
+
+function _montarPayloadBase(confirmar) {
+  const perfilChave = document.getElementById('perfil').value;
+  const placas = placasEditaveis.map((p) => {
+    const base = { placa: p.placa, veiculo: p.veiculo || '', sem_bloqueio: !!p.sem_bloqueio };
+    if (perfilChave === 'substituicao') {
+      base.placa_entrada = p.placa_entrada;
+      base.veiculo_entrada = p.veiculo_entrada || '';
+    }
+    if (perfilChave === 'transferencia' && clienteDestinoSelecionado) {
+      base.cliente_id_destino = clienteDestinoSelecionado.id;
+    }
+    return base;
+  });
+  return {
+    perfil: perfilChave,
+    cliente_id: clienteSelecionado.id,
+    termo: document.getElementById('termo').value,
+    termo_relacionado: (extraido && extraido.termo_relacionado) || '',
+    produto_servico_id: servicoSelecionado.id,
+    placas,
+    itens: (extraido.itens || []).map((it) => ({
+      descricao: it.descricao, quantidade: it.quantidade,
+      valor_unitario: it.valor_unitario, comodato_ou_aquisicao: it.comodato_ou_aquisicao,
+    })),
+    solucao_tecnica: document.getElementById('solucaoTecnica').value,
+    prioridade_id: parseInt(document.getElementById('prioridadeCampo').value, 10) || 382,
+    motivo_financeira_zero: document.getElementById('motivoFinanceira').value,
+    confirmar,
+  };
+}
+
+// Etapa 3 chama o próprio /gerar-os em modo simulação (confirmar:false) --
+// o resumo mostrado é o resultado REAL do backend (alocação de materiais
+// respeitando sem_bloqueio, avisos de quantidade, vínculo resolvido), não um
+// preview client-side desconectado do que vai ser enviado de verdade
+// (achado 2026-07-15: a versão anterior nem mandava "itens" no payload real,
+// só no preview visual -- materiais nunca eram anexados na prática).
+async function montarResumo() {
+  const btn = document.getElementById('btnMontar');
+  btn.disabled = true; btn.textContent = 'Calculando...';
+  try {
+    const payload = _montarPayloadBase(false);
+    const res = await fetch('/painel/api/gerar-os', {
+      method: 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const erro = await res.json();
+      const detalhe = erro.detail;
+      if (detalhe && detalhe.tipo === 'vinculos_pendentes') {
+        throw new Error(`Itens sem vínculo Harmonit: ${detalhe.itens.join(', ')}. Cadastre o vínculo antes de gerar.`);
+      }
+      throw new Error((detalhe && detalhe.mensagem) || detalhe || 'Falha ao montar resumo');
+    }
+    const data = await res.json();
+    payloadResumo = payload; // reaproveitado em gerarOs(), com confirmar:true
+
+    const tbody = document.getElementById('resumoTbody');
+    tbody.innerHTML = data.operacoes.map((op) => {
+      const tipoLabel = op.rotulo || (PERFIS[payload.perfil] && PERFIS[payload.perfil].label) || payload.perfil;
+      return `<tr><td>${escapeHtml(op.cliente_id)}</td><td><strong>${escapeHtml(op.placa)}</strong></td><td>${escapeHtml(op.veiculo) || '—'}</td>` +
+        `<td><span class="badge badge-blue">${tipoLabel}</span></td>` +
+        `<td style="font-size:.78rem;color:var(--text2)">${escapeHtml(op.descricao)}</td>` +
+        `<td style="font-size:.78rem">${op.materiais.length} item(ns)</td></tr>`;
+    }).join('');
+
+    const fmtMoeda = (v) => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    document.getElementById('resumoInfo').innerHTML =
+      `<div class="msg msg-ok">Cliente: <strong>${escapeHtml(clienteSelecionado.nome)}</strong>${clienteDestinoSelecionado ? ' → <strong>' + escapeHtml(clienteDestinoSelecionado.nome) + '</strong>' : ''} · Serviço: <strong>${escapeHtml(servicoSelecionado.descricao)}</strong> · Total: <strong>${data.total_os} OS</strong> a gerar</div>` +
+      `<div class="msg" style="background:var(--bg2);margin-top:8px;font-size:.78rem">Valor total do contrato: <strong>${fmtMoeda(data.valor_total_contrato)}</strong> · Valor total anexado como material: <strong>${fmtMoeda(data.valor_total_anexado)}</strong></div>` +
+      (data.solucao_tecnica_preview ? `<div class="msg" style="background:var(--bg2);margin-top:8px;white-space:pre-wrap;font-size:.78rem">${escapeHtml(data.solucao_tecnica_preview)}</div>` : '');
+    document.getElementById('resumoAvisos').innerHTML = (data.avisos || [])
+      .map((a) => `<div class="aviso" style="margin-bottom:6px">⚠ ${escapeHtml(a)}</div>`).join('');
+    document.getElementById('resultadoFinal').innerHTML = '';
+    document.getElementById('btnGerar').disabled = false;
+    irPara(3);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Ver resumo →';
+  }
+}
+
+async function gerarOs() {
+  const btn = document.getElementById('btnGerar');
+  if (!payloadResumo) { alert('Monte o resumo primeiro.'); return; }
+  const total = document.querySelectorAll('#resumoTbody tr').length;
+  if (!confirm(`Confirma a geração de ${total} OS no Harmonit? Essa ação é real, não tem como desfazer em lote.`)) return;
+  btn.disabled = true; btn.textContent = 'Gerando...';
+  try {
+    const res = await fetch('/painel/api/gerar-os', {
+      method: 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payloadResumo, confirmar: true }),
+    });
+    const data = await res.json();
+    const div = document.getElementById('resultadoFinal');
+    div.innerHTML = data.resultados.map((r) =>
+      r.ok
+        ? `<div class="msg msg-ok">✓ ${escapeHtml(r.placa)} (cliente ${escapeHtml(r.cliente_id)}) → OS nº ${escapeHtml(r.numero_ordem)} (id ${escapeHtml(r.os_id)})</div>`
+        : `<div class="msg msg-erro">✗ ${escapeHtml(r.placa)} → ${escapeHtml(r.erro)}</div>`
+    ).join('');
+    btn.style.display = 'none';
+  } catch (err) {
+    document.getElementById('resultadoFinal').innerHTML = `<div class="msg msg-erro">${escapeHtml(err.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Gerar OS';
+  }
+}
+</script>
+</body>
+</html>

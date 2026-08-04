@@ -1,0 +1,31 @@
+# ---- segredos (NUNCA versionar) ----
+.env
+.env.*
+!.env.example
+alembic.ini
+*.pem
+*.key
+
+# ---- ambiente ----
+venv/
+__pycache__/
+*.pyc
+*.pyo
+node_modules/
+
+# ---- dados e runtime ----
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+*.sql.gz
+
+# ---- lixo de edicao ----
+backups/
+*.bak
+*.bak_*
+*.bak2_*
+*.bak3_*
+.DS_Store

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FPSL — Painel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #2563EB; --blue-dim: #EFF6FF;
+    --bg: #F8FAFC; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --card: #FFFFFF; --red: #DC2626; --red-dim: #FEF2F2;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:var(--bg); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:32px;
+          width:100%; max-width:360px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  h1 { font-size:1.1rem; font-weight:700; margin:0 0 4px; }
+  p.sub { color:var(--text2); font-size:.84rem; margin:0 0 24px; }
+  label { font-size:.78rem; font-weight:600; display:block; margin-bottom:6px; }
+  input { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:6px;
+          background:var(--bg); color:var(--text); font-size:.9rem; font-family:inherit; margin-bottom:14px; }
+  input:focus { outline:none; border-color:var(--blue); background:var(--card); }
+  button { width:100%; padding:10px; border-radius:7px; border:none; background:var(--blue); color:#fff;
+           font-weight:600; font-size:.88rem; font-family:inherit; cursor:pointer; }
+  button:hover { background:#1d4ed8; }
+  button:disabled { opacity:.6; cursor:not-allowed; }
+  .erro { background:var(--red-dim); color:var(--red); font-size:.82rem; padding:8px 12px;
+          border-radius:6px; margin-bottom:14px; display:none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>FPSL — Painel</h1>
+  <p class="sub">Geração de OS por contrato</p>
+  <div class="erro" id="erro"></div>
+  <form id="form">
+    <label for="login">Login</label>
+    <input type="text" id="login" autocomplete="username" required>
+    <label for="senha">Senha</label>
+    <input type="password" id="senha" autocomplete="current-password" required>
+    <button type="submit" id="btn">Entrar</button>
+  </form>
+</div>
+<script>
+document.getElementById('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btn');
+  const erro = document.getElementById('erro');
+  erro.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Entrando...';
+  try {
+    const res = await fetch('/painel/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        login: document.getElementById('login').value,
+        senha: document.getElementById('senha').value,
+      }),
+    });
+    if (!res.ok) throw new Error('Login ou senha incorretos');
+    const data = await res.json();
+    localStorage.setItem('fpsl_painel_token', data.access_token);
+    // manda pra primeira aba DO PERFIL dele -- mandar sempre pra Gerar OS
+    // jogaria num 403 quem não tem essa aba.
+    const primeira = (data.abas || [])[0];
+    if (!primeira) throw new Error('Sua conta ainda não tem nenhuma aba liberada. Fale com o proprietário do painel.');
+    window.location.href = primeira.rota;
+  } catch (err) {
+    erro.textContent = err.message;
+    erro.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+});
+</script>
+</body>
+</html>

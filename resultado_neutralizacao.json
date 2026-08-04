@@ -1,0 +1,1 @@
+{"ok": 1018, "falha": [{"id": 17753, "status": 400, "body": "{\"errorMessage\":\"Número da linha é obrigatório\",\"message\":null,\"data\":null}"}, {"id": 17755, "status": 400, "body": "{\"errorMessage\":\"Número da linha é obrigatório\",\"message\":null,\"data\":null}"}]}

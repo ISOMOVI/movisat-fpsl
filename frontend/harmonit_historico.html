@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Servicos Harmonit - FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --blue: #2563EB; --blue-dim: #EFF6FF; --blue-mid: #93C5FD;
+    --green: #16a34a; --green-dim: #F0FDF4;
+    --red: #DC2626; --red-dim: #FEF2F2;
+    --amber: #D97706; --amber-dim: #FFFBEB;
+    --bg: #F8FAFC; --bg2: #F1F5F9; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --card: #FFFFFF;
+    --sidebar-bg: #0F172A; --sidebar-tx: #94A3B8; --sidebar-w: 230px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .sidebar-bottom button:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .main { flex:1; padding:32px; max-width:920px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  h2 { font-size:1.02rem; font-weight:700; margin-bottom:4px; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:14px; }
+  section { margin-bottom:34px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; }
+  .btn-primary { background:var(--blue); color:#fff; }
+  .btn-primary:hover { background:#1d4ed8; }
+  .btn-ghost { background:var(--card); color:var(--text); border-color:var(--border); }
+  .btn-sm { padding:5px 10px; font-size:.78rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .card-pad { padding:20px; }
+  table { width:100%; border-collapse:collapse; font-size:.86rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase;
+       letter-spacing:.03em; padding:12px; border-bottom:1.5px solid var(--border); }
+  td { padding:12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  .badge { font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .badge-blue { background:var(--blue-dim); color:var(--blue); }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  .badge-amber { background:var(--amber-dim); color:var(--amber); }
+  label { font-size:.78rem; font-weight:600; display:block; margin-bottom:6px; }
+  input[type=text], input[type=file], select { width:100%; padding:9px 12px; border:1.5px solid var(--border);
+        border-radius:6px; background:var(--bg); color:var(--text); font-size:.88rem; font-family:inherit; }
+  input:focus, select:focus { outline:none; border-color:var(--blue); background:var(--card); }
+  .campo-com-botao { display:flex; gap:8px; }
+  .campo-com-botao input { flex:1; }
+  .check-row { display:flex; align-items:center; gap:8px; font-size:.84rem; }
+  .radio-row { display:flex; gap:16px; }
+  .radio-row label { display:flex; align-items:center; gap:6px; font-weight:500; margin:0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .field { margin-bottom:14px; }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-bottom:12px; }
+  .msg-erro { background:var(--red-dim); color:var(--red); }
+  .msg-ok { background:var(--green-dim); color:var(--green); }
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100;
+              align-items:center; justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:var(--card); border-radius:12px; padding:20px; width:100%; max-width:460px;
+           max-height:80vh; display:flex; flex-direction:column; gap:12px; }
+  .modal-header { display:flex; justify-content:space-between; align-items:center; }
+  .modal-header h3 { font-size:1rem; font-weight:700; }
+  .modal-header button { background:none; border:none; font-size:1.1rem; cursor:pointer; color:var(--text2); }
+  .modal-lista { overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+  .modal-item { padding:10px 12px; border:1px solid var(--border); border-radius:8px; cursor:pointer;
+                display:flex; justify-content:space-between; gap:10px; font-size:.86rem; }
+  .modal-item:hover { background:var(--blue-dim); border-color:var(--blue-mid); }
+  .aviso { color:var(--text2); font-size:.84rem; padding:10px; }
+  .empty { text-align:center; color:var(--text2); padding:24px; }
+  .drop { border:1.5px dashed var(--border); border-radius:8px; padding:16px; text-align:center;
+          cursor:pointer; font-size:.84rem; color:var(--text2); }
+  .drop:hover { border-color:var(--blue-mid); }
+  .item-row { border:1px solid var(--border); border-radius:8px; padding:10px 12px; display:flex;
+              justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
+  .item-desc { font-weight:600; font-size:.86rem; }
+  .item-meta { color:var(--text2); font-size:.78rem; }
+</style>
+<style>
+  .grade { width:100%; border-collapse:collapse; font-size:.84rem; }
+  .grade th { background:var(--bg2); padding:9px 10px; text-align:left; font-size:.7rem;
+              text-transform:uppercase; letter-spacing:.05em; color:var(--text2); font-weight:600; }
+  .grade td { padding:8px 10px; border-bottom:1px solid var(--border); }
+  .grade tr:last-child td { border-bottom:none; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:20px; font-size:.72rem; font-weight:600; }
+  .tag-ok { background:var(--green-dim); color:var(--green); }
+  .tag-erro { background:var(--red-dim); color:var(--red); }
+  .tag-vazio { background:var(--bg2); color:var(--text2); }
+  .tag-alerta { background:var(--amber-dim); color:var(--amber); }
+  .cards { display:flex; gap:14px; flex-wrap:wrap; margin:14px 0; }
+  .cards div { background:var(--card); border:1px solid var(--border); border-radius:9px;
+               padding:10px 16px; min-width:126px; }
+  .cards b { display:block; font-size:1.5rem; line-height:1.2; }
+  .cards span { font-size:.73rem; color:var(--text2); text-transform:uppercase; letter-spacing:.04em; }
+  .subabas { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px; }
+  .subabas button { padding:6px 13px; border:1px solid var(--border); background:var(--card);
+                    border-radius:20px; font-size:.8rem; cursor:pointer; color:var(--text2); }
+  .subabas button.on { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
+  .filtros { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+  select, .filtros label { font-size:.83rem; }
+  select { padding:6px 9px; border:1px solid var(--border); border-radius:6px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom">
+      <button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <h1>Servicos Harmonit</h1>
+    </div>
+
+    <section>
+      <div class="filtros">
+        <label>Janela
+          <select id="horas" onchange="carregar()">
+            <option value="1">ultima hora</option>
+            <option value="24" selected>24 horas</option>
+            <option value="168">7 dias</option>
+            <option value="720">30 dias</option>
+          </select>
+        </label>
+        <span id="disjuntor"></span>
+        <span class="sub" id="retencao"></span>
+      </div>
+      <div class="cards" id="cards"></div>
+      <p class="sub">Resposta vazia (ex.: OS inexistente na varredura) e contada
+         separada de erro &mdash; a numeracao de OS do Harmonit tem buracos, e
+         sondar um numero que nao existe e o comportamento normal, nao falha.</p>
+    </section>
+
+    <section>
+      <h2>Por servico</h2>
+      <div style="overflow-x:auto"><table class="grade" id="tabResumo"></table></div>
+    </section>
+
+    <section>
+      <h2>Chamadas</h2>
+      <div class="subabas" id="subabas"></div>
+      <div class="filtros">
+        <label><input type="checkbox" id="soFalhas" onchange="carregarChamadas()"> so erros</label>
+      </div>
+      <div style="overflow-x:auto"><table class="grade" id="tabChamadas"></table></div>
+    </section>
+  </main>
+</div>
+
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+function auth() { return { Authorization: 'Bearer ' + token }; }
+function logout() { localStorage.removeItem('fpsl_painel_token'); window.location.href = '/painel'; }
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+montarSidebar('harmonit_historico');
+
+let servicoAtivo = null;
+
+function horas() { return document.getElementById('horas').value; }
+
+async function carregar() {
+  const r = await fetch('/painel/api/harmonit/resumo?horas=' + horas(), { headers: auth() });
+  if (!r.ok) { alert('Falha ao carregar: ' + r.status); return; }
+  const d = await r.json();
+
+  const dj = d.disjuntor || {};
+  document.getElementById('disjuntor').innerHTML = dj.aberto
+    ? '<span class="tag tag-erro">disjuntor ABERTO &mdash; ' + esc(dj.segundos_restantes) + 's</span>'
+    : '<span class="tag tag-ok">disjuntor fechado</span>';
+  document.getElementById('retencao').textContent = 'historico mantido por ' + d.retencao_dias + ' dias';
+
+  document.getElementById('cards').innerHTML =
+    '<div><b>' + d.total + '</b><span>chamadas</span></div>' +
+    '<div><b style="color:' + (d.falhas ? 'var(--red)' : 'var(--green)') + '">' + d.falhas + '</b><span>erros</span></div>' +
+    '<div><b style="color:var(--text2)">' + (d.vazios || 0) + '</b><span>resposta vazia</span></div>';
+
+  const linhas = (d.servicos || []).map(function (s) {
+    const pct = s.pct_falha;
+    const tag = pct === 0 ? '<span class="tag tag-ok">ok</span>'
+              : (pct < 10 ? '<span class="tag tag-alerta">' + pct + '%</span>'
+                          : '<span class="tag tag-erro">' + pct + '%</span>');
+    return '<tr>' +
+      '<td><b>' + esc(s.servico) + '</b></td>' +
+      '<td class="num">' + s.chamadas + '</td>' +
+      '<td class="num">' + s.falhas + '</td>' +
+      '<td class="num">' + (s.vazios || 0) + '</td>' +
+      '<td>' + tag + '</td>' +
+      '<td class="num">' + (s.ms_mediana === null ? '-' : s.ms_mediana + ' ms') + '</td>' +
+      '<td class="num">' + (s.ms_p95 === null ? '-' : s.ms_p95 + ' ms') + '</td>' +
+      '<td class="num">' + (s.ms_max === null ? '-' : s.ms_max + ' ms') + '</td>' +
+      '</tr>';
+  }).join('');
+  document.getElementById('tabResumo').innerHTML =
+    '<thead><tr><th>Servico</th><th class="num">Chamadas</th><th class="num">Erros</th>' +
+    '<th class="num">Vazias</th><th>Saude</th><th class="num">Mediana</th>' +
+    '<th class="num">p95</th><th class="num">Max</th></tr></thead><tbody>' + linhas + '</tbody>';
+
+  const nomes = (d.servicos || []).map(function (s) { return s.servico; });
+  document.getElementById('subabas').innerHTML =
+    '<button class="' + (servicoAtivo ? '' : 'on') + '" onclick="verServico(null)">todos</button>' +
+    nomes.map(function (n) {
+      return '<button class="' + (servicoAtivo === n ? 'on' : '') + '" onclick="verServico(\'' +
+             n.replace(/'/g, "") + '\')">' + esc(n) + '</button>';
+    }).join('');
+
+  carregarChamadas();
+}
+
+function verServico(n) { servicoAtivo = n; carregar(); }
+
+async function carregarChamadas() {
+  let url = '/painel/api/harmonit/chamadas?horas=' + horas() + '&limite=200';
+  if (servicoAtivo) url += '&servico=' + encodeURIComponent(servicoAtivo);
+  if (document.getElementById('soFalhas').checked) url += '&so_falhas=true';
+  const r = await fetch(url, { headers: auth() });
+  if (!r.ok) return;
+  const d = await r.json();
+  const linhas = (d.chamadas || []).map(function (c) {
+    const cat = c.categoria || (c.ok ? 'ok' : 'erro');
+    const tag = cat === 'ok' ? '<span class="tag tag-ok">ok</span>'
+              : (cat === 'vazio' ? '<span class="tag tag-vazio">vazio</span>'
+                                 : '<span class="tag tag-erro">erro</span>');
+    return '<tr>' +
+      '<td>' + esc((c.momento || '').replace('T', ' ').slice(0, 19)) + '</td>' +
+      '<td>' + esc(c.metodo) + '</td>' +
+      '<td>' + esc(c.rota) + '</td>' +
+      '<td class="num">' + c.ms + ' ms</td>' +
+      '<td>' + tag + '</td>' +
+      '<td>' + esc(c.erro || '') + '</td>' +
+      '</tr>';
+  }).join('');
+  document.getElementById('tabChamadas').innerHTML =
+    '<thead><tr><th>Quando (UTC)</th><th>Verbo</th><th>Rota</th><th class="num">Tempo</th>' +
+    '<th>Resultado</th><th>Detalhe</th></tr></thead><tbody>' + linhas + '</tbody>';
+}
+
+carregar();
+</script>
+</body>
+</html>
