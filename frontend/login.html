@@ -3,55 +3,72 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>FPSL — Painel</title>
+<link rel="icon" href="/painel/static/movisat-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --blue: #2563EB; --blue-dim: #EFF6FF;
-    --bg: #F8FAFC; --text: #0F172A; --text2: #64748B;
-    --border: #E2E8F0; --card: #FFFFFF; --red: #DC2626; --red-dim: #FEF2F2;
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
-         background:var(--bg); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
-  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:32px;
-          width:100%; max-width:360px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
-  h1 { font-size:1.1rem; font-weight:700; margin:0 0 4px; }
-  p.sub { color:var(--text2); font-size:.84rem; margin:0 0 24px; }
-  label { font-size:.78rem; font-weight:600; display:block; margin-bottom:6px; }
-  input { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:6px;
-          background:var(--bg); color:var(--text); font-size:.9rem; font-family:inherit; margin-bottom:14px; }
-  input:focus { outline:none; border-color:var(--blue); background:var(--card); }
-  button { width:100%; padding:10px; border-radius:7px; border:none; background:var(--blue); color:#fff;
-           font-weight:600; font-size:.88rem; font-family:inherit; cursor:pointer; }
-  button:hover { background:#1d4ed8; }
-  button:disabled { opacity:.6; cursor:not-allowed; }
-  .erro { background:var(--red-dim); color:var(--red); font-size:.82rem; padding:8px 12px;
-          border-radius:6px; margin-bottom:14px; display:none; }
-</style>
+<!--
+  Estilo compartilhado. Antes deste arquivo cada tela do FPSL carregava o seu
+  proprio bloco <style> com os mesmos valores copiados dez vezes.
+-->
+<link rel="stylesheet" href="/painel/static/estilo.css">
 </head>
 <body>
-<div class="card">
-  <h1>FPSL — Painel</h1>
-  <p class="sub">Geração de OS por contrato</p>
-  <div class="erro" id="erro"></div>
-  <form id="form">
-    <label for="login">Login</label>
-    <input type="text" id="login" autocomplete="username" required>
-    <label for="senha">Senha</label>
-    <input type="password" id="senha" autocomplete="current-password" required>
-    <button type="submit" id="btn">Entrar</button>
-  </form>
+<div class="login-wrap">
+  <div class="login-box">
+
+    <div class="login-brand">
+      <img src="/painel/static/movisat-logo.png" alt="Movisat">
+      <p class="sub">Geração de OS por contrato · FPSL</p>
+    </div>
+
+    <div class="card login-card">
+      <h2>Acesse sua conta</h2>
+
+      <div class="alert alert-error" id="erro" hidden></div>
+
+      <form id="form">
+        <div class="form-group form-group-lg">
+          <label for="login">Login</label>
+          <input class="form-control" type="text" id="login"
+                 autocomplete="username" autocapitalize="off" autocorrect="off"
+                 spellcheck="false" maxlength="64" required>
+        </div>
+
+        <div class="form-group form-group-lg">
+          <label for="senha">Senha</label>
+          <input class="form-control" type="password" id="senha"
+                 autocomplete="current-password" maxlength="256" required>
+        </div>
+
+        <button class="btn btn-primary btn-block login-submit" type="submit" id="btn">Entrar</button>
+
+        <!--
+          Sem rota de proposito: recuperacao de senha depende de envio de
+          e-mail, que ainda nao existe aqui. Botao desabilitado com o motivo a
+          vista e honesto; link que nao faz nada e o contrario.
+        -->
+        <button class="btn btn-block login-forgot" type="button" disabled
+                title="Ainda não disponível: depende do envio de e-mail">
+          Esqueci minha senha
+        </button>
+      </form>
+    </div>
+
+  </div>
 </div>
+
 <script>
+document.getElementById('login').focus();
+
 document.getElementById('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('btn');
   const erro = document.getElementById('erro');
-  erro.style.display = 'none';
+  erro.hidden = true;
   btn.disabled = true;
-  btn.textContent = 'Entrando...';
+  btn.innerHTML = '<span class="spinner"></span>&nbsp;Entrando…';
   try {
     const res = await fetch('/painel/api/login', {
       method: 'POST',
@@ -61,6 +78,12 @@ document.getElementById('form').addEventListener('submit', async (e) => {
         senha: document.getElementById('senha').value,
       }),
     });
+    if (res.status === 429) {
+      // o backend devolve quanto tempo falta; mostrar isso evita a pessoa
+      // ficar tentando e reiniciando o contador sem entender por que
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || 'Muitas tentativas. Aguarde alguns minutos.');
+    }
     if (!res.ok) throw new Error('Login ou senha incorretos');
     const data = await res.json();
     localStorage.setItem('fpsl_painel_token', data.access_token);
@@ -71,7 +94,8 @@ document.getElementById('form').addEventListener('submit', async (e) => {
     window.location.href = primeira.rota;
   } catch (err) {
     erro.textContent = err.message;
-    erro.style.display = 'block';
+    erro.hidden = false;
+    document.getElementById('senha').value = '';
   } finally {
     btn.disabled = false;
     btn.textContent = 'Entrar';

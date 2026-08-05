@@ -29,3 +29,10 @@ backups/
 *.bak2_*
 *.bak3_*
 .DS_Store
+
+# ---- satelites do SQLite em modo WAL ----
+# `*.db` NAO casa com estes. Sao estado de runtime e, no caso do contador de
+# tentativas de login, carregam IP e nome de conta.
+*.db-wal
+*.db-shm
+*.db-journal

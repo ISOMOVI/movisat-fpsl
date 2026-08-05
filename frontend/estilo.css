@@ -1,0 +1,162 @@
+/* ============================================================================
+   FPSL — sistema de design compartilhado
+   ----------------------------------------------------------------------------
+   Criado em 2026-08-05. Até aqui o FPSL não tinha NENHUM arquivo .css: cada
+   uma das 10 telas carregava o próprio bloco <style>, com os mesmos valores
+   copiados dez vezes. A cor já era a certa — a do MoviChat — mas divergir era
+   questão de tempo, porque não havia um lugar para mudar.
+
+   Os valores são os do `theme.css` do MoviChat, que é o padrão visual da casa.
+
+   ⚠️ COMO ADOTAR NAS TELAS ANTIGAS
+   O <link> deste arquivo entra ANTES do <style> de cada tela. Assim o inline
+   continua vencendo e nada muda de aparência hoje. A migração é apagar o
+   inline aos poucos, tela por tela, e deixar o token assumir. Trocar tudo de
+   uma vez em 10 telas de produção é como se quebra painel.
+   ============================================================================ */
+
+:root {
+  /* ---- cor (= theme.css do MoviChat) ---- */
+  --blue:      #2563EB;
+  --blue-dark: #1D4ED8;
+  --blue-dim:  #EFF6FF;
+  --blue-mid:  #BFDBFE;
+  --green:     #16A34A;
+  --green-dim: #F0FDF4;
+  --yellow:    #D97706;
+  --yellow-dim:#FFFBEB;
+  --orange:    #EA580C;
+  --red:       #DC2626;
+  --red-dim:   #FEF2F2;
+
+  --bg:      #F8FAFC;
+  --bg2:     #F1F5F9;
+  --bg3:     #E2E8F0;
+  --card:    #FFFFFF;
+  --text:    #0F172A;
+  --text2:   #64748B;
+  --text3:   #94A3B8;
+  --border:  #E2E8F0;
+
+  --sidebar-bg: #0F172A;
+  --sidebar-tx: #94A3B8;
+  --sidebar-w:  240px;
+
+  --shadow:   0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-2: 0 8px 24px rgba(15,23,42,.12), 0 2px 6px rgba(15,23,42,.06);
+  --radius:   8px;
+  --header-h: 56px;
+
+  /* 🚨 Campo de formulário: 16px e 44px não são estética. Abaixo de 16px o
+     iOS dá zoom sozinho ao focar o campo; 44px é o alvo de toque mínimo. */
+  --input-fs:     16px;
+  --touch:        44px;
+  --input-h-lg:   48px;   /* login: maior que o padrão, a pedido */
+
+  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── cartão ──────────────────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+/* ── botão ───────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--touch);
+  padding: 9px 14px;
+  border: 1.5px solid var(--border); border-radius: 6px;
+  background: var(--card); color: var(--text);
+  font-family: inherit; font-size: .82rem; font-weight: 500;
+  cursor: pointer; touch-action: manipulation;
+  transition: background .15s, border-color .15s;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+.btn-primary:hover:not(:disabled) { background: var(--blue-dark); }
+.btn-block { width: 100%; }
+
+/* ── campo ───────────────────────────────────────────────────────────── */
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block; margin-bottom: 6px;
+  font-size: .82rem; font-weight: 600; color: var(--text2);
+}
+.form-control {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 11px 14px;
+  border: 1.5px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text);
+  font-family: inherit; font-size: var(--input-fs);
+  -webkit-appearance: none;
+  transition: border-color .2s;
+}
+.form-control:focus { outline: none; border-color: var(--blue); background: var(--card); }
+.form-group-lg .form-control { min-height: var(--input-h-lg); padding: 13px 14px; }
+.form-group-lg label { font-size: .9rem; }
+
+/* ── aviso ───────────────────────────────────────────────────────────── */
+.alert {
+  padding: 10px 14px; border-radius: 6px;
+  font-size: .84rem; margin-bottom: 14px;
+  border: 1px solid transparent;
+}
+.alert-error { background: var(--red-dim); color: var(--red); border-color: rgba(220,38,38,.3); }
+
+/* ── tela de login (compartilhada entre os painéis) ──────────────────── */
+.login-wrap {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px;
+}
+.login-box { width: 100%; max-width: 420px; }
+.login-brand { text-align: center; margin-bottom: 30px; }
+.login-brand img {
+  height: 76px; max-width: 100%; object-fit: contain;
+}
+.login-brand .sub {
+  margin: 12px 0 0;
+  font-size: .82rem; letter-spacing: .04em; color: var(--text2);
+}
+.login-card { padding: 30px; box-shadow: var(--shadow-2); }
+.login-card h2 { margin: 0 0 22px; font-size: 1.05rem; font-weight: 700; }
+.login-submit { min-height: var(--input-h-lg); font-size: 1rem; }
+.login-forgot {
+  width: 100%; margin-top: 12px;
+  background: transparent; border-color: transparent;
+  color: var(--text2); font-size: .82rem;
+}
+
+/* Tela baixa (celular deitado): encolhe a marca antes de espremer o cartão. */
+@media (max-height: 640px) {
+  .login-brand img { height: 46px; }
+  .login-brand { margin-bottom: 16px; }
+  .login-card { padding: 20px; }
+}
+
+.spinner {
+  display: inline-block; width: 15px; height: 15px;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+  border-radius: 50%; animation: girar .7s linear infinite;
+}
+@keyframes girar { to { transform: rotate(360deg); } }
+
+[hidden] { display: none !important; }
