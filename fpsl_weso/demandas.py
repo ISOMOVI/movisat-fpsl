@@ -29,6 +29,7 @@ MAX_OBS = 500
 MAX_NOME = 60
 
 AGUARDANDO, LIBERADO, CONCLUIDO = "aguardando", "liberado", "concluido"
+CANCELADO = "cancelado"
 
 # 🚨 Paleta SEM verde e SEM vermelho, de propósito: essas duas cores já
 # significam "concluído" e "atrasado" no card. Pessoa com cor verde faria o
@@ -120,6 +121,23 @@ def _migrar_pessoas(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE demanda_etapa ADD COLUMN pessoa_id INTEGER "
                   "REFERENCES demanda_pessoa(id)")
         log.info("demanda_etapa ganhou pessoa_id")
+
+    # `modo` escolhe a VISTA, não o motor: os dados são os mesmos.
+    # 'esteira'  = cards horizontais em raia (o primeiro quadro)
+    # 'planilha' = tabela com semáforo (formato de cronograma)
+    quadro_cols = {r["name"] for r in c.execute("PRAGMA table_info(demanda_quadro)")}
+    if "modo" not in quadro_cols:
+        c.execute("ALTER TABLE demanda_quadro ADD COLUMN modo TEXT NOT NULL "
+                  "DEFAULT 'esteira'")
+    if "gerente" not in quadro_cols:
+        c.execute("ALTER TABLE demanda_quadro ADD COLUMN gerente TEXT")
+
+    item_cols = {r["name"] for r in c.execute("PRAGMA table_info(demanda_item)")}
+    if "cancelado" not in item_cols:
+        # 🚨 Cancelado NÃO é concluído: a tarefa não vai acontecer. Tratar como
+        # concluído liberaria a de baixo e mentiria no contador.
+        c.execute("ALTER TABLE demanda_item ADD COLUMN cancelado INTEGER "
+                  "NOT NULL DEFAULT 0")
 
     quadros = c.execute("SELECT id FROM demanda_quadro").fetchall()
     for q in quadros:
@@ -221,7 +239,7 @@ def quadro(token: str) -> dict | None:
     if not token or len(token) > 80:
         return None
     with _conn() as c:
-        q = c.execute("SELECT id, titulo, token FROM demanda_quadro "
+        q = c.execute("SELECT id, titulo, token, modo, gerente FROM demanda_quadro "
                       "WHERE token = ? AND ativo = 1", (token,)).fetchone()
         if not q:
             return None
@@ -258,17 +276,34 @@ def quadro(token: str) -> dict | None:
     hoje = date.today().isoformat()
     for i in itens:
         i["sem_prazo"] = bool(i["sem_prazo"])
+        i["cancelado"] = bool(i.get("cancelado"))
         i["etapas"] = por_item.get(i["id"], [])
         i["concluido"] = bool(i["etapas"]) and all(e["concluida"] for e in i["etapas"])
         # 🚨 `atrasado` é DERIVADO, nunca gravado: prazo que venceu enquanto
         # ninguém olhava tem que virar vermelho sozinho.
-        i["atrasado"] = bool(i["prazo"] and not i["concluido"] and i["prazo"] < hoje)
+        i["atrasado"] = bool(i["prazo"] and not i["concluido"]
+                             and not i["cancelado"] and i["prazo"] < hoje)
 
+    # `n` é o número da linha DENTRO da frente -- é ele que aparece no
+    # "Aguardando N" da planilha, dizendo qual linha está travando.
     for f in frentes:
         f["itens"] = [i for i in itens if i["frente_id"] == f["id"]]
         livre = True
-        for i in f["itens"]:
-            i["estado"] = CONCLUIDO if i["concluido"] else (LIBERADO if livre else AGUARDANDO)
+        trava_n = None
+        for n, i in enumerate(f["itens"], 1):
+            i["n"] = n
+            if i["concluido"]:
+                i["estado"] = CONCLUIDO
+            elif i["cancelado"]:
+                # 🚨 Cancelado NÃO libera a de baixo: a tarefa não aconteceu.
+                i["estado"] = CANCELADO
+            elif livre:
+                i["estado"] = LIBERADO
+            else:
+                i["estado"] = AGUARDANDO
+            i["aguardando_n"] = trava_n if i["estado"] == AGUARDANDO else None
+            if not i["concluido"] and trava_n is None:
+                trava_n = n          # a primeira não-concluída é quem trava
             livre = livre and i["concluido"]
 
     # quem tem tarefa PENDENTE -- é o que a legenda mostra
@@ -282,6 +317,7 @@ def quadro(token: str) -> dict | None:
 
     return {
         "titulo": q["titulo"], "token": q["token"], "frentes": frentes,
+        "modo": q["modo"] or "esteira", "gerente": q["gerente"],
         "total": len(itens),
         "concluidos": sum(1 for i in itens if i["concluido"]),
         "atrasados": sum(1 for i in itens if i["atrasado"]),
@@ -488,7 +524,65 @@ def listar_quadros() -> list[dict]:
             "FROM demanda_quadro q ORDER BY q.id")]
 
 
-def criar_quadro(titulo: str) -> dict | None:
+def renomear_item(token, item_id, titulo, quem) -> bool:
+    """Editar o texto direto na célula, como planilha."""
+    titulo = (titulo or "").strip()[:MAX_TITULO]
+    if not titulo:
+        return False
+    with _conn() as c:
+        qid = _qid(c, token)
+        if not qid or not _pertence(c, qid, item_id) or not _liberado(c, item_id):
+            return False
+        c.execute("UPDATE demanda_item SET titulo=?, atualizado_em=datetime('now'), "
+                  "atualizado_por=? WHERE id=?",
+                  (titulo, (quem or "").strip()[:MAX_NOME] or None, item_id))
+    return True
+
+
+def trocar_responsavel(token, item_id, pessoa_id, quem) -> bool:
+    """Troca o dono da PRIMEIRA etapa pendente -- é dela que sai a cor.
+
+    Item com handoff mantém as demais etapas: trocar o responsável não é
+    desfazer o encadeamento.
+    """
+    with _conn() as c:
+        qid = _qid(c, token)
+        if not qid or not _pertence(c, qid, item_id):
+            return False
+        p = _pessoa_valida(c, qid, pessoa_id)
+        if not p:
+            return False
+        alvo = c.execute("SELECT id FROM demanda_etapa WHERE item_id=? AND concluida=0 "
+                         "ORDER BY ordem LIMIT 1", (item_id,)).fetchone()
+        if not alvo:   # tudo concluído: troca a última, para o histórico ficar certo
+            alvo = c.execute("SELECT id FROM demanda_etapa WHERE item_id=? "
+                             "ORDER BY ordem DESC LIMIT 1", (item_id,)).fetchone()
+        if not alvo:
+            return False
+        c.execute("UPDATE demanda_etapa SET pessoa_id=?, responsavel=? WHERE id=?",
+                  (p[0], p[1], alvo["id"]))
+        c.execute("UPDATE demanda_item SET atualizado_em=datetime('now'), "
+                  "atualizado_por=? WHERE id=?",
+                  ((quem or "").strip()[:MAX_NOME] or None, item_id))
+    return True
+
+
+def cancelar_item(token, item_id, cancelado: bool) -> bool:
+    """Cancelado não é concluído: a tarefa não vai acontecer.
+
+    🚨 Por isso NÃO libera a de baixo. Tratar cancelado como concluído faria a
+    fila andar sobre uma tarefa que ninguém fez.
+    """
+    with _conn() as c:
+        qid = _qid(c, token)
+        if not qid or not _pertence(c, qid, item_id):
+            return False
+        c.execute("UPDATE demanda_item SET cancelado=?, atualizado_em=datetime('now') "
+                  "WHERE id=?", (1 if cancelado else 0, item_id))
+    return True
+
+
+def criar_quadro(titulo: str, modo: str = "esteira", gerente: str = None) -> dict | None:
     """Um quadro NOVO, com link próprio.
 
     🚨 É por aqui que nasce o segundo painel rápido -- não por copiar código.
@@ -499,12 +593,13 @@ def criar_quadro(titulo: str) -> dict | None:
     Ver /home/claude/docs/03_Painel_Rapido.md.
     """
     titulo = (titulo or "").strip()[:MAX_TITULO]
-    if not titulo:
+    if not titulo or modo not in ("esteira", "planilha"):
         return None
     with _conn() as c:
         c.executescript(ESQUEMA)
         token = secrets.token_hex(32)
-        qid = c.execute("INSERT INTO demanda_quadro (titulo, token) VALUES (?,?)",
-                        (titulo, token)).lastrowid
-    log.info("quadro %s criado: %s", qid, titulo)
-    return {"id": qid, "titulo": titulo, "token": token}
+        qid = c.execute(
+            "INSERT INTO demanda_quadro (titulo, token, modo, gerente) VALUES (?,?,?,?)",
+            (titulo, token, modo, (gerente or "").strip()[:MAX_NOME] or None)).lastrowid
+    log.info("quadro %s criado (%s): %s", qid, modo, titulo)
+    return {"id": qid, "titulo": titulo, "token": token, "modo": modo}

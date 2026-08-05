@@ -23,7 +23,8 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/demandas", tags=["demandas"])
 
-PAGINA = Path(__file__).resolve().parents[3] / "frontend" / "demandas.html"
+FRONT = Path(__file__).resolve().parents[3] / "frontend"
+PAGINAS = {"esteira": FRONT / "demandas.html", "planilha": FRONT / "planilha.html"}
 
 # Limite simples por IP: rota pública sem conta. Em memória basta -- o FPSL
 # roda com 1 worker, e o pior caso de perder a contagem num restart é alguém
@@ -190,6 +191,46 @@ async def nova_pessoa(token: str, dados: PessoaNova, request: Request):
     return r
 
 
+class TituloIn(BaseModel):
+    titulo: str = Field(min_length=1, max_length=120)
+    quem: str | None = Field(default=None, max_length=60)
+
+
+class RespIn(BaseModel):
+    pessoa_id: int
+    quem: str | None = Field(default=None, max_length=60)
+
+
+class CancelarIn(BaseModel):
+    cancelado: bool
+
+
+@router.post("/api/{token}/item/{item_id}/titulo")
+async def renomear(token: str, item_id: int, dados: TituloIn, request: Request):
+    _guardar(request)
+    if not demandas.renomear_item(token, item_id,
+                                  _exigir_texto(dados.titulo, "Tarefa"), dados.quem):
+        raise HTTPException(409, "Tarefa inexistente ou aguardando a de cima.")
+    return {"ok": True}
+
+
+@router.post("/api/{token}/item/{item_id}/responsavel")
+async def trocar_resp(token: str, item_id: int, dados: RespIn, request: Request):
+    _guardar(request)
+    if not demandas.trocar_responsavel(token, item_id, dados.pessoa_id, dados.quem):
+        raise HTTPException(404, "Tarefa ou responsável não encontrado.")
+    return {"ok": True}
+
+
+@router.post("/api/{token}/item/{item_id}/cancelar")
+async def cancelar(token: str, item_id: int, dados: CancelarIn, request: Request):
+    """🚨 Cancelado NÃO libera a de baixo: a tarefa não aconteceu."""
+    _guardar(request)
+    if not demandas.cancelar_item(token, item_id, dados.cancelado):
+        raise HTTPException(404, "Tarefa não encontrada.")
+    return {"ok": True}
+
+
 @router.post("/api/{token}/item/{item_id}/apagar")
 async def apagar_item(token: str, item_id: int, request: Request):
     _guardar(request)
@@ -210,9 +251,12 @@ async def apagar_frente(token: str, frente_id: int, request: Request):
 
 @router.get("/{token}", include_in_schema=False)
 async def pagina(token: str):
-    """Serve sempre a mesma página; quem valida o token é a API.
+    """A vista sai do `modo` do quadro: esteira (cards) ou planilha (tabela).
 
-    Devolver 404 aqui diria a quem tenta adivinhar que aquele token não
-    existe -- e a página sozinha não entrega nada.
+    ⚠️ Token inválido cai na esteira, sem 404. A página sozinha não entrega
+    nada, e responder 404 aqui diria a quem tenta adivinhar que aquele token
+    não existe.
     """
-    return FileResponse(PAGINA)
+    q = demandas.quadro(token)
+    modo = (q or {}).get("modo", "esteira")
+    return FileResponse(PAGINAS.get(modo, PAGINAS["esteira"]))

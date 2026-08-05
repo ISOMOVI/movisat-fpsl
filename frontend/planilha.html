@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Cronograma · Movisat</title>
+<link rel="icon" href="/painel/static/movisat-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ok:#16A34A; --prazo:#2563EB; --atraso:#DC2626; --pend:#D97706;
+  --canc:#334155; --aguard:#94A3B8;
+  --bg:#F1F5F9; --card:#FFF; --text:#0F172A; --text2:#64748B; --text3:#94A3B8;
+  --borda:#E2E8F0; --escuro:#0F172A;
+  --s1:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
+  --s2:0 4px 6px -1px rgba(15,23,42,.08),0 10px 20px -5px rgba(15,23,42,.12);
+  --s3:0 12px 28px -8px rgba(15,23,42,.22);
+  --curva:cubic-bezier(.2,.7,.3,1);
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-size:14px;
+  font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+.topo{background:linear-gradient(135deg,#0F172A 0%,#1E293B 55%,#1E3A8A 100%);
+  color:#fff;padding:18px 22px;box-shadow:var(--s2)}
+.topo__in{max-width:1180px;margin:0 auto;display:flex;gap:20px;
+  align-items:center;justify-content:space-between;flex-wrap:wrap}
+.marca{display:flex;align-items:center;gap:13px}
+.marca img{height:31px;filter:brightness(0) invert(1)}
+.marca__txt{border-left:1px solid rgba(255,255,255,.22);padding-left:13px}
+.marca h1{margin:0;font-size:1.2rem;font-weight:800;letter-spacing:-.03em}
+.marca .sub{margin:2px 0 0;font-size:.73rem;color:#94A3B8;letter-spacing:.04em}
+.kpis{display:flex;gap:8px;flex-wrap:wrap}
+.kpi{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+  border-radius:9px;padding:7px 12px;min-width:74px;text-align:center;
+  transition:transform .18s var(--curva)}
+.kpi:hover{transform:translateY(-2px)}
+.kpi b{display:block;font-size:1.25rem;line-height:1.1;font-weight:800}
+.kpi span{font-size:.64rem;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em}
+
+.barra{background:var(--card);border-bottom:1px solid var(--borda);padding:11px 22px;
+  position:sticky;top:0;z-index:40;box-shadow:var(--s1)}
+.barra__in{max-width:1180px;margin:0 auto;display:flex;gap:11px;align-items:center;
+  flex-wrap:wrap;font-size:.84rem;color:var(--text2)}
+.eu{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.euchip{display:inline-flex;align-items:center;gap:6px;padding:4px 11px 4px 4px;
+  border:1.5px solid var(--borda);border-radius:99px;font-size:.79rem;font-weight:600;
+  background:#fff;transition:all .16s var(--curva)}
+.euchip:hover{border-color:var(--p);transform:translateY(-1px);box-shadow:var(--s2)}
+.euchip--on{border-color:var(--p);background:color-mix(in srgb,var(--p) 12%,#fff);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--p) 22%,transparent);color:var(--text)}
+.euchip i{width:20px;height:20px;border-radius:99px;display:grid;place-items:center;
+  color:#fff;font-size:.58rem;font-weight:800;background:var(--p)}
+.euchip--novo{border-style:dashed;padding:4px 11px}
+.euchip--novo:hover{border-color:var(--prazo);color:var(--prazo)}
+.euaviso{font-size:.77rem;color:var(--pend);font-weight:600}
+
+main{max-width:1180px;margin:0 auto;padding:18px 22px 60px}
+.grupo{background:var(--card);border:1px solid var(--borda);border-radius:12px;
+  box-shadow:var(--s1);overflow:hidden;margin-bottom:16px}
+.grupo__cab{display:flex;align-items:center;gap:11px;padding:12px 16px;
+  background:linear-gradient(180deg,#F8FAFC,#F1F5F9);border-bottom:1px solid var(--borda)}
+.grupo__cab h2{margin:0;font-size:.93rem;font-weight:700}
+.grupo__cab .cont{margin-left:auto;font-size:.74rem;color:var(--text2);font-weight:600}
+
+table{width:100%;border-collapse:collapse}
+thead th{background:var(--escuro);color:#fff;font-size:.66rem;font-weight:800;
+  text-transform:uppercase;letter-spacing:.08em;padding:9px 12px;text-align:left;
+  white-space:nowrap}
+thead th:first-child{width:44px;text-align:center}
+tbody td{padding:0;border-bottom:1px solid var(--borda);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr{transition:background .14s}
+tbody tr:hover{background:#F8FAFC}
+tbody tr.linha--cancelada{opacity:.5}
+tbody tr.linha--cancelada .tarefa{text-decoration:line-through}
+
+.cel{padding:8px 12px}
+.num{text-align:center;font-weight:800;font-size:.8rem;color:var(--text2);
+  background:#F8FAFC;border-right:1px solid var(--borda)}
+.tarefa input{width:100%;border:1px solid transparent;border-radius:7px;padding:7px 9px;
+  font:inherit;font-size:14px;font-weight:600;background:transparent;
+  transition:border-color .14s,background .14s}
+.tarefa input:hover:not(:disabled){border-color:var(--borda);background:#fff}
+.tarefa input:focus{outline:0;border-color:var(--prazo);background:#fff;
+  box-shadow:0 0 0 3px #EFF6FF}
+.tarefa input:disabled{color:var(--text3)}
+
+.prazo-cel{width:168px}
+.prazo-cel input[type=date]{width:100%;border:1px solid transparent;border-radius:7px;
+  padding:7px 8px;font:inherit;font-size:15px;background:transparent;
+  transition:border-color .14s,background .14s}
+.prazo-cel input:hover:not(:disabled){border-color:var(--borda);background:#fff}
+.prazo-cel input:focus{outline:0;border-color:var(--prazo);background:#fff}
+/* 🚨 Linha travada mostra POR QUEM espera, com o numero da linha -- "Aguardando 3"
+   diz onde olhar; "aguardando" sozinho manda procurar. */
+.aguarda{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:700;
+  color:var(--text2);background:#F1F5F9;border:1px dashed #CBD5E1;
+  padding:6px 11px;border-radius:99px}
+.aguarda b{background:var(--aguard);color:#fff;border-radius:99px;min-width:19px;
+  height:19px;display:grid;place-items:center;font-size:.68rem}
+
+.resp{width:190px}
+.pessoa{display:inline-flex;align-items:center;gap:7px;padding:4px 11px 4px 4px;
+  border-radius:99px;font-size:.8rem;font-weight:700;background:#fff;
+  border:1.5px solid var(--borda);transition:all .16s var(--curva)}
+.pessoa:hover{border-color:var(--p);transform:translateY(-1px);box-shadow:var(--s2)}
+.pessoa i{width:22px;height:22px;border-radius:99px;display:grid;place-items:center;
+  color:#fff;font-size:.6rem;font-weight:800;background:var(--p)}
+
+.status{width:158px;text-align:center}
+.selo{display:block;width:100%;padding:9px 6px;font-size:.72rem;font-weight:800;
+  letter-spacing:.06em;text-transform:uppercase;color:#fff;border-radius:7px;
+  transition:filter .14s,transform .14s}
+.selo:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.selo--ok{background:var(--ok)}
+.selo--noprazo{background:var(--prazo)}
+.selo--atrasado{background:var(--atraso)}
+.selo--pendente{background:var(--pend)}
+.selo--cancelado{background:var(--canc)}
+.selo--aguardando{background:var(--aguard);cursor:not-allowed}
+.selo--aguardando:hover{filter:none;transform:none}
+
+.obs-cel{width:44px;text-align:center}
+.obsbtn{width:30px;height:30px;border-radius:8px;color:var(--text3);font-size:14px;
+  transition:all .14s}
+.obsbtn:hover{background:#F1F5F9;color:var(--text)}
+.obsbtn.tem{color:var(--prazo);background:#EFF6FF}
+.obs-linha td{padding:0 12px 11px 56px;background:#F8FAFC}
+.obs-linha textarea{width:100%;border:1.5px solid var(--borda);border-radius:8px;
+  padding:8px 10px;font:inherit;font-size:14px;min-height:52px;resize:vertical}
+.obs-linha textarea:focus{outline:0;border-color:var(--prazo);box-shadow:0 0 0 3px #EFF6FF}
+
+.apagar{opacity:0;color:var(--text3);font-size:14px;padding:3px 6px;border-radius:6px;
+  transition:all .16s}
+tr:hover .apagar,.grupo:hover .grupo__cab .apagar{opacity:.5}
+.apagar:hover{opacity:1!important;color:var(--atraso);background:#FEF2F2}
+
+.novalinha{width:100%;padding:12px;border-top:1px dashed #CBD5E1;color:var(--text2);
+  font-weight:600;font-size:.84rem;transition:all .18s var(--curva)}
+.novalinha:hover{background:#EFF6FF;color:var(--prazo)}
+.novogrupo{width:100%;padding:16px;border:2px dashed #CBD5E1;border-radius:12px;
+  color:var(--text2);font-weight:700;font-size:.88rem;transition:all .2s var(--curva)}
+.novogrupo:hover{border-color:var(--prazo);color:var(--prazo);background:#EFF6FF}
+
+.legenda{display:flex;gap:9px;flex-wrap:wrap;margin-left:auto}
+.lg{font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+  color:#fff;padding:3px 9px;border-radius:99px}
+
+.aviso{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(90px);
+  padding:11px 20px;border-radius:11px;font-size:.85rem;font-weight:600;
+  box-shadow:var(--s3);z-index:90;transition:transform .3s var(--curva);color:#fff}
+.aviso--on{transform:translateX(-50%) translateY(0)}
+.aviso--erro{background:var(--atraso)}
+.aviso--ok{background:var(--escuro)}
+
+.veu{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(3px);
+  display:grid;place-items:center;z-index:100;padding:18px}
+.modal{background:#fff;border-radius:16px;box-shadow:0 24px 60px -12px rgba(15,23,42,.4);
+  width:100%;max-width:420px;padding:22px}
+.modal h3{margin:0 0 4px;font-size:1.02rem;font-weight:800}
+.modal .dica{margin:0 0 14px;font-size:.78rem;color:var(--text2)}
+.modal label{display:block;font-size:.71rem;font-weight:700;color:var(--text2);
+  text-transform:uppercase;letter-spacing:.06em;margin:13px 0 7px}
+.modal input[type=text]{width:100%;padding:10px 13px;border:1.5px solid var(--borda);
+  border-radius:9px;font:inherit;font-size:16px;min-height:44px}
+.modal input[type=text]:focus{outline:0;border-color:var(--prazo);box-shadow:0 0 0 3px #EFF6FF}
+.pessoas{display:flex;gap:8px;flex-wrap:wrap}
+.pchip{display:inline-flex;align-items:center;gap:7px;padding:6px 13px 6px 6px;
+  border:1.5px solid var(--borda);border-radius:99px;font-size:.83rem;font-weight:600;
+  background:#fff;transition:all .16s var(--curva)}
+.pchip:hover{border-color:var(--p);transform:translateY(-1px)}
+.pchip--on{border-color:var(--p);background:color-mix(in srgb,var(--p) 10%,#fff);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--p) 20%,transparent)}
+.pchip i{width:24px;height:24px;border-radius:99px;display:grid;place-items:center;
+  color:#fff;font-size:.62rem;font-weight:800;background:var(--p)}
+.pchip--novo{border-style:dashed;color:var(--text2)}
+.cores{display:flex;gap:9px;flex-wrap:wrap}
+.bola{width:34px;height:34px;border-radius:99px;border:3px solid #fff;
+  box-shadow:0 0 0 1.5px var(--borda);position:relative;transition:transform .18s var(--curva)}
+.bola:hover{transform:scale(1.14)}
+.bola--on{box-shadow:0 0 0 3px var(--escuro);transform:scale(1.1)}
+.bola--on::after{content:'✓';position:absolute;inset:0;display:grid;place-items:center;
+  color:#fff;font-size:.86rem;font-weight:800}
+.bola--usada{opacity:.24;cursor:not-allowed;transform:none!important}
+.bola--usada::after{content:'✕';position:absolute;inset:0;display:grid;place-items:center;
+  color:#fff;font-size:.8rem;font-weight:800}
+.modal__pe{display:flex;gap:9px;margin-top:18px}
+.btn{flex:1;padding:11px;border-radius:10px;font-weight:700;font-size:.87rem;min-height:46px}
+.btn--ok{background:var(--prazo);color:#fff}
+.btn--ok:hover{background:#1D4ED8}
+.btn--nao{background:var(--bg);color:var(--text2)}
+.erro-modal{color:var(--atraso);font-size:.79rem;font-weight:600;margin:9px 0 0;min-height:1em}
+
+@media(max-width:820px){
+  main{padding:14px}
+  .grupo{overflow-x:auto}
+  table{min-width:760px}
+}
+</style>
+</head>
+<body>
+
+<header class="topo">
+  <div class="topo__in">
+    <div class="marca">
+      <img src="/painel/static/movisat-logo.png" alt="Movisat">
+      <div class="marca__txt">
+        <h1 id="titulo">Cronograma</h1>
+        <p class="sub" id="gerente">—</p>
+      </div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+  </div>
+</header>
+
+<div class="barra">
+  <div class="barra__in">
+    <b>Você é</b>
+    <div class="eu" id="eu"></div>
+    <div class="legenda">
+      <span class="lg selo--ok">ok</span>
+      <span class="lg selo--noprazo">no prazo</span>
+      <span class="lg selo--pendente">pendente</span>
+      <span class="lg selo--atrasado">atrasado</span>
+      <span class="lg selo--cancelado">cancelado</span>
+      <span class="lg selo--aguardando">aguardando</span>
+    </div>
+  </div>
+</div>
+
+<main id="app"></main>
+<div class="aviso" id="aviso"></div>
+<div id="modal"></div>
+
+<script>
+const TOKEN = location.pathname.split('/').filter(Boolean).pop();
+const $ = (i) => document.getElementById(i);
+let dados = null, abertas = new Set();
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+  (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const iniciais = (p) => String(p).trim().split(/\s+/).slice(0,2)
+  .map(x=>x[0]||'').join('').toUpperCase() || '?';
+
+let euId = Number(localStorage.getItem('dem.eu')) || null;
+const eu = () => (dados?.pessoas||[]).find(p=>p.id===euId) || null;
+const nome = () => eu()?.nome || '';
+function sereu(id){ euId=id; localStorage.setItem('dem.eu',String(id)); desenharEu(); }
+
+function avisar(t,tipo='erro'){
+  const a=$('aviso'); a.textContent=t; a.className=`aviso aviso--on aviso--${tipo}`;
+  clearTimeout(a._t); a._t=setTimeout(()=>a.className='aviso',tipo==='ok'?1700:4200);
+}
+
+async function carregar(silencioso){
+  try{
+    const r = await fetch(`/demandas/api/${TOKEN}`);
+    if(r.status===404){ $('app').innerHTML=
+      '<p style="text-align:center;padding:60px;color:#64748B">Link inválido.</p>'; return; }
+    dados = await r.json();
+    desenhar();
+  }catch{ if(!silencioso) avisar('Não consegui carregar.'); }
+}
+
+/* O STATUS e derivado -- ninguem o digita. E por isso que ele nao mente:
+   prazo que vence de madrugada vira ATRASADO sozinho. */
+function statusDe(i){
+  if(i.cancelado)              return ['cancelado','cancelado'];
+  if(i.concluido)              return ['ok','ok'];
+  if(i.estado==='aguardando')  return ['aguardando',`aguardando ${i.aguardando_n||''}`.trim()];
+  if(i.atrasado)               return ['atrasado','atrasado'];
+  if(i.prazo)                  return ['noprazo','no prazo'];
+  return ['pendente','pendente'];
+}
+
+function desenharEu(){
+  if(!dados) return;
+  $('eu').innerHTML = dados.pessoas.map(p=>`
+      <button class="euchip ${euId===p.id?'euchip--on':''}" style="--p:${p.cor}"
+              onclick="sereu(${p.id})"><i>${esc(iniciais(p.nome))}</i>${esc(p.nome)}</button>`).join('')
+    + `<button class="euchip euchip--novo" onclick="novaPessoaSolo()">+</button>`
+    + (euId?'':'<span class="euaviso">↑ diga quem é você</span>');
+}
+
+function desenhar(){
+  const foco = document.activeElement?.id;
+  const pos  = document.activeElement?.selectionStart;
+
+  $('titulo').textContent = dados.titulo;
+  $('gerente').textContent = dados.gerente ? `Gerente: ${dados.gerente}` : 'quadro compartilhado';
+  document.title = `${dados.concluidos}/${dados.total} · Cronograma`;
+
+  const todos = dados.frentes.flatMap(f=>f.itens);
+  const conta = (f) => todos.filter(f).length;
+  $('kpis').innerHTML = [
+    ['no total', todos.length, '#fff'],
+    ['ok', conta(i=>i.concluido), '#86EFAC'],
+    ['atrasados', conta(i=>i.atrasado), '#FCA5A5'],
+    ['aguardando', conta(i=>i.estado==='aguardando'), '#CBD5E1'],
+  ].map(([r,v,c])=>`<div class="kpi"><b style="color:${c}">${v}</b><span>${r}</span></div>`).join('');
+
+  desenharEu();
+  $('app').innerHTML = dados.frentes.map(grupo).join('')
+    + `<button class="novogrupo" onclick="novoGrupo()">+  novo grupo</button>`;
+
+  if(foco && $(foco)){ $(foco).focus();
+    if(pos!=null && $(foco).setSelectionRange) try{$(foco).setSelectionRange(pos,pos)}catch{} }
+}
+
+function grupo(f){
+  const ok = f.itens.filter(i=>i.concluido).length;
+  return `
+  <section class="grupo">
+    <div class="grupo__cab">
+      <h2>${esc(f.nome)}</h2>
+      <span class="cont">${ok}/${f.itens.length}</span>
+      <button class="apagar" title="apagar grupo"
+        onclick="apagarGrupo(${f.id},${JSON.stringify(f.nome).replace(/"/g,'&quot;')})">✕</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Nº</th><th>Prazo</th><th>Tarefa</th><th>Responsável</th><th>Status</th><th></th><th></th>
+      </tr></thead>
+      <tbody>${f.itens.map(linha).join('')}</tbody>
+    </table>
+    <button class="novalinha" onclick="novaLinha(${f.id})">+  nova tarefa</button>
+  </section>`;
+}
+
+function linha(i){
+  const [cls,txt] = statusDe(i);
+  const trava = i.estado==='aguardando' || i.cancelado ? 'disabled' : '';
+  const p = i.etapas.find(e=>!e.concluida) || i.etapas[0] || {};
+  const aberta = abertas.has(i.id);
+  return `
+  <tr class="${i.cancelado?'linha--cancelada':''}">
+    <td class="cel num">${i.n}</td>
+    <td class="cel prazo-cel">
+      ${i.estado==='aguardando'
+        ? `<span class="aguarda">aguardando <b>${i.aguardando_n||'?'}</b></span>`
+        : `<input type="date" id="p${i.id}" value="${i.prazo||''}" ${trava}
+                  onchange="salvar(${i.id})">`}
+    </td>
+    <td class="cel tarefa">
+      <input type="text" id="t${i.id}" value="${esc(i.titulo)}" maxlength="120"
+             placeholder="descreva a tarefa" ${i.cancelado?'disabled':''}
+             onchange="renomear(${i.id})">
+    </td>
+    <td class="cel resp">
+      <button class="pessoa" style="--p:${p.cor||'#94A3B8'}"
+              onclick="trocarResp(${i.id})" title="trocar responsável">
+        <i>${esc(iniciais(p.responsavel||'?'))}</i>${esc(p.responsavel||'—')}
+      </button>
+    </td>
+    <td class="cel status">
+      <button class="selo selo--${cls}" onclick="clicarStatus(${i.id})"
+        title="${i.estado==='aguardando'?'espera a linha '+(i.aguardando_n||''):'clique para concluir ou reabrir'}">
+        ${esc(txt)}
+      </button>
+    </td>
+    <td class="cel obs-cel">
+      <button class="obsbtn ${i.obs?'tem':''}" title="observação"
+              onclick="abrirObs(${i.id})">✎</button>
+    </td>
+    <td class="cel obs-cel">
+      <button class="apagar" title="apagar linha"
+        onclick="apagarLinha(${i.id},${JSON.stringify(i.titulo).replace(/"/g,'&quot;')})">✕</button>
+    </td>
+  </tr>
+  ${aberta?`<tr class="obs-linha"><td colspan="7">
+      <textarea id="o${i.id}" maxlength="500" placeholder="observação…"
+                onchange="salvar(${i.id})">${esc(i.obs||'')}</textarea></td></tr>`:''}`;
+}
+
+function abrirObs(id){ abertas.has(id)?abertas.delete(id):abertas.add(id); desenhar();
+  setTimeout(()=>$('o'+id)?.focus(),40); }
+
+async function enviar(url,corpo,msg){
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(corpo)});
+    if(r.status===409) avisar('Essa linha ainda aguarda a de cima.');
+    else if(r.status===429) avisar('Muitas alterações seguidas.');
+    else if(!r.ok) avisar('Não consegui salvar.');
+    else if(msg) avisar(msg,'ok');
+  }catch{ avisar('Sem conexão — não salvou.'); }
+  await carregar(true);
+}
+
+/* 🚨 Manda SEMPRE a observacao atual, mesmo com a linha fechada. O backend
+   grava o que recebe: omitir o campo apagaria a observacao so por alguem ter
+   mexido na data. */
+function salvar(id){
+  const i = dados.frentes.flatMap(f=>f.itens).find(x=>x.id===id);
+  enviar(`/demandas/api/${TOKEN}/item/${id}`,{
+    prazo: $('p'+id)?.value || null,
+    sem_prazo: false,
+    obs: $('o'+id) ? $('o'+id).value : (i?.obs ?? null),
+    quem: nome()});
+}
+
+function renomear(id){
+  enviar(`/demandas/api/${TOKEN}/item/${id}/titulo`,
+    {titulo:$('t'+id).value.trim(),quem:nome()});
+}
+
+/* Um clique no selo resolve o caso comum: concluir e reabrir. Cancelar fica
+   no menu, porque e decisao rara e nao pode acontecer por engano. */
+function clicarStatus(id){
+  const i = dados.frentes.flatMap(f=>f.itens).find(x=>x.id===id);
+  if(!i || i.estado==='aguardando') return;
+  if(i.cancelado){ enviar(`/demandas/api/${TOKEN}/item/${id}/cancelar`,
+      {cancelado:false},'Reativada'); return; }
+  const marcar = !i.concluido;
+  Promise.all(i.etapas.map(e=>fetch(`/demandas/api/${TOKEN}/etapa/${e.id}`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({concluida:marcar,quem:nome()})})))
+    .then(()=>{ avisar(marcar?'Concluída':'Reaberta','ok'); carregar(true); });
+}
+
+function apagarLinha(id,t){
+  if(confirm(`Apagar a tarefa "${t}"?\n\nCancelar em vez de apagar mantém o registro.`))
+    enviar(`/demandas/api/${TOKEN}/item/${id}/apagar`,{},'Apagada');
+}
+function apagarGrupo(id,n){
+  if(confirm(`Apagar o grupo "${n}" e TODAS as tarefas dele?`))
+    enviar(`/demandas/api/${TOKEN}/frente/${id}/apagar`,{},'Grupo apagado');
+}
+function novoGrupo(){
+  abrirModal({titulo:'Novo grupo',dica:'Cada grupo tem sua própria fila.',
+    rotulo:'Nome do grupo',comPessoa:false,
+    aoConfirmar:(n)=>enviar(`/demandas/api/${TOKEN}/frente`,{nome:n,contato:''},'Grupo criado')});
+}
+function novaLinha(fid){
+  abrirModal({titulo:'Nova tarefa',dica:'Entra no fim da lista deste grupo.',
+    rotulo:'Tarefa',
+    aoConfirmar:(t,p)=>enviar(`/demandas/api/${TOKEN}/item`,
+      {frente_id:fid,titulo:t,pessoa_id:p},'Tarefa criada')});
+}
+function trocarResp(id){
+  const i = dados.frentes.flatMap(f=>f.itens).find(x=>x.id===id);
+  abrirModal({titulo:'Responsável',dica:'Quem toca esta tarefa.',
+    rotulo:'Tarefa',valor:i.titulo,soPessoa:true,
+    aoConfirmar:(t,p)=>enviar(`/demandas/api/${TOKEN}/item/${id}/responsavel`,
+      {pessoa_id:p,quem:nome()},'Responsável trocado')});
+}
+
+/* ── modal ───────────────────────────────────────────────── */
+let sel={pessoa:null,cor:null,novaPessoa:false};
+function fecharModal(){ $('modal').innerHTML=''; sel={pessoa:null,cor:null,novaPessoa:false}; }
+
+function abrirModal({titulo,dica,rotulo,valor='',aoConfirmar,comPessoa=true,soPessoa=false}){
+  sel={pessoa:null,cor:null,novaPessoa:false};
+  window._confirmar=aoConfirmar;
+  $('modal').innerHTML=`
+    <div class="veu" onclick="if(event.target===this)fecharModal()">
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>${esc(titulo)}</h3><p class="dica">${esc(dica)}</p>
+        <label for="m-txt">${esc(rotulo)}</label>
+        <input type="text" id="m-txt" maxlength="120" value="${esc(valor)}"
+               ${soPessoa?'disabled':''} placeholder="digite aqui" autocomplete="off">
+        ${comPessoa?`<label>Responsável</label><div class="pessoas" id="m-pessoas"></div>
+                     <div id="m-nova"></div>`:''}
+        <p class="erro-modal" id="m-erro"></p>
+        <div class="modal__pe">
+          <button class="btn btn--nao" onclick="fecharModal()">Cancelar</button>
+          <button class="btn btn--ok" id="m-ok" onclick="confirmarModal()">Confirmar</button>
+        </div>
+      </div>
+    </div>`;
+  if(comPessoa) desenharPessoas();
+  setTimeout(()=>{ const c=$('m-txt'); if(c&&!soPessoa) c.focus(); },60);
+  $('m-txt').onkeydown=(e)=>{ if(e.key==='Enter') confirmarModal();
+                              if(e.key==='Escape') fecharModal(); };
+}
+function desenharPessoas(){
+  $('m-pessoas').innerHTML = dados.pessoas.map(p=>`
+    <button class="pchip ${sel.pessoa===p.id?'pchip--on':''}" style="--p:${p.cor}"
+            onclick="escolherPessoa(${p.id})"><i>${esc(iniciais(p.nome))}</i>${esc(p.nome)}</button>`).join('')
+    + `<button class="pchip pchip--novo" onclick="abrirNovaPessoa()">+ nova pessoa</button>`;
+}
+function escolherPessoa(id){ sel.pessoa=id; sel.novaPessoa=false;
+  $('m-nova').innerHTML=''; $('m-erro').textContent=''; desenharPessoas(); }
+function abrirNovaPessoa(){
+  sel.novaPessoa=true; sel.pessoa=null; desenharPessoas();
+  const livres=dados.cores_livres;
+  if(!livres.length){ $('m-nova').innerHTML=
+    `<p class="erro-modal">A paleta acabou — as ${dados.paleta.length} cores já estão em uso.</p>`;
+    return; }
+  sel.cor=livres[0];
+  $('m-nova').innerHTML=`
+    <label for="m-nome">Nome</label>
+    <input type="text" id="m-nome" maxlength="60" placeholder="ex.: Marina" autocomplete="off">
+    <label>Cor <span style="text-transform:none;font-weight:500">— as riscadas já são de alguém</span></label>
+    <div class="cores" id="m-cores"></div>`;
+  desenharCores();
+}
+function desenharCores(){
+  if(!$('m-cores')) return;
+  const usadas=dados.pessoas.map(p=>p.cor);
+  $('m-cores').innerHTML=dados.paleta.map(c=>{
+    const u=usadas.includes(c);
+    return `<button class="bola ${u?'bola--usada':''} ${sel.cor===c&&!u?'bola--on':''}"
+      style="background:${c}" ${u?'disabled':''} onclick="escolherCor('${c}')"></button>`;
+  }).join('');
+}
+function escolherCor(c){ sel.cor=c; desenharCores(); }
+
+async function confirmarModal(){
+  const txt=$('m-txt').value.trim(), erro=$('m-erro');
+  if(!$('m-txt').disabled && !txt){ erro.textContent='Preencha o campo.'; return; }
+  if($('m-pessoas')){
+    if(sel.novaPessoa){
+      const n=$('m-nome')?.value.trim();
+      if(!n){ erro.textContent='Dê um nome à pessoa.'; return; }
+      if(!sel.cor){ erro.textContent='Escolha uma cor.'; return; }
+      $('m-ok').disabled=true;
+      const r=await fetch(`/demandas/api/${TOKEN}/pessoa`,{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({nome:n,cor:sel.cor})});
+      $('m-ok').disabled=false;
+      if(!r.ok){ const d=await r.json().catch(()=>({}));
+        erro.textContent=d.detail||'Não consegui cadastrar.'; return; }
+      sel.pessoa=(await r.json()).id;
+    }
+    if(!sel.pessoa){ erro.textContent='Escolha o responsável.'; return; }
+  }
+  const acao=window._confirmar; fecharModal(); await acao(txt,sel.pessoa);
+}
+
+function novaPessoaSolo(){
+  abrirModal({titulo:'Nova pessoa',dica:'Ela passa a aparecer na escolha de responsável.',
+    rotulo:'(não usado)',comPessoa:true,soPessoa:true,
+    aoConfirmar:async(_,p)=>{ if(p) sereu(p); await carregar(true); }});
+  setTimeout(()=>abrirNovaPessoa(),80);
+}
+
+carregar();
+setInterval(()=>{ if(!$('modal').innerHTML) carregar(true); },10000);
+</script>
+</body>
+</html>
