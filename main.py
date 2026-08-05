@@ -13,6 +13,9 @@ from fpsl_weso.painel.routers import clientes_router as painel_clientes_router
 from fpsl_weso.painel.routers import usuarios_router as painel_usuarios_router
 from fpsl_weso.painel.routers import oficina_router as painel_oficina_router
 from fpsl_weso.painel.routers import os_scan_router as painel_os_scan_router
+# 🚨 PÚBLICO por link, fora do /painel: o quadro de demandas não exige conta.
+from fpsl_weso.painel.routers import demandas_router
+from fpsl_weso import demandas as quadro_demandas
 from fpsl_weso.painel.auth import seed_admin_inicial
 from fpsl_weso.services import onboarding
 from fpsl_weso.services.sync_inadimplencia import loop_inadimplencia
@@ -23,6 +26,8 @@ from fpsl_weso import storage
 async def lifespan(app: FastAPI):
     storage.init_db()
     await seed_admin_inicial()
+    # Cria o esquema e a semente do quadro de demandas. Idempotente.
+    quadro_demandas.preparar()
     await start_client()
     await start_harmonit_client()
     asyncio.create_task(loop_inadimplencia())
@@ -56,6 +61,7 @@ app.include_router(painel_clientes_router.router)
 app.include_router(painel_usuarios_router.router)
 app.include_router(painel_oficina_router.router)
 app.include_router(painel_os_scan_router.router)
+app.include_router(demandas_router.router)
 
 app.mount("/painel/static", StaticFiles(directory="frontend"), name="painel_static")
 

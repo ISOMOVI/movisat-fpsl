@@ -1,0 +1,218 @@
+"""Rotas do painel de demandas — PÚBLICAS, abertas por link.
+
+🚨 Este router não usa `get_usuario_painel`. É de propósito: o quadro é
+compartilhado por link, sem conta. Por isso:
+
+  - o token da URL é a única credencial, e é conferido em TODA rota;
+  - nenhuma rota daqui toca tabela do FPSL — só as quatro `demanda_*`;
+  - todo campo tem teto de tamanho, porque quem escreve não tem conta.
+
+Fica montado em `/demandas` para não se misturar com `/painel`, que exige
+login.
+"""
+import logging
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+
+from ... import demandas
+
+log = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/demandas", tags=["demandas"])
+
+PAGINA = Path(__file__).resolve().parents[3] / "frontend" / "demandas.html"
+
+# Limite simples por IP: rota pública sem conta. Em memória basta -- o FPSL
+# roda com 1 worker, e o pior caso de perder a contagem num restart é alguém
+# escrever demais por um minuto.
+_escritas: dict[str, list[float]] = {}
+JANELA, TETO = 60.0, 60
+
+
+def _pode_escrever(ip: str) -> bool:
+    import time
+    agora = time.time()
+    marcas = [t for t in _escritas.get(ip, []) if agora - t < JANELA]
+    marcas.append(agora)
+    _escritas[ip] = marcas
+    return len(marcas) <= TETO
+
+
+def _ip(request: Request) -> str:
+    """Atrás do nginx, `request.client.host` é sempre 127.0.0.1."""
+    conexao = request.client.host if request.client else "?"
+    if conexao in ("127.0.0.1", "::1"):
+        return (request.headers.get("x-real-ip")
+                or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+                or conexao)
+    return conexao
+
+
+def _guardar(request: Request) -> None:
+    if not _pode_escrever(_ip(request)):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Muitas alterações seguidas. Espere um minuto.")
+
+
+def _exigir_texto(valor: str, campo: str) -> str:
+    """Pydantic aceita "   " -- tem 3 caracteres. Depois do strip vira vazio.
+
+    Sem isto o quadro devolvia 404 para nome em branco, dizendo "não
+    encontrado" quando o problema era o campo. Mensagem errada manda quem
+    está usando procurar no lugar errado.
+    """
+    limpo = (valor or "").strip()
+    if not limpo:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"{campo} não pode ficar em branco.")
+    return limpo
+
+
+class ItemIn(BaseModel):
+    prazo: str | None = Field(default=None, max_length=10)
+    sem_prazo: bool = False
+    obs: str | None = Field(default=None, max_length=500)
+    quem: str | None = Field(default=None, max_length=60)
+
+
+class EtapaIn(BaseModel):
+    concluida: bool
+    quem: str | None = Field(default=None, max_length=60)
+
+
+class FrenteNova(BaseModel):
+    nome: str = Field(min_length=1, max_length=120)
+    contato: str | None = Field(default=None, max_length=120)
+
+
+class ItemNovo(BaseModel):
+    frente_id: int
+    titulo: str = Field(min_length=1, max_length=120)
+    # 🆕 escolhida da lista, não digitada: nome digitado cria pessoa nova a
+    # cada erro de grafia, e cada uma ganharia uma cor
+    pessoa_id: int
+
+
+class EtapaNova(BaseModel):
+    item_id: int
+    descricao: str = Field(min_length=1, max_length=120)
+    pessoa_id: int
+
+
+class PessoaNova(BaseModel):
+    nome: str = Field(min_length=1, max_length=60)
+    cor: str = Field(min_length=4, max_length=9)
+
+
+# ------------------------------------------------------------------ leitura
+
+@router.get("/api/{token}")
+async def ler(token: str):
+    q = demandas.quadro(token)
+    if not q:
+        raise HTTPException(404, "Quadro não encontrado.")
+    return q
+
+
+# ------------------------------------------------------------------ escrita
+
+@router.post("/api/{token}/item/{item_id}")
+async def salvar_item(token: str, item_id: int, dados: ItemIn, request: Request):
+    _guardar(request)
+    if not demandas.atualizar_item(token, item_id, dados.prazo, dados.sem_prazo,
+                                   dados.obs, dados.quem):
+        # 409, não 403: não é falta de permissão, é a fila
+        raise HTTPException(409, "Item inexistente ou aguardando a tarefa acima.")
+    return {"ok": True}
+
+
+@router.post("/api/{token}/etapa/{etapa_id}")
+async def marcar(token: str, etapa_id: int, dados: EtapaIn, request: Request):
+    _guardar(request)
+    if not demandas.marcar_etapa(token, etapa_id, dados.concluida, dados.quem):
+        raise HTTPException(409, "Etapa inexistente ou aguardando a tarefa acima.")
+    return {"ok": True}
+
+
+@router.post("/api/{token}/frente")
+async def nova_frente(token: str, dados: FrenteNova, request: Request):
+    _guardar(request)
+    r = demandas.criar_frente(token, _exigir_texto(dados.nome, "Nome do assunto"),
+                              dados.contato)
+    if not r:
+        raise HTTPException(404, "Quadro não encontrado.")
+    return r
+
+
+@router.post("/api/{token}/item")
+async def novo_item(token: str, dados: ItemNovo, request: Request):
+    _guardar(request)
+    r = demandas.criar_item(token, dados.frente_id,
+                            _exigir_texto(dados.titulo, "Título do card"),
+                            dados.pessoa_id)
+    if not r:
+        raise HTTPException(404, "Assunto ou responsável não encontrado.")
+    return r
+
+
+@router.post("/api/{token}/etapa")
+async def nova_etapa(token: str, dados: EtapaNova, request: Request):
+    _guardar(request)
+    r = demandas.criar_etapa(token, dados.item_id,
+                             _exigir_texto(dados.descricao, "Descrição da etapa"),
+                             dados.pessoa_id)
+    if not r:
+        raise HTTPException(404, "Card ou responsável não encontrado.")
+    return r
+
+
+MOTIVOS = {
+    "nome_vazio": (422, "O nome não pode ficar em branco."),
+    "cor_invalida": (422, "Essa cor não está na paleta."),
+    "nome_repetido": (409, "Já existe alguém com esse nome no quadro."),
+    "cor_em_uso": (409, "Essa cor já é de outra pessoa. Escolha outra."),
+}
+
+
+@router.post("/api/{token}/pessoa")
+async def nova_pessoa(token: str, dados: PessoaNova, request: Request):
+    """🚨 Recusa com MOTIVO. 'não deu' faz a pessoa tentar de novo igual."""
+    _guardar(request)
+    r = demandas.criar_pessoa(token, dados.nome, dados.cor)
+    if r is None:
+        raise HTTPException(404, "Quadro não encontrado.")
+    if "erro" in r:
+        status_code, texto = MOTIVOS.get(r["erro"], (422, "Não foi possível cadastrar."))
+        raise HTTPException(status_code, texto)
+    return r
+
+
+@router.post("/api/{token}/item/{item_id}/apagar")
+async def apagar_item(token: str, item_id: int, request: Request):
+    _guardar(request)
+    if not demandas.apagar_item(token, item_id):
+        raise HTTPException(404, "Card não encontrado.")
+    return {"ok": True}
+
+
+@router.post("/api/{token}/frente/{frente_id}/apagar")
+async def apagar_frente(token: str, frente_id: int, request: Request):
+    _guardar(request)
+    if not demandas.apagar_frente(token, frente_id):
+        raise HTTPException(404, "Assunto não encontrado.")
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------ página
+
+@router.get("/{token}", include_in_schema=False)
+async def pagina(token: str):
+    """Serve sempre a mesma página; quem valida o token é a API.
+
+    Devolver 404 aqui diria a quem tenta adivinhar que aquele token não
+    existe -- e a página sozinha não entrega nada.
+    """
+    return FileResponse(PAGINA)

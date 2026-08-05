@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Demandas · Movisat</title>
+<link rel="icon" href="/painel/static/movisat-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --azul:#2563EB; --azul-dim:#EFF6FF; --azul-mid:#BFDBFE;
+  --verde:#16A34A; --verde-dim:#F0FDF4; --verde-mid:#BBF7D0;
+  --ambar:#D97706; --roxo:#7C3AED; --verm:#DC2626; --verm-mid:#FECACA;
+  --bg:#F1F5F9; --card:#FFF; --text:#0F172A; --text2:#64748B; --text3:#94A3B8;
+  --borda:#E2E8F0; --escuro:#0F172A;
+  --r:12px;
+  --s1:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
+  --s2:0 4px 6px -1px rgba(15,23,42,.08),0 10px 20px -5px rgba(15,23,42,.12);
+  --s3:0 12px 28px -8px rgba(15,23,42,.22);
+  --curva:cubic-bezier(.2,.7,.3,1);
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-size:14px;
+  font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+/* ── topo ───────────────────────────────────────────────── */
+.topo{background:linear-gradient(135deg,#0F172A 0%,#1E293B 55%,#1E3A8A 100%);
+  color:#fff;padding:20px 24px 18px;box-shadow:var(--s2);
+  transition:background .8s var(--curva)}
+.topo--fim{background:linear-gradient(135deg,#064E3B 0%,#065F46 55%,#16A34A 100%)}
+.topo__in{max-width:1500px;margin:0 auto;display:flex;gap:24px;
+  align-items:center;justify-content:space-between;flex-wrap:wrap}
+.marca{display:flex;align-items:center;gap:14px}
+.marca img{height:34px;filter:brightness(0) invert(1)}
+.marca__txt{border-left:1px solid rgba(255,255,255,.22);padding-left:14px}
+.marca h1{margin:0;font-size:1.3rem;font-weight:800;letter-spacing:-.03em}
+.marca .sub{margin:2px 0 0;font-size:.74rem;color:#94A3B8;letter-spacing:.04em}
+.kpis{display:flex;gap:10px;flex-wrap:wrap}
+.kpi{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+  border-radius:10px;padding:8px 14px;min-width:84px;
+  transition:transform .18s var(--curva)}
+.kpi:hover{transform:translateY(-2px)}
+.kpi b{display:block;font-size:1.4rem;line-height:1.1;font-weight:800}
+.kpi span{font-size:.68rem;color:#94A3B8;text-transform:uppercase;letter-spacing:.07em}
+.kpi--atraso b{color:#FCA5A5}
+.kpi--ok b{color:#86EFAC}
+.trilha{height:5px;background:rgba(255,255,255,.14);border-radius:99px;
+  margin:12px auto 0;overflow:hidden;max-width:1500px}
+.trilha i{display:block;height:100%;background:linear-gradient(90deg,var(--verde),#4ADE80);
+  transition:width .5s var(--curva)}
+
+/* tudo concluído */
+.fim{max-width:1500px;margin:12px auto 0;padding:12px 18px;border-radius:10px;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);
+  display:flex;align-items:center;gap:12px;font-size:.88rem;font-weight:600;
+  animation:entra .5s var(--curva)}
+.fim b{font-size:1.05rem}
+@keyframes entra{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+
+/* ── barra de quem ──────────────────────────────────────── */
+.quem{background:var(--card);border-bottom:1px solid var(--borda);
+  padding:12px 24px;position:sticky;top:0;z-index:40;box-shadow:var(--s1)}
+.quem__in{max-width:1500px;margin:0 auto;display:flex;gap:12px;
+  align-items:center;flex-wrap:wrap;font-size:.86rem;color:var(--text2)}
+/* "Você é" — mesma pílula do seletor de responsável, para o gesto ser o
+   mesmo em toda a tela. */
+.eu{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.euchip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px 4px 4px;
+  border:1.5px solid var(--borda);border-radius:99px;font-size:.8rem;font-weight:600;
+  background:#fff;transition:all .16s var(--curva)}
+.euchip:hover{border-color:var(--p);transform:translateY(-1px);box-shadow:var(--s2)}
+.euchip--on{border-color:var(--p);background:color-mix(in srgb,var(--p) 12%,#fff);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--p) 22%,transparent);color:var(--text)}
+.euchip i{width:21px;height:21px;border-radius:99px;display:grid;place-items:center;
+  color:#fff;font-size:.6rem;font-weight:800;background:var(--p)}
+.euchip--novo{border-style:dashed;padding:4px 12px}
+.euchip--novo:hover{border-color:var(--azul);color:var(--azul);background:var(--azul-dim)}
+/* enquanto ninguém se identifica, o aviso fica à vista: sem isso o "último
+   toque" do card nasce vazio e daqui a duas semanas ninguém sabe quem mudou */
+.euaviso{font-size:.78rem;color:var(--ambar);font-weight:600}
+.legenda{display:flex;gap:14px;flex-wrap:wrap;margin-left:auto;align-items:center}
+.lg{display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--text2);
+  font-weight:500}
+.lg i{width:14px;height:14px;border-radius:5px;display:block;flex:none}
+/* legenda de pessoa: bolinha da cor + nome + quantas pendentes */
+.lg--p{background:#fff;border:1px solid var(--borda);border-radius:99px;
+  padding:4px 11px 4px 5px;font-weight:700;color:var(--text);box-shadow:var(--s1);
+  transition:transform .16s var(--curva),box-shadow .16s}
+.lg--p:hover{transform:translateY(-1px);box-shadow:var(--s2)}
+.lg--p i{width:19px;height:19px;border-radius:99px;display:grid;place-items:center;
+  color:#fff;font-size:.58rem;font-weight:800}
+.lg--p .qtd{font-size:.68rem;font-weight:800;background:var(--bg);color:var(--text2);
+  border-radius:99px;padding:1px 7px}
+.lg--p.vazio{opacity:.45;font-weight:500}
+.divisor{width:1px;height:22px;background:var(--borda)}
+
+/* ── frente ─────────────────────────────────────────────── */
+main{max-width:1500px;margin:0 auto;padding:20px 24px 70px}
+.frente{background:var(--card);border:1px solid var(--borda);border-radius:var(--r);
+  box-shadow:var(--s1);margin-bottom:18px;overflow:hidden;
+  transition:box-shadow .25s var(--curva)}
+.frente:hover{box-shadow:var(--s2)}
+.frente__cab{display:flex;align-items:center;gap:12px;padding:13px 18px;
+  background:linear-gradient(180deg,#F8FAFC,#F1F5F9);border-bottom:1px solid var(--borda)}
+.frente__cab h2{margin:0;font-size:.98rem;font-weight:700;letter-spacing:-.01em}
+.frente__cab .dono{font-size:.74rem;color:var(--text2)}
+.frente--fim .frente__cab{background:linear-gradient(180deg,#F0FDF4,#DCFCE7)}
+.frente__prog{margin-left:auto;display:flex;align-items:center;gap:9px;
+  font-size:.74rem;color:var(--text2);font-weight:600}
+.mini{width:74px;height:5px;background:var(--borda);border-radius:99px;overflow:hidden}
+.mini i{display:block;height:100%;background:var(--verde);transition:width .4s var(--curva)}
+
+.esteira{display:flex;padding:18px;overflow-x:auto;align-items:stretch;scroll-behavior:smooth}
+.esteira::-webkit-scrollbar{height:9px}
+.esteira::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:99px;border:2px solid var(--card)}
+.seta{display:grid;place-items:center;color:var(--text3);flex:none;width:26px;
+  font-size:16px;user-select:none}
+
+/* ── card ───────────────────────────────────────────────── */
+/* 🚨 A cor do card é a da PESSOA da primeira etapa pendente: a faixa inteira
+   responde "de quem é a vez?" sem ninguém ler nome. O ESTADO continua legível
+   pela etiqueta, e as duas exceções abaixo mandam mais que a pessoa. */
+.card{flex:0 0 296px;background:var(--card);border:1.5px solid var(--borda);
+  border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px;
+  position:relative;overflow:hidden;
+  --dono:#CBD5E1;
+  transition:transform .2s var(--curva),box-shadow .2s var(--curva),
+             border-color .2s var(--curva)}
+.card::before{content:'';position:absolute;inset:0 auto 0 0;width:5px;background:var(--dono)}
+.card:hover{transform:translateY(-3px);box-shadow:var(--s3)}
+
+/* de quem é a vez — tinta leve da cor da pessoa */
+.card--vez{background:color-mix(in srgb,var(--dono) 7%,#fff);
+  border-color:color-mix(in srgb,var(--dono) 32%,var(--borda))}
+.card--vez:hover{border-color:var(--dono)}
+
+/* atrasado: o alarme manda mais que a vez */
+.card--atrasado{background:color-mix(in srgb,var(--verm) 7%,#fff);
+  border-color:var(--verm-mid);box-shadow:0 0 0 3px rgba(220,38,38,.10)}
+.card--atrasado::before{background:var(--verm)}
+
+/* concluído: não há pendente, então não há de quem seja a vez */
+.card--concluido{background:var(--verde-dim);border-color:var(--verde-mid)}
+.card--concluido::before{background:var(--verde)}
+
+/* aguardando: tem dono, mas não é acionável */
+.card--aguardando{background:#FAFBFC;opacity:.6}
+.card--aguardando::before{background:#CBD5E1}
+.card--aguardando:hover{transform:none;box-shadow:var(--s1);opacity:.85}
+
+.card__topo{display:flex;align-items:flex-start;gap:9px}
+.card__n{width:21px;height:21px;border-radius:7px;background:var(--borda);
+  color:var(--text2);font-size:.68rem;font-weight:800;display:grid;place-items:center;
+  flex:none;margin-top:1px}
+.card--vez .card__n{background:var(--dono);color:#fff}
+.card--concluido .card__n{background:var(--verde);color:#fff}
+.card--atrasado .card__n{background:var(--verm);color:#fff}
+.card__tit{font-weight:700;font-size:.9rem;line-height:1.3;flex:1;min-width:0;
+  letter-spacing:-.01em}
+.apagar{opacity:0;color:var(--text3);font-size:15px;padding:2px 5px;border-radius:6px;
+  transition:opacity .18s,color .18s,background .18s}
+.card:hover .apagar,.frente:hover .apagar{opacity:.55}
+.apagar:hover{opacity:1!important;color:var(--verm);background:#FEF2F2}
+
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:.64rem;font-weight:800;padding:3px 9px;border-radius:99px;
+  text-transform:uppercase;letter-spacing:.06em}
+.tag--aguardando{background:#E2E8F0;color:#64748B}
+.tag--concluido{background:var(--verde);color:#fff}
+.tag--atrasado{background:var(--verm);color:#fff}
+.tag--prazo{background:var(--ambar);color:#fff}
+.tag--semprazo{background:var(--roxo);color:#fff}
+.tag--liberado{background:var(--azul-dim);color:var(--azul);
+  box-shadow:inset 0 0 0 1px var(--azul-mid)}
+.tag--vez{background:var(--dono);color:#fff}
+
+/* ── etapa ──────────────────────────────────────────────── */
+.etapa{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:9px;
+  background:rgba(255,255,255,.76);border:1px solid var(--borda);
+  transition:background .16s,border-color .16s}
+.etapa:hover{background:#fff;border-color:#CBD5E1}
+.etapa input{width:18px;height:18px;accent-color:var(--verde);cursor:pointer;flex:none}
+.etapa input:disabled{cursor:not-allowed;opacity:.4}
+.etapa label{font-size:.82rem;flex:1;min-width:0;cursor:pointer;line-height:1.3}
+.etapa--ok label{text-decoration:line-through;color:var(--text2)}
+.etapa--vez{border-color:var(--dono);box-shadow:0 0 0 2px color-mix(in srgb,var(--dono) 14%,transparent)}
+
+.pessoa{display:inline-flex;align-items:center;gap:6px;flex:none;
+  padding:3px 9px 3px 3px;border-radius:99px;font-size:.73rem;font-weight:700;
+  background:#fff;box-shadow:var(--s1)}
+.ini{width:21px;height:21px;border-radius:99px;display:grid;place-items:center;
+  font-size:.61rem;font-weight:800;color:#fff}
+
+.mais{border:1.5px dashed #CBD5E1;border-radius:9px;padding:7px;font-size:.74rem;
+  font-weight:600;color:var(--text2);transition:all .18s var(--curva)}
+.mais:hover{border-color:var(--azul);color:var(--azul);background:var(--azul-dim)}
+
+.campos{display:grid;gap:7px}
+.linha{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.campos input[type=date]{flex:1;min-width:126px;padding:7px 9px;border-radius:8px;
+  border:1.5px solid var(--borda);font:inherit;font-size:16px;min-height:38px;background:#fff;
+  transition:border-color .16s,box-shadow .16s}
+.campos textarea{width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--borda);
+  font:inherit;font-size:14px;min-height:42px;resize:vertical;background:#fff;
+  transition:border-color .16s,box-shadow .16s}
+.campos input:focus,.campos textarea:focus{outline:0;border-color:var(--azul);
+  box-shadow:0 0 0 3px var(--azul-dim)}
+.campos input:disabled,.campos textarea:disabled{background:#F8FAFC;color:var(--text3)}
+.sp{display:flex;align-items:center;gap:6px;font-size:.73rem;font-weight:600;
+  color:var(--roxo);white-space:nowrap;cursor:pointer;padding:6px 9px;border-radius:8px;
+  background:#F5F3FF;border:1px solid #DDD6FE;transition:filter .16s}
+.sp:hover{filter:brightness(.97)}
+.sp input{width:15px;height:15px;accent-color:var(--roxo)}
+.rodape{font-size:.67rem;color:var(--text3);margin-top:auto;padding-top:2px}
+
+.novo{flex:0 0 190px;border:2px dashed #CBD5E1;border-radius:var(--r);
+  display:grid;place-items:center;color:var(--text2);font-size:.82rem;font-weight:600;
+  gap:5px;min-height:150px;transition:all .2s var(--curva)}
+.novo:hover{border-color:var(--azul);color:var(--azul);background:var(--azul-dim);
+  transform:translateY(-3px)}
+.novo b{font-size:1.5rem;font-weight:400;line-height:1}
+.nova-frente{width:100%;padding:18px;border:2px dashed #CBD5E1;border-radius:var(--r);
+  color:var(--text2);font-weight:700;font-size:.9rem;transition:all .2s var(--curva)}
+.nova-frente:hover{border-color:var(--azul);color:var(--azul);background:var(--azul-dim)}
+
+.aviso{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(90px);
+  padding:11px 20px;border-radius:11px;font-size:.85rem;font-weight:600;
+  box-shadow:var(--s3);z-index:90;transition:transform .3s var(--curva);color:#fff}
+.aviso--on{transform:translateX(-50%) translateY(0)}
+.aviso--erro{background:var(--verm)}
+.aviso--ok{background:var(--escuro)}
+
+/* ── modal: criar card / etapa, escolhendo a pessoa ─────── */
+.veu{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(3px);
+  display:grid;place-items:center;z-index:100;padding:18px;
+  animation:apaga .2s var(--curva)}
+@keyframes apaga{from{opacity:0}to{opacity:1}}
+.modal{background:#fff;border-radius:16px;box-shadow:0 24px 60px -12px rgba(15,23,42,.4);
+  width:100%;max-width:430px;padding:22px;animation:sobe .28s var(--curva)}
+@keyframes sobe{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+.modal h3{margin:0 0 4px;font-size:1.05rem;font-weight:800;letter-spacing:-.02em}
+.modal .dica{margin:0 0 16px;font-size:.78rem;color:var(--text2)}
+.modal label{display:block;font-size:.72rem;font-weight:700;color:var(--text2);
+  text-transform:uppercase;letter-spacing:.06em;margin:14px 0 7px}
+.modal input[type=text]{width:100%;padding:10px 13px;border:1.5px solid var(--borda);
+  border-radius:9px;font:inherit;font-size:16px;min-height:44px;
+  transition:border-color .16s,box-shadow .16s}
+.modal input[type=text]:focus{outline:0;border-color:var(--azul);
+  box-shadow:0 0 0 3px var(--azul-dim)}
+
+.pessoas{display:flex;gap:8px;flex-wrap:wrap}
+.pchip{display:inline-flex;align-items:center;gap:7px;padding:6px 13px 6px 6px;
+  border:1.5px solid var(--borda);border-radius:99px;font-size:.84rem;font-weight:600;
+  background:#fff;transition:all .16s var(--curva)}
+.pchip:hover{border-color:var(--p);transform:translateY(-1px);box-shadow:var(--s2)}
+.pchip--on{border-color:var(--p);background:color-mix(in srgb,var(--p) 10%,#fff);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--p) 20%,transparent)}
+.pchip i{width:24px;height:24px;border-radius:99px;display:grid;place-items:center;
+  color:#fff;font-size:.63rem;font-weight:800;background:var(--p)}
+.pchip--novo{border-style:dashed;color:var(--text2)}
+.pchip--novo:hover{border-color:var(--azul);color:var(--azul);background:var(--azul-dim)}
+
+/* as bolinhas de cor — a cereja */
+.cores{display:flex;gap:9px;flex-wrap:wrap}
+.bola{width:34px;height:34px;border-radius:99px;border:3px solid #fff;
+  box-shadow:0 0 0 1.5px var(--borda);position:relative;
+  transition:transform .18s var(--curva),box-shadow .18s var(--curva)}
+.bola:hover{transform:scale(1.14)}
+.bola--on{box-shadow:0 0 0 3px var(--escuro);transform:scale(1.1)}
+.bola--on::after{content:'✓';position:absolute;inset:0;display:grid;place-items:center;
+  color:#fff;font-size:.86rem;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+/* 🚨 cor já usada não pode ser escolhida: duas pessoas com a mesma cor
+   tornam a leitura da faixa inútil */
+.bola--usada{opacity:.24;cursor:not-allowed;transform:none!important}
+.bola--usada::after{content:'✕';position:absolute;inset:0;display:grid;place-items:center;
+  color:#fff;font-size:.8rem;font-weight:800}
+
+.modal__pe{display:flex;gap:9px;margin-top:20px}
+.btn{flex:1;padding:11px;border-radius:10px;font-weight:700;font-size:.88rem;
+  min-height:46px;transition:all .16s var(--curva)}
+.btn--ok{background:var(--azul);color:#fff}
+.btn--ok:hover{background:#1D4ED8;transform:translateY(-1px);box-shadow:var(--s2)}
+.btn--ok:disabled{background:#CBD5E1;cursor:not-allowed;transform:none;box-shadow:none}
+.btn--nao{background:var(--bg);color:var(--text2)}
+.btn--nao:hover{background:var(--borda)}
+.erro-modal{color:var(--verm);font-size:.79rem;font-weight:600;margin:10px 0 0;
+  min-height:1em}
+
+@media(max-width:640px){
+  .card{flex:0 0 268px}
+  .legenda{margin-left:0}
+  .marca__txt{border-left:0;padding-left:0}
+  .marca{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+
+<header class="topo" id="topo">
+  <div class="topo__in">
+    <div class="marca">
+      <img src="/painel/static/movisat-logo.png" alt="Movisat">
+      <div class="marca__txt">
+        <h1 id="titulo">Demandas</h1>
+        <p class="sub">quadro compartilhado</p>
+      </div>
+    </div>
+    <div class="kpis">
+      <div class="kpi kpi--ok"><b id="k-ok">0</b><span>concluídos</span></div>
+      <div class="kpi"><b id="k-total">0</b><span>no total</span></div>
+      <div class="kpi kpi--atraso"><b id="k-atraso">0</b><span>atrasados</span></div>
+    </div>
+  </div>
+  <div class="trilha"><i id="trilha" style="width:0"></i></div>
+  <div id="fim"></div>
+</header>
+
+<div class="quem">
+  <div class="quem__in">
+    <b>Você é</b>
+    <div class="eu" id="eu"></div>
+    <div class="legenda" id="legenda"></div>
+  </div>
+</div>
+
+<main id="app"></main>
+<div class="aviso" id="aviso"></div>
+<div id="modal"></div>
+
+<script>
+const TOKEN = location.pathname.split('/').filter(Boolean).pop();
+const $ = (i) => document.getElementById(i);
+let dados = null;
+
+/* 🚨 Tudo que veio do banco passa por aqui. Qualquer um com o link escreve
+   na observacao, e observacao com <script> dentro nao pode virar script. */
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+  (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* Quem sou eu. Guarda o ID, não o nome: pessoa renomeada continua sendo a
+   mesma, e o nome sai do cadastro na hora de mostrar. */
+let euId = Number(localStorage.getItem('dem.eu')) || null;
+const eu = () => (dados?.pessoas || []).find(p => p.id === euId) || null;
+const nome = () => eu()?.nome || '';
+
+function sereu(id){
+  euId = id;
+  localStorage.setItem('dem.eu', String(id));
+  desenharEu();
+}
+
+function desenharEu(){
+  if(!dados) return;
+  $('eu').innerHTML = dados.pessoas.map(p=>`
+      <button class="euchip ${euId===p.id?'euchip--on':''}" style="--p:${p.cor}"
+              title="${euId===p.id?'é você':'sou eu'}" onclick="sereu(${p.id})">
+        <i>${esc(iniciais(p.nome))}</i>${esc(p.nome)}
+      </button>`).join('')
+    + `<button class="euchip euchip--novo" onclick="novaPessoaSolo()">+</button>`
+    + (euId ? '' : '<span class="euaviso">↑ diga quem é você antes de mexer</span>');
+}
+
+/* 🚨 A cor NAO e mais calculada por hash do nome: vem do cadastro, e o banco
+   impede duas pessoas com a mesma. Hash era estavel, mas ninguem escolhia e
+   duas pessoas podiam colidir. */
+const iniciais = (p) => String(p).trim().split(/\s+/).slice(0,2)
+  .map(x=>x[0]||'').join('').toUpperCase() || '?';
+
+function avisar(t,tipo='erro'){
+  const a=$('aviso'); a.textContent=t; a.className=`aviso aviso--on aviso--${tipo}`;
+  clearTimeout(a._t); a._t=setTimeout(()=>a.className='aviso',tipo==='ok'?1800:4200);
+}
+
+async function carregar(silencioso){
+  try{
+    const r = await fetch(`/demandas/api/${TOKEN}`);
+    if(r.status===404){ $('app').innerHTML=
+      '<p style="text-align:center;padding:60px;color:#64748B">Link inválido ou quadro desativado.</p>'; return; }
+    dados = await r.json();
+    desenhar();
+  }catch{ if(!silencioso) avisar('Não consegui carregar.'); }
+}
+
+/* A primeira etapa NAO concluida do card -- e dela que sai a cor. */
+const pendente = (i) => i.etapas.find(e=>!e.concluida) || null;
+
+function desenhar(){
+  const rolagem={}; document.querySelectorAll('.esteira')
+    .forEach(e=>rolagem[e.dataset.f]=e.scrollLeft);
+  const foco = document.activeElement?.id;
+
+  $('titulo').textContent = dados.titulo;
+  $('k-ok').textContent = dados.concluidos;
+  $('k-total').textContent = dados.total;
+  $('k-atraso').textContent = dados.atrasados;
+  $('trilha').style.width = dados.total ? (dados.concluidos/dados.total*100)+'%' : '0';
+  document.title = `${dados.concluidos}/${dados.total} · Demandas`;
+
+  const tudo = dados.total>0 && dados.concluidos===dados.total;
+  $('topo').className = tudo ? 'topo topo--fim' : 'topo';
+  $('fim').innerHTML = tudo ? `
+    <div class="fim">
+      <span style="font-size:1.5rem">🎉</span>
+      <span><b>Tudo concluído.</b> As ${dados.total} demandas fecharam —
+      o quadro fica aqui como registro do que foi feito e por quem.</span>
+    </div>` : '';
+
+  /* Legenda: cada pessoa com tarefa PENDENTE, na sua cor, com quantas faltam.
+     Quem já fechou tudo aparece apagado -- some da leitura sem sumir do quadro. */
+  const comTarefa = dados.pessoas.filter(p=>p.tem_tarefa);
+  const semTarefa = dados.pessoas.filter(p=>!p.tem_tarefa);
+  $('legenda').innerHTML =
+    comTarefa.map(p=>`
+      <span class="lg lg--p" title="${esc(p.nome)}: ${p.pendentes} pendente(s)">
+        <i style="background:${p.cor}">${esc(iniciais(p.nome))}</i>
+        ${esc(p.nome)}<span class="qtd">${p.pendentes}</span>
+      </span>`).join('')
+    + semTarefa.map(p=>`
+      <span class="lg lg--p vazio" title="${esc(p.nome)}: sem tarefa pendente">
+        <i style="background:${p.cor}">${esc(iniciais(p.nome))}</i>${esc(p.nome)}
+      </span>`).join('')
+    + `<span class="divisor"></span>
+       <span class="lg"><i style="background:#DC2626"></i>atrasado</span>
+       <span class="lg"><i style="background:#16A34A"></i>concluído</span>
+       <span class="lg"><i style="background:#CBD5E1"></i>aguardando</span>`;
+
+  desenharEu();
+
+  $('app').innerHTML = dados.frentes.map(frente).join('')
+    + `<button class="nova-frente" onclick="novaFrente()">+  novo assunto</button>`;
+
+  document.querySelectorAll('.esteira').forEach(e=>{
+    if(rolagem[e.dataset.f]) e.scrollLeft=rolagem[e.dataset.f]; });
+  if(foco && $(foco)) $(foco).focus();
+}
+
+function frente(f){
+  const ok=f.itens.filter(i=>i.concluido).length;
+  const fim = f.itens.length>0 && ok===f.itens.length;
+  return `
+  <section class="frente ${fim?'frente--fim':''}">
+    <div class="frente__cab">
+      <h2>${esc(f.nome)}</h2>
+      ${f.contato?`<span class="dono">${esc(f.contato)}</span>`:''}
+      <div class="frente__prog">
+        ${fim?'<span style="color:#16A34A">✓ completo</span>':''}
+        <span>${ok}/${f.itens.length}</span>
+        <span class="mini"><i style="width:${f.itens.length?ok/f.itens.length*100:0}%"></i></span>
+        <button class="apagar" title="apagar assunto"
+                onclick="apagarFrente(${f.id},${JSON.stringify(f.nome).replace(/"/g,'&quot;')})">✕</button>
+      </div>
+    </div>
+    <div class="esteira" data-f="${f.id}">
+      ${f.itens.map((i,n)=>card(i,n+1)).join('<span class="seta">›</span>')}
+      ${f.itens.length?'<span class="seta">›</span>':''}
+      <button class="novo" onclick="novoItem(${f.id})"><b>+</b>novo card</button>
+    </div>
+  </section>`;
+}
+
+function card(i,n){
+  const p = pendente(i);
+  const cor = p ? p.cor : '#CBD5E1';   // cor vem do cadastro, não de hash
+  const trava = i.estado==='aguardando' ? 'disabled' : '';
+
+  let classe;
+  if(i.concluido) classe='concluido';
+  else if(i.estado==='aguardando') classe='aguardando';
+  else if(i.atrasado) classe='atrasado';
+  else classe='vez';
+
+  /* O estado continua legivel pela etiqueta -- a cor diz de quem e a vez,
+     a etiqueta diz em que pe esta. */
+  const tags=[];
+  if(i.concluido) tags.push(['concluido','Concluído']);
+  else if(i.estado==='aguardando') tags.push(['aguardando','Aguardando tarefa acima']);
+  else{
+    tags.push(['vez',`vez de ${p ? p.responsavel : '—'}`]);
+    if(i.atrasado) tags.push(['atrasado','Atrasado']);
+    else if(i.sem_prazo) tags.push(['semprazo','Sem prazo ainda']);
+    else if(i.prazo) tags.push(['prazo','Com prazo']);
+    else tags.push(['liberado','Liberado']);
+  }
+
+  return `
+  <article class="card card--${classe}" style="--dono:${cor}">
+    <div class="card__topo">
+      <span class="card__n">${n}</span>
+      <span class="card__tit">${esc(i.titulo)}</span>
+      <button class="apagar" title="apagar card"
+              onclick="apagarItem(${i.id},${JSON.stringify(i.titulo).replace(/"/g,'&quot;')})">✕</button>
+    </div>
+
+    <div class="tags">${tags.map(([c,t])=>
+      `<span class="tag tag--${c}">${esc(t)}</span>`).join('')}</div>
+
+    ${i.etapas.map(e=>`
+      <div class="etapa ${e.concluida?'etapa--ok':''} ${p&&e.id===p.id&&!trava?'etapa--vez':''}"
+           style="--dono:${e.cor}">
+        <input type="checkbox" id="e${e.id}" ${e.concluida?'checked':''} ${trava}
+               onchange="marcar(${e.id},this.checked)">
+        <label for="e${e.id}">${esc(e.descricao)}</label>
+        <span class="pessoa">
+          <span class="ini" style="background:${e.cor}">${esc(iniciais(e.responsavel))}</span>
+          ${esc(e.responsavel)}
+        </span>
+      </div>`).join('')}
+
+    <button class="mais" onclick="novaEtapa(${i.id})">+ etapa (handoff)</button>
+
+    <div class="campos">
+      <div class="linha">
+        <input type="date" id="p${i.id}" value="${i.prazo||''}"
+               ${i.sem_prazo?'disabled':''} ${trava} onchange="salvar(${i.id})">
+        <label class="sp">
+          <input type="checkbox" id="s${i.id}" ${i.sem_prazo?'checked':''} ${trava}
+                 onchange="salvar(${i.id})"> sem prazo
+        </label>
+      </div>
+      <textarea id="o${i.id}" placeholder="observação…" maxlength="500" ${trava}
+                onchange="salvar(${i.id})">${esc(i.obs||'')}</textarea>
+    </div>
+    ${i.atualizado_por?`<p class="rodape">último toque: ${esc(i.atualizado_por)}</p>`:''}
+  </article>`;
+}
+
+async function enviar(url,corpo,msg){
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(corpo)});
+    if(r.status===409) avisar('Essa tarefa ainda aguarda a de cima.');
+    else if(r.status===429) avisar('Muitas alterações seguidas. Espere um minuto.');
+    else if(!r.ok) avisar('Não consegui salvar.');
+    else if(msg) avisar(msg,'ok');
+  }catch{ avisar('Sem conexão — não salvou.'); }
+  await carregar(true);
+}
+
+const salvar=(id)=>enviar(`/demandas/api/${TOKEN}/item/${id}`,{
+  prazo:$('s'+id).checked?null:($('p'+id).value||null),
+  sem_prazo:$('s'+id).checked, obs:$('o'+id).value, quem:nome()},'Salvo');
+
+const marcar=(id,c)=>enviar(`/demandas/api/${TOKEN}/etapa/${id}`,
+  {concluida:c,quem:nome()}, c?'Concluído':'Reaberto');
+
+/* ── modal ────────────────────────────────────────────────────────────
+   Substitui as caixinhas do navegador. O motivo nao e estetica: aquela
+   caixinha nao permite ESCOLHER de uma lista, e nome digitado cria pessoa
+   nova a cada erro de grafia -- cada uma levando uma cor da paleta. */
+let sel = {pessoa:null, cor:null, novaPessoa:false};
+
+function fecharModal(){ $('modal').innerHTML=''; sel={pessoa:null,cor:null,novaPessoa:false}; }
+
+function abrirModal({titulo,dica,rotulo,valor='',aoConfirmar,comPessoa=true}){
+  sel = {pessoa:null, cor:null, novaPessoa:false};
+  window._confirmar = aoConfirmar;
+  $('modal').innerHTML = `
+    <div class="veu" onclick="if(event.target===this)fecharModal()">
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>${esc(titulo)}</h3>
+        <p class="dica">${esc(dica)}</p>
+        <label for="m-txt">${esc(rotulo)}</label>
+        <input type="text" id="m-txt" maxlength="120" value="${esc(valor)}"
+               placeholder="digite aqui" autocomplete="off">
+        ${comPessoa?`
+          <label>Responsável</label>
+          <div class="pessoas" id="m-pessoas"></div>
+          <div id="m-nova"></div>`:''}
+        <p class="erro-modal" id="m-erro"></p>
+        <div class="modal__pe">
+          <button class="btn btn--nao" onclick="fecharModal()">Cancelar</button>
+          <button class="btn btn--ok" id="m-ok" onclick="confirmarModal()">Criar</button>
+        </div>
+      </div>
+    </div>`;
+  if(comPessoa) desenharPessoas();
+  setTimeout(()=>$('m-txt')?.focus(),60);
+  $('m-txt').onkeydown = (e)=>{ if(e.key==='Enter') confirmarModal();
+                                if(e.key==='Escape') fecharModal(); };
+}
+
+function desenharPessoas(){
+  $('m-pessoas').innerHTML = dados.pessoas.map(p=>`
+    <button class="pchip ${sel.pessoa===p.id?'pchip--on':''}" style="--p:${p.cor}"
+            onclick="escolherPessoa(${p.id})">
+      <i>${esc(iniciais(p.nome))}</i>${esc(p.nome)}
+    </button>`).join('')
+    + `<button class="pchip pchip--novo" onclick="abrirNovaPessoa()">+ nova pessoa</button>`;
+}
+
+function escolherPessoa(id){ sel.pessoa=id; sel.novaPessoa=false;
+  $('m-nova').innerHTML=''; $('m-erro').textContent=''; desenharPessoas(); }
+
+/* As bolinhas. Cor ja usada aparece riscada e nao clica -- duas pessoas com
+   a mesma cor tornariam a leitura da faixa inutil. */
+function abrirNovaPessoa(){
+  sel.novaPessoa=true; sel.pessoa=null; desenharPessoas();
+  const livres = dados.cores_livres;
+  if(!livres.length){
+    $('m-nova').innerHTML = `<p class="erro-modal">A paleta acabou —
+      as ${dados.paleta.length} cores já estão em uso.</p>`;
+    return;
+  }
+  sel.cor = livres[0];
+  $('m-nova').innerHTML = `
+    <label for="m-nome">Nome da nova pessoa</label>
+    <input type="text" id="m-nome" maxlength="60" placeholder="ex.: Marina" autocomplete="off">
+    <label>Cor dela <span style="text-transform:none;font-weight:500">— as riscadas já são de alguém</span></label>
+    <div class="cores" id="m-cores"></div>`;
+  desenharCores();
+  $('m-nome').onkeydown = (e)=>{ if(e.key==='Enter') confirmarModal(); };
+}
+
+function desenharCores(){
+  if(!$('m-cores')) return;
+  const usadas = dados.pessoas.map(p=>p.cor);
+  $('m-cores').innerHTML = dados.paleta.map(c=>{
+    const usada = usadas.includes(c);
+    return `<button class="bola ${usada?'bola--usada':''} ${sel.cor===c&&!usada?'bola--on':''}"
+      style="background:${c}" title="${usada?'já é de alguém':'escolher'}"
+      ${usada?'disabled':''} onclick="escolherCor('${c}')"></button>`;
+  }).join('');
+}
+function escolherCor(c){ sel.cor=c; desenharCores(); }
+
+async function confirmarModal(){
+  const txt = $('m-txt').value.trim();
+  const erro = $('m-erro');
+  if(!txt){ erro.textContent='Preencha o campo acima.'; $('m-txt').focus(); return; }
+
+  const precisaPessoa = !!$('m-pessoas');
+  if(precisaPessoa){
+    if(sel.novaPessoa){
+      const nome = $('m-nome')?.value.trim();
+      if(!nome){ erro.textContent='Dê um nome à pessoa nova.'; return; }
+      if(!sel.cor){ erro.textContent='Escolha uma cor.'; return; }
+      $('m-ok').disabled = true;
+      const r = await fetch(`/demandas/api/${TOKEN}/pessoa`,{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({nome,cor:sel.cor})});
+      $('m-ok').disabled = false;
+      if(!r.ok){
+        const d = await r.json().catch(()=>({}));
+        erro.textContent = d.detail || 'Não consegui cadastrar a pessoa.';
+        return;
+      }
+      sel.pessoa = (await r.json()).id;
+    }
+    if(!sel.pessoa){ erro.textContent='Escolha quem é o responsável.'; return; }
+  }
+
+  const acao = window._confirmar;
+  fecharModal();
+  await acao(txt, sel.pessoa);
+}
+
+/* Cadastrar pessoa sem estar criando card: e o "+" do "Voce e". Reaproveita
+   as bolinhas, para o gesto ser o mesmo em toda a tela. */
+function novaPessoaSolo(){
+  const livres = dados.cores_livres;
+  window._confirmar = null;
+  $('modal').innerHTML = `
+    <div class="veu" onclick="if(event.target===this)fecharModal()">
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>Nova pessoa</h3>
+        <p class="dica">Ela passa a aparecer na legenda e na escolha de responsável.</p>
+        ${livres.length ? `
+          <label for="s-nome">Nome</label>
+          <input type="text" id="s-nome" maxlength="60" placeholder="ex.: Marina" autocomplete="off">
+          <label>Cor <span style="text-transform:none;font-weight:500">— as riscadas já são de alguém</span></label>
+          <div class="cores" id="m-cores"></div>`
+        : `<p class="erro-modal">A paleta acabou — as ${dados.paleta.length} cores já estão em uso.</p>`}
+        <p class="erro-modal" id="s-erro"></p>
+        <div class="modal__pe">
+          <button class="btn btn--nao" onclick="fecharModal()">Cancelar</button>
+          ${livres.length?'<button class="btn btn--ok" id="s-ok" onclick="salvarPessoaSolo()">Cadastrar</button>':''}
+        </div>
+      </div>
+    </div>`;
+  if(!livres.length) return;
+  sel = {pessoa:null, cor:livres[0], novaPessoa:true};
+  desenharCores();
+  setTimeout(()=>$('s-nome')?.focus(),60);
+  $('s-nome').onkeydown = (e)=>{ if(e.key==='Enter') salvarPessoaSolo();
+                                 if(e.key==='Escape') fecharModal(); };
+}
+
+async function salvarPessoaSolo(){
+  const nome = $('s-nome').value.trim();
+  const erro = $('s-erro');
+  if(!nome){ erro.textContent='Dê um nome à pessoa.'; return; }
+  if(!sel.cor){ erro.textContent='Escolha uma cor.'; return; }
+  $('s-ok').disabled = true;
+  const r = await fetch(`/demandas/api/${TOKEN}/pessoa`,{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({nome,cor:sel.cor})});
+  $('s-ok').disabled = false;
+  if(!r.ok){
+    const d = await r.json().catch(()=>({}));
+    erro.textContent = d.detail || 'Não consegui cadastrar.';
+    return;
+  }
+  const nova = await r.json();
+  fecharModal();
+  await carregar(true);
+  // quem acabou de se cadastrar quase sempre é quem está mexendo
+  sereu(nova.id);
+  avisar(`${nova.nome} cadastrado(a).`,'ok');
+}
+
+function novoItem(fid){
+  abrirModal({titulo:'Novo card', dica:'Ele entra no fim da esteira deste assunto.',
+    rotulo:'Título do card',
+    aoConfirmar:(t,p)=>enviar(`/demandas/api/${TOKEN}/item`,
+      {frente_id:fid,titulo:t,pessoa_id:p},'Card criado')});
+}
+function novaEtapa(iid){
+  abrirModal({titulo:'Nova etapa', dica:'É o handoff: o card só conclui quando todas fecharem.',
+    rotulo:'Descrição da etapa',
+    aoConfirmar:(d,p)=>enviar(`/demandas/api/${TOKEN}/etapa`,
+      {item_id:iid,descricao:d,pessoa_id:p},'Etapa criada')});
+}
+function novaFrente(){
+  abrirModal({titulo:'Novo assunto', dica:'Uma esteira nova, com fila própria.',
+    rotulo:'Nome do assunto', comPessoa:false,
+    aoConfirmar:(n)=>enviar(`/demandas/api/${TOKEN}/frente`,
+      {nome:n,contato:''},'Assunto criado')});
+}
+function apagarItem(id,t){
+  if(confirm(`Apagar o card "${t}"?`))
+    enviar(`/demandas/api/${TOKEN}/item/${id}/apagar`,{},'Card apagado');
+}
+function apagarFrente(id,n){
+  if(confirm(`Apagar o assunto "${n}" e TODOS os cards dele?`))
+    enviar(`/demandas/api/${TOKEN}/frente/${id}/apagar`,{},'Assunto apagado');
+}
+
+carregar();
+/* 🚨 Nao redesenhar com o modal aberto: o innerHTML do quadro nao toca o
+   modal, mas `dados` muda debaixo dele. Recarregar so quando esta fechado. */
+setInterval(()=>{ if(!$('modal').innerHTML) carregar(true); },10000);
+</script>
+</body>
+</html>
