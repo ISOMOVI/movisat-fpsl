@@ -95,7 +95,7 @@ ssh vps "cd /home/claude/fpsl_weso && python3 -m venv venv && venv/bin/pip insta
 
 ```bash
 ssh vps "cat > /home/claude/fpsl_weso/.env << 'EOF'
-WESO_API_KEY=f34ecd04c5808c0795934c2f99212717
+WESO_API_KEY=
 WESO_BASE_URL=http://apirota.wesotecnologia.com.br
 EOF"
 ```
