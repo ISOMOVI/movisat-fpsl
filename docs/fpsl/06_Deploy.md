@@ -93,11 +93,25 @@ ssh vps "cd /home/claude/fpsl_weso && python3 -m venv venv && venv/bin/pip insta
 
 ### 5. Criar `.env` na VPS
 
+> 🚨 **A chave NUNCA passa pela linha de comando.** O `ssh vps "cat > .env
+> << EOF"` que estava aqui colocava o valor no comando, no histórico do shell
+> e — como se descobriu em 05/08 — dentro deste documento versionado.
+
+Monte o arquivo **localmente**, envie por `scp` e destrua o original:
+
 ```bash
-ssh vps "cat > /home/claude/fpsl_weso/.env << 'EOF'
-WESO_API_KEY=
+# conteudo do arquivo temporario  env_fpsl.txt
+WESO_API_KEY=<cole a chave aqui>
 WESO_BASE_URL=http://apirota.wesotecnologia.com.br
-EOF"
+```
+
+```powershell
+scp env_fpsl.txt vps:/home/claude/fpsl_weso/.env
+Remove-Item env_fpsl.txt
+```
+
+```bash
+ssh vps "chmod 600 /home/claude/fpsl_weso/.env"
 ```
 
 ### 6. Testar inicialização
