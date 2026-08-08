@@ -80,3 +80,107 @@ O perfil formal "Transferência de titularidade" (`os_por_placa=2`, mesmo veícu
 `cobrar` passou a ser calculado no resolvedor e gravado no dict do material; o envio ao Harmonit (`SalvarMaterialOrdemServico`) usa `mat["cobrar"]` em vez de `valor > 0`. O material fixo "ENTREGA OS" leva `cobrar=False` explícito.
 
 **Deploy:** aplicado no local (`C:\code\fpsl_weso`), diff conferido contra a VPS (sem drift), backup em `os_router.py.bak_2026-07-20`, subido via scp, `py_compile` OK, `fpsl-weso` reiniciado. Verificado no `ADITIVO.pdf`: nenhum item sai mais com os dois flags.
+
+## Upgrade 4G — coluna única "VEÍCULOS A MIGRAR" (termo 8800, 2026-08-07)
+
+Variação do Aditivo com layout próprio. Motivou três correções no
+`pdf_extractor.py`, e uma delas produzia **placa que não existe** — em
+silêncio, que é o pior modo de falhar.
+
+### O layout
+
+Uma linha por veículo. **A primeira coluna é a ÚNICA que traz veículo e
+placa** — as outras (`DOCUMENTO REFERÊNCIA`, `TAXA DE MIGRAÇÃO`, `NOVO VALOR
+MENSAL`, plano) não têm nada a ver com identificação. Dentro da célula a placa
+pode quebrar de linha:
+
+```
+col0 = 'FIAT/STRADA - RFD\n0E02'      <- veículo + placa
+col1 = '2447'                          <- DOCUMENTO REFERÊNCIA
+```
+
+### Defeito 1 — a tabela boa era descartada
+
+O guarda exigia `PLACA` no cabeçalho, **ou** `VEICULO` **e** `CHASSIS` juntos.
+Aqui a coluna se chama "VEÍCULOS A MIGRAR" e não existe coluna CHASSIS: a
+tabela, que estava perfeita, era jogada fora e a extração caía no fallback de
+texto corrido.
+
+**Correção:** coluna de veículo sozinha já basta. É seguro porque a extração é
+**por célula** — coluna de outro assunto simplesmente não casa com o regex.
+
+### 🚨 Defeito 2 — o fallback INVENTAVA placa
+
+No texto achatado da página, as colunas viram linhas intercaladas, e o número
+de `DOCUMENTO REFERÊNCIA` cai **entre** as duas metades de uma placa quebrada.
+O `\s` do regex atravessava a quebra e colava a metade errada:
+
+```
+top=243.0  x0=110.9  RFD      <- placa, 1ª metade
+top=248.4  x0=166.8  2447     <- OUTRA COLUNA   ✗ era esta que ele pegava
+top=254.4  x0= 75.6  0E02     <- placa, 2ª metade
+```
+
+Saíam `RFD 2447` e `FMS 3078`, que **não existem na WESO**, no lugar de
+`RFD 0E02` e `FMS 3J88`, que existem. Sem erro, sem log, sem aviso.
+
+**Correção:** `_PLACA_RE_MESMA_LINHA`, sem `\s`, usado **só** no fallback de
+texto. Dentro de uma célula o `\n` deve unir (é a placa quebrando); no texto
+corrido, nunca.
+
+> **Placa inventada é pior que placa faltando.** A que falta alguém percebe; a
+> inventada gera OS apontando para veículo que não existe — ou, com azar, para
+> o veículo de outro cliente.
+
+### Defeito 3 — cabeçalho que é parágrafo, não título
+
+A coluna de descrição do plano começa com *"Após a migração os **veículos**
+migrados passarão a operar..."* e casava como coluna de veículo, arrastando
+"PLANO PRÓ Troca de equipamento 2G para 4G" para a lista.
+
+**Correção:** `_colunas_de_veiculo` aceita cabeçalho de até 40 caracteres —
+título de coluna é curto, parágrafo não é. Se o teto descartar todos os
+candidatos, devolve os originais: perder a coluna certa é pior que aceitar uma
+a mais.
+
+### Máquina sem placa de Detran ENTRA no termo
+
+O termo tem **11 veículos**, dois deles máquinas identificadas por série e
+chassi. Antes eles sumiam e a tela dizia "9 veículos" — número que parece
+completo e não é.
+
+🚨 **O campo `placa` da WESO é texto livre e é o ALVO da busca — não é placa
+de Detran.** Regra do usuário (2026-08-07): *"o termo deve vir padronizado
+conforme a WESO, idêntico, seja veículo antes ou placa antes, seja placa
+convencional ou não."*
+
+O rótulo **faz parte do valor** (conferido ao vivo em 07/08):
+
+| No termo | Na WESO |
+|---|---|
+| `... 2023 - SERIE 16994` | `SERIE 16994` |
+| `... - Chassi:1BM6115J JMD002601` | `Chassi: 1BM6115JJMD002601` |
+
+`_identificador_nao_convencional` extrai o trecho a partir do rótulo
+(`SÉRIE`/`CHASSI`), mantendo-o, e marca `placa_convencional: False` — que a
+tela usa para destacar na conferência, **nunca para excluir da geração**
+(mesma regra que a Rescisão já aplicava).
+
+⚠️ Só rótulo **explícito** autoriza: texto solto sem `SÉRIE`/`CHASSI` vai para
+revisão humana em `veiculos_sem_placa`. Adivinhar identificador a partir de
+texto solto é como nasceu o `RFD 2447`.
+
+⚠️ **Ainda não é byte a byte:** o termo escreve `Chassi:1BM6115J JMD002601` e a
+WESO guarda `Chassi: 1BM6115JJMD002601`. O `placas.normalizar` remove o que
+não é alfanumérico, então **acha** o veículo — mas a padronização das strings
+via API (junto com espaços e `(RD)`) continua pendente.
+
+### Validado antes de implantar
+
+- extração: **11 veículos**, nenhuma linha sobrando;
+- **11 de 11 encontradas na WESO ao vivo**;
+- suítes: regressão 57, continuação 11, placas 72 — zero falhas, os 9 termos
+  anteriores idênticos.
+
+Fixture de regressão: `tests/fixtures/upgrade_4g_8800.pdf`, com asserções que
+travam explicitamente **"não inventa RFD 2447"** e **"não inventa FMS 3078"`.

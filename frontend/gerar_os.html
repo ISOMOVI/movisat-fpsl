@@ -336,6 +336,24 @@ async function extrair() {
     }
     const semNadaCount = nTotal - placasEditaveis.length;
     if (semNadaCount > 0) msg += `<div class="aviso" style="margin-top:8px">${semNadaCount} linha(s) sem nada na coluna PLACA — verifique o documento.</div>`;
+
+    // 🚨 LINHA DA COLUNA DE VEÍCULO QUE NÃO VIROU NENHUMA PLACA.
+    //
+    // NÃO é o caso de máquina com série/chassi: essas entram normalmente, como
+    // placa não convencional, e aparecem no aviso acima. Aqui fica só o que o
+    // extrator não soube ler — e que por isso ficaria de fora do termo sem
+    // ninguém perceber.
+    //
+    // O contador `semNadaCount` também não pega estas: ele mede linha VAZIA, e
+    // estas têm conteúdo. São coisas diferentes e precisam de avisos diferentes.
+    const naoLidas = extraido.veiculos_sem_placa || [];
+    if (naoLidas.length) {
+      const itens = naoLidas.map((v) => `<li>${escapeHtml(v.texto)}</li>`).join('');
+      msg += `<div class="aviso" style="margin-top:8px">`
+           + `<strong>${naoLidas.length} linha(s) da coluna de veículos sem placa reconhecida</strong> — `
+           + `não entram na geração. Confira no termo se são veículos de verdade:`
+           + `<ul style="margin:6px 0 0 18px">${itens}</ul></div>`;
+    }
     document.getElementById('extraidoMsg').innerHTML = msg;
 
     // Alerta de transferência disfarçada -- achado 2026-07-15 ("termo

@@ -11,11 +11,12 @@ Fica montado em `/demandas` para não se misturar com `/painel`, que exige
 login.
 """
 import logging
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ... import demandas
 
@@ -72,9 +73,62 @@ def _exigir_texto(valor: str, campo: str) -> str:
     return limpo
 
 
+# Faixa de ano aceita num prazo. Larga o bastante para qualquer planejamento
+# real, estreita o bastante para pegar o ano digitado errado -- que é o erro
+# que de fato acontece (ver o validador abaixo).
+ANO_MIN, ANO_MAX = 2020, 2100
+
+
 class ItemIn(BaseModel):
     prazo: str | None = Field(default=None, max_length=10)
     sem_prazo: bool = False
+
+    @field_validator("prazo")
+    @classmethod
+    def _prazo_e_data_de_verdade(cls, v: str | None) -> str | None:
+        """🚨 O PRAZO PRECISA SER `AAAA-MM-DD` DE VERDADE.
+
+        Antes só havia limite de tamanho, e `atualizar_item` gravava o que
+        chegasse. Como a comparação de atraso é de TEXTO (`prazo < hoje`),
+        formato errado erra em silêncio, nos dois sentidos:
+
+            '07/08/2026'  ->  '0' < '2'  ->  atrasado PARA SEMPRE
+            'amanha'      ->  'a' > '2'  ->  NUNCA atrasado
+
+        Pela tela não acontecia -- o campo é `input type="date"`, que só manda
+        ISO. Mas **este quadro é público por link e a API aceita POST direto**:
+        quem tem o endereço manda o que quiser. Validação de tela nunca foi
+        validação.
+
+        ⚠️ `date.fromisoformat` também recusa data impossível (`2026-13-45`),
+        que o formato sozinho aceitaria.
+
+        🚨 E A FAIXA DE ANO NÃO É PRECIOSISMO. Encontrado no quadro real em
+        07/08: o card "Liberação para uso" estava com prazo `0002-08-11` --
+        ano 2. O `input type="date"` produz isso sozinho quando alguém digita
+        o ano no teclado e sai do campo antes de terminar. `date.fromisoformat`
+        aceita numa boa, porque ano 2 EXISTE.
+
+        O efeito é o pior possível: `'0002-08-11' < hoje` é verdadeiro, então o
+        card fica **atrasado para sempre**, e nada indica por quê. O irmão
+        desse erro é o ano 9999, que fica **eternamente no prazo**.
+        """
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        try:
+            if len(v) != 10:
+                raise ValueError
+            d = date.fromisoformat(v)
+        except ValueError:
+            raise ValueError("Prazo precisa ser uma data no formato AAAA-MM-DD.")
+        if not (ANO_MIN <= d.year <= ANO_MAX):
+            raise ValueError(
+                f"Ano {d.year} não faz sentido para um prazo "
+                f"(esperado entre {ANO_MIN} e {ANO_MAX}). Confira a data digitada.")
+        return v
     obs: str | None = Field(default=None, max_length=500)
     quem: str | None = Field(default=None, max_length=60)
 

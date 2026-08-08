@@ -201,9 +201,13 @@ main{max-width:1500px;margin:0 auto;padding:20px 24px 70px}
 
 .campos{display:grid;gap:7px}
 .linha{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
-.campos input[type=date]{flex:1;min-width:126px;padding:7px 9px;border-radius:8px;
+/* ⚠️ Era `input[type=date]`. O campo virou texto com máscara dd/mm/aaaa em
+   07/08; mirar no tipo deixaria o prazo sem estilo. `font-size:16px` fica:
+   abaixo disso o iOS dá zoom sozinho ao focar. */
+.campos input.data{flex:1;min-width:126px;padding:7px 9px;border-radius:8px;
   border:1.5px solid var(--borda);font:inherit;font-size:16px;min-height:38px;background:#fff;
   transition:border-color .16s,box-shadow .16s}
+.data--ruim{border-color:var(--atraso,#DC2626)!important;background:#FEF2F2!important}
 .campos textarea{width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--borda);
   font:inherit;font-size:14px;min-height:42px;resize:vertical;background:#fff;
   transition:border-color .16s,box-shadow .16s}
@@ -514,8 +518,10 @@ function card(i,n){
 
     <div class="campos">
       <div class="linha">
-        <input type="date" id="p${i.id}" value="${i.prazo||''}"
-               ${i.sem_prazo?'disabled':''} ${trava} onchange="salvar(${i.id})">
+        <input type="text" id="p${i.id}" value="${isoParaBR(i.prazo)}"
+               inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" class="data"
+               ${i.sem_prazo?'disabled':''} ${trava}
+               oninput="mascaraData(this,()=>salvar(${i.id}))">
         <label class="sp">
           <input type="checkbox" id="s${i.id}" ${i.sem_prazo?'checked':''} ${trava}
                  onchange="salvar(${i.id})"> sem prazo
@@ -540,9 +546,57 @@ async function enviar(url,corpo,msg){
   await carregar(true);
 }
 
-const salvar=(id)=>enviar(`/demandas/api/${TOKEN}/item/${id}`,{
-  prazo:$('s'+id).checked?null:($('p'+id).value||null),
-  sem_prazo:$('s'+id).checked, obs:$('o'+id).value, quem:nome()},'Salvo');
+/* ── Prazo em dd/mm/aaaa ──────────────────────────────────────────────
+   🚨 POR QUE NÃO USAMOS MAIS `input type="date"` (trocado em 2026-08-07)
+
+   Aquele campo desenha os pedaços na ordem do IDIOMA DO NAVEGADOR. Com o
+   Chrome em inglês, o primeiro pedaço é o MÊS: quem digita o dia primeiro --
+   como se escreve data no Brasil -- põe o dia no lugar do mês.
+
+   Pior: o `onchange` dispara enquanto o ano ainda está sendo digitado, e o
+   parcial é SALVO. Foi assim que um card ficou com prazo `0002-08-11` -- ano
+   2 --, atrasado para sempre, porque a comparação é `prazo < hoje` em TEXTO.
+
+   ⚠️ Este arquivo e o `planilha.html` são cópias: a correção precisa dos dois. */
+const ANO_MIN = 2020, ANO_MAX = 2100;
+
+function isoParaBR(iso){
+  if(!iso) return '';
+  const p = String(iso).split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : '';
+}
+
+/* null = vazio (limpar o prazo, escolha legítima). undefined = inválido. */
+function brParaISO(br){
+  const t = String(br || '').trim();
+  if(!t) return null;
+  const m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if(!m) return undefined;
+  const [, d, mes, ano] = m;
+  const iso = `${ano}-${mes}-${d}`;
+  const dt = new Date(`${iso}T12:00:00`);
+  if(isNaN(dt) || dt.getUTCDate() !== +d || (dt.getUTCMonth()+1) !== +mes) return undefined;
+  if(+ano < ANO_MIN || +ano > ANO_MAX) return undefined;
+  return iso;
+}
+
+function mascaraData(el, aoCompletar){
+  const so = el.value.replace(/\D/g,'').slice(0,8);
+  let out = so;
+  if(so.length > 4) out = `${so.slice(0,2)}/${so.slice(2,4)}/${so.slice(4)}`;
+  else if(so.length > 2) out = `${so.slice(0,2)}/${so.slice(2)}`;
+  el.value = out;
+  el.classList.toggle('data--ruim', out.length===10 && brParaISO(out)===undefined);
+  if(out === '' || (out.length===10 && brParaISO(out)!==undefined)) aoCompletar();
+}
+
+const salvar=(id)=>{
+  const iso = $('s'+id).checked ? null : brParaISO($('p'+id).value);
+  if(iso === undefined){ avisar('Data inválida — use dd/mm/aaaa.','erro'); return; }
+  enviar(`/demandas/api/${TOKEN}/item/${id}`,{
+    prazo: iso,
+    sem_prazo:$('s'+id).checked, obs:$('o'+id).value, quem:nome()},'Salvo');
+};
 
 const marcar=(id,c)=>enviar(`/demandas/api/${TOKEN}/etapa/${id}`,
   {concluida:c,quem:nome()}, c?'Concluído':'Reaberto');
@@ -653,9 +707,18 @@ async function confirmarModal(){
     if(!sel.pessoa){ erro.textContent='Escolha quem é o responsável.'; return; }
   }
 
+  /* 🚨 GUARDAR A PESSOA ANTES DE FECHAR — corrigido em 2026-08-07.
+     `fecharModal()` zera o `sel`, e a linha de baixo lia `sel.pessoa` DEPOIS
+     dessa limpeza: os argumentos só são avaliados na hora da chamada. Resultado:
+     `pessoa_id` saía `null` em TODO card e TODA etapa, de todos os quadros, e o
+     backend devolvia 422 sem a tela dizer o motivo.
+
+     Criar ASSUNTO continuava funcionando (não usa pessoa), o que fazia o
+     painel parecer meio vivo e escondia a causa. */
   const acao = window._confirmar;
+  const pessoaEscolhida = sel.pessoa;
   fecharModal();
-  await acao(txt, sel.pessoa);
+  await acao(txt, pessoaEscolhida);
 }
 
 /* Cadastrar pessoa sem estar criando card: e o "+" do "Voce e". Reaproveita

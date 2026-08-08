@@ -22,6 +22,21 @@ from pathlib import Path
 
 log = logging.getLogger("fpsl.demandas")
 
+# 🚨 `datetime('now')` DO SQLITE É UTC — 3 horas à frente daqui.
+#
+# Medido em 07/08: hora local 18:12, `datetime('now')` 21:12. Todo carimbo
+# deste módulo (`atualizado_em`, `concluida_em`, `criado_em`) nascia adiantado,
+# enquanto o `atrasado` compara com `date.today()`, que é LOCAL. Duas noções de
+# "agora" no mesmo módulo.
+#
+# Hoje nenhuma tela mostra esses carimbos -- só "último toque: quem" --, então
+# ninguém estava sendo enganado. Mas é o mesmo defeito que o MoviChat teve
+# (`.utcnow()`, 3h adiantado na exibição, corrigido em 2026-07-14): ele fica
+# quieto até alguém exibir a hora, e aí já tem histórico errado guardado.
+#
+# Uma constante só, para não haver o segundo lugar que alguém esquece.
+AGORA = "datetime('now','localtime')"
+
 BANCO = Path(__file__).resolve().parent.parent / "data" / "fpsl.db"
 
 MAX_TITULO = 120
@@ -50,7 +65,11 @@ PALETA = [
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS demanda_quadro (
     id INTEGER PRIMARY KEY, titulo TEXT NOT NULL, token TEXT NOT NULL UNIQUE,
-    ativo INTEGER NOT NULL DEFAULT 1, criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+    -- ⚠️ `localtime`: ver a constante AGORA. `CREATE TABLE IF NOT EXISTS` não
+    -- altera tabela que já existe, então este default só vale para instalação
+    -- nova -- os quadros atuais tiveram o `criado_em` corrigido por script.
+    ativo INTEGER NOT NULL DEFAULT 1,
+    criado_em TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS demanda_frente (
     id INTEGER PRIMARY KEY,
@@ -366,7 +385,7 @@ def atualizar_item(token, item_id, prazo, sem_prazo, obs, quem) -> bool:
             prazo = None   # o CHECK recusa os dois juntos; a intenção ganha
         c.execute(
             "UPDATE demanda_item SET prazo=?, sem_prazo=?, obs=?, "
-            "atualizado_em=datetime('now'), atualizado_por=? WHERE id=?",
+            f"atualizado_em={AGORA}, atualizado_por=? WHERE id=?",
             (prazo or None, 1 if sem_prazo else 0, (obs or "")[:MAX_OBS] or None,
              (quem or "").strip()[:MAX_NOME] or None, item_id))
     return True
@@ -384,9 +403,9 @@ def marcar_etapa(token, etapa_id, concluida, quem) -> bool:
         if not r or not _liberado(c, r["item_id"]):
             return False
         c.execute("UPDATE demanda_etapa SET concluida=?, "
-                  "concluida_em = CASE WHEN ? THEN datetime('now') END WHERE id=?",
+                  f"concluida_em = CASE WHEN ? THEN {AGORA} END WHERE id=?",
                   (1 if concluida else 0, 1 if concluida else 0, etapa_id))
-        c.execute("UPDATE demanda_item SET atualizado_em=datetime('now'), "
+        c.execute(f"UPDATE demanda_item SET atualizado_em={AGORA}, "
                   "atualizado_por=? WHERE id=?",
                   ((quem or "").strip()[:MAX_NOME] or None, r["item_id"]))
     return True
@@ -533,7 +552,7 @@ def renomear_item(token, item_id, titulo, quem) -> bool:
         qid = _qid(c, token)
         if not qid or not _pertence(c, qid, item_id) or not _liberado(c, item_id):
             return False
-        c.execute("UPDATE demanda_item SET titulo=?, atualizado_em=datetime('now'), "
+        c.execute(f"UPDATE demanda_item SET titulo=?, atualizado_em={AGORA}, "
                   "atualizado_por=? WHERE id=?",
                   (titulo, (quem or "").strip()[:MAX_NOME] or None, item_id))
     return True
@@ -561,7 +580,7 @@ def trocar_responsavel(token, item_id, pessoa_id, quem) -> bool:
             return False
         c.execute("UPDATE demanda_etapa SET pessoa_id=?, responsavel=? WHERE id=?",
                   (p[0], p[1], alvo["id"]))
-        c.execute("UPDATE demanda_item SET atualizado_em=datetime('now'), "
+        c.execute(f"UPDATE demanda_item SET atualizado_em={AGORA}, "
                   "atualizado_por=? WHERE id=?",
                   ((quem or "").strip()[:MAX_NOME] or None, item_id))
     return True
@@ -577,7 +596,7 @@ def cancelar_item(token, item_id, cancelado: bool) -> bool:
         qid = _qid(c, token)
         if not qid or not _pertence(c, qid, item_id):
             return False
-        c.execute("UPDATE demanda_item SET cancelado=?, atualizado_em=datetime('now') "
+        c.execute(f"UPDATE demanda_item SET cancelado=?, atualizado_em={AGORA} "
                   "WHERE id=?", (1 if cancelado else 0, item_id))
     return True
 

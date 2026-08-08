@@ -20,6 +20,21 @@ from .. import placas
 _TERMO_RE = re.compile(r"(?:Distrato|Termo|Contrato|Documento)\s*n[ºo°]?\s*[:.]?\s*(\d+)", re.IGNORECASE)
 _PLACA_RE = re.compile(r"\b([A-Z]{3})[\s\-]?(\d[A-Z0-9]\d{2})\b")
 
+# 🚨 A MESMA PLACA, MAS SEM ATRAVESSAR QUEBRA DE LINHA -- só para o fallback
+# de texto corrido.
+#
+# Dentro de uma CÉLULA de tabela, `\s` casando com `\n` é o comportamento
+# certo: `FIAT/STRADA - RFD\n0E02` é uma placa que quebrou dentro da célula.
+#
+# No TEXTO ACHATADO da página é o oposto. As colunas viram linhas
+# intercaladas, e o número da coluna "DOCUMENTO REFERÊNCIA" cai ENTRE as duas
+# metades da placa. Em 07/08 isso produziu `RFD 2447` e `FMS 3078` no termo
+# 8800 -- placas que não existem na WESO -- no lugar de `RFD 0E02` e
+# `FMS 3J88`. Sem erro e sem aviso.
+#
+# Placa inventada é pior que placa faltando: a que falta alguém percebe.
+_PLACA_RE_MESMA_LINHA = re.compile(r"\b([A-Z]{3})[ \t\-]?(\d[A-Z0-9]\d{2})\b")
+
 # Placa FANTASMA: 'FIAT/UNO 2019' casa no regex acima -- UNO sao 3 letras e
 # 2019 tem o formato do padrao antigo (LLL NNNN). Estruturalmente E placa
 # valida; so o CONTEXTO distingue. Nao ocorre nos 9 termos reais (la vem
@@ -311,21 +326,90 @@ def _eh_continuacao_tabela(tabela: list, n_cols: int, idxs_conteudo: list[int]) 
     return False
 
 
-def _processar_linhas_placa(linhas: list, idx_placa_cols: list[int], placas: list[dict]) -> None:
+#  Um cabeçalho de coluna é um TÍTULO ("VEÍCULOS A MIGRAR", 17 caracteres),
+#  não um parágrafo. No termo 8800 a coluna de descrição do plano começa com
+#  "Após a migração os VEÍCULOS migrados passarão a operar..." -- e casava como
+#  coluna de veículo, arrastando "PLANO PRÓ Troca de equipamento 2G para 4G"
+#  para a lista de itens sem placa. O teto separa título de texto corrido.
+_MAX_TITULO_COLUNA = 40
+
+
+def _colunas_de_veiculo(header: list[str]) -> list[int]:
+    """Índices das colunas cujo cabeçalho é REALMENTE um título de veículo.
+
+    Se o teto descartar todas -- cabeçalho legitimamente longo --, devolve os
+    candidatos originais: perder a coluna certa é pior que aceitar uma a mais.
+    """
+    candidatos = [i for i, h in enumerate(header) if "VEICULO" in h]
+    curtos = [i for i in candidatos if len(_normalizar(str(header[i] or ""))) <= _MAX_TITULO_COLUNA]
+    return curtos or candidatos
+
+
+#  Só um RÓTULO EXPLÍCITO no documento autoriza tratar texto como
+#  identificador de veículo. "SERIE 16994" e "Chassi:1BM6115J" dizem o que
+#  são; texto solto não diz nada, e adivinhar a partir dele é como nasceu a
+#  placa inventada `RFD 2447`.
+_ROTULO_NAO_CONVENCIONAL = re.compile(
+    r"\b(?:N[º°]?\s*)?(?:S[EÉ]RIE|CHASSIS?)\s*[:\-]?\s*(.+)$", re.IGNORECASE)
+
+
+def _identificador_nao_convencional(celula: str) -> tuple[str | None, str, list[str]]:
+    """(identificador, descrição do veículo, variantes) para máquina sem placa.
+
+    🚨 AS VARIANTES EXISTEM PORQUE A WESO NÃO É COERENTE, e o termo tem que
+    sair IDÊNTICO a ela. Medido no cache em 07/08:
+
+        escavadeira -> WESO grava 'SERIE 16994'      (o rótulo FAZ parte)
+        trator      -> WESO grava '1BM6115JJMD002601' (o rótulo NÃO faz parte)
+
+    Adivinhar qual rótulo manter erraria metade dos casos, e erra em silêncio:
+    placa que não casa não dá erro, só deixa de achar o veículo. Então aqui se
+    emite as duas formas, e quem decide é a consulta à WESO -- que devolve a
+    grafia oficial. Ver `placas_router.status_placas`.
+    """
+    texto = " ".join(str(celula or "").split())
+    m = _ROTULO_NAO_CONVENCIONAL.search(texto)
+    if not m:
+        return None, "", []
+
+    com_rotulo = " ".join(texto[m.start():].split()).strip(" -,;.")
+    sem_rotulo = " ".join(m.group(1).split()).strip(" -,;.")
+    if not re.search(r"[A-Za-z0-9]", sem_rotulo):
+        return None, "", []
+
+    veiculo = texto[:m.start()].strip(" -,;.*")
+    variantes = []
+    for v in (com_rotulo.upper(), sem_rotulo.upper()):
+        if v and v not in variantes:
+            variantes.append(v)
+    # O primeiro é só o palpite inicial: a consulta à WESO troca pelo oficial.
+    return variantes[0], " ".join(veiculo.split()), variantes
+
+
+def _processar_linhas_placa(linhas: list, idx_placa_cols: list[int], placas: list[dict],
+                            sem_placa: list[dict] | None = None) -> None:
     """Extrai placa+veículo das linhas de uma tabela de veículos.
 
     Separado de `_extrair_item_veiculo` pra poder ser reusado na continuação de
     página (P5) -- o mesmo motivo pelo qual a Rescisão tem
     `_processar_linhas_veiculo_rescisao`.
+
+    🚨 `sem_placa` recebe a linha que TEM conteúdo de veículo e NÃO tem placa
+    reconhecida -- máquina identificada por chassi ou número de série. Antes
+    esses sumiam calados, e a tela mostrava "9 veículos" num termo de 11 sem
+    nada indicar os 2 que faltavam. Item que o sistema não entende precisa
+    APARECER: quem decide o que fazer com ele é gente.
     """
     for linha in linhas:
         for idx in idx_placa_cols:
             if idx >= len(linha):
                 continue
             celula = str(linha[idx] or "").replace("\n", " ").strip()
+            achou_nesta = False
             for m in _PLACA_RE.finditer(celula):
                 if _eh_placa_fantasma(celula, m):
                     continue
+                achou_nesta = True
                 veiculo = (celula[:m.start()] + celula[m.end():])
                 veiculo = _SEM_BLOQUEIO_RE.sub("", veiculo).strip(" -*")
                 placas.append({
@@ -335,11 +419,49 @@ def _processar_linhas_placa(linhas: list, idx_placa_cols: list[int], placas: lis
                     "nota_transferencia": _detectar_transferencia(celula),
                 })
 
+            if achou_nesta or len(celula) <= 3:
+                continue
+
+            # 🚨 MÁQUINA IDENTIFICADA POR SÉRIE OU CHASSI É VEÍCULO DO TERMO,
+            # e ENTRA na geração -- mesma regra que a Rescisão já aplicava:
+            # "não é mais 'sem placa': é placa fora do padrão convencional.
+            # Serve para destacar na revisão, nunca para excluir da geração."
+            #
+            # No termo 8800 são 2 de 11: uma mini escavadeira (SÉRIE 16994) e
+            # um trator (Chassi 1BM6115J JMD002601). Deixá-los de fora fazia a
+            # tela dizer "9 veículos" num termo de 11.
+            identificador, veiculo, variantes = _identificador_nao_convencional(celula)
+            if identificador:
+                placas.append({
+                    "placa": identificador,
+                    "veiculo": veiculo,
+                    "sem_bloqueio": bool(_SEM_BLOQUEIO_RE.search(celula)),
+                    "nota_transferencia": _detectar_transferencia(celula),
+                    # ⚠️ Falso aqui faz a tela destacar para conferência visual:
+                    # errar a leitura de um nº de série é mais fácil que errar
+                    # uma placa Mercosul.
+                    "placa_convencional": False,
+                    # Formas alternativas para a consulta à WESO adotar a
+                    # grafia oficial -- ver `_identificador_nao_convencional`.
+                    "placa_variantes": variantes,
+                })
+                continue
+
+            # ⚠️ Sobrou conteúdo que não é placa nem traz rótulo de série/chassi.
+            # NÃO se inventa identificador a partir de texto solto -- foi
+            # exatamente assim que `RFD 2447` nasceu. Vai para revisão humana.
+            if sem_placa is not None:
+                sem_placa.append({
+                    "texto": " ".join(celula.split()),
+                    "motivo": "nao reconhecida",
+                })
+
 
 def _extrair_item_veiculo(paginas: list[dict], tem_ficha_cadastral: bool) -> dict:
     texto_completo = "\n".join(p["texto"] for p in paginas)
     itens: list[dict] = []
     placas: list[dict] = []
+    sem_placa: list[dict] = []
     layout_placa: tuple[int, list[int]] | None = None   # (n_cols, idx das colunas de placa)
 
     for pagina in paginas:
@@ -350,11 +472,32 @@ def _extrair_item_veiculo(paginas: list[dict], tem_ficha_cadastral: bool) -> dic
             achado = _achar_linha_header(tabela, "PLACA", "VEICULO")
             if achado:
                 idx_h, header = achado
-                if _tem_header(header, "PLACA") or (_tem_header(header, "VEICULO") and _tem_header(header, "CHASSIS")):
+                # 🚨 A COLUNA DE VEÍCULO SOZINHA JÁ BASTA -- corrigido em 07/08.
+                #
+                # Antes exigia `PLACA` no cabeçalho, ou `VEICULO` E `CHASSIS`
+                # juntos. O termo 8800 (upgrade 4G) chama a coluna de
+                # "VEÍCULOS A MIGRAR" e não tem coluna CHASSIS -- então a
+                # tabela, que estava PERFEITA, era descartada, e a extração
+                # caía no fallback por texto corrido.
+                #
+                # E o fallback inventou placa: no texto achatado, a coluna
+                # "DOCUMENTO REFERÊNCIA" fica ENTRE as duas metades de uma
+                # placa que quebrou de linha, e o `\s` do regex atravessava a
+                # quebra. Saíram `RFD 2447` e `FMS 3078` -- que não existem na
+                # WESO -- no lugar de `RFD 0E02` e `FMS 3J88`, que existem.
+                # Nenhum erro, nenhum aviso: placa inventada é pior que placa
+                # faltando.
+                #
+                # Aceitar `VEICULO` sozinho é seguro porque a extração é POR
+                # CÉLULA: coluna de outro assunto simplesmente não casa com o
+                # regex, e a `\b` das duas pontas já rejeita `SERIE 16994` e
+                # `Chassi:...JMD002601` (verificado célula a célula).
+                if _tem_header(header, "PLACA") or _tem_header(header, "VEICULO"):
                     idx_placa_cols = [i for i, h in enumerate(header) if "PLACA" in h] or \
-                                      [i for i, h in enumerate(header) if "VEICULO" in h]
+                                      _colunas_de_veiculo(header)
                     layout_placa = (len(header), idx_placa_cols)
-                    _processar_linhas_placa(tabela[idx_h + 1:], idx_placa_cols, placas)
+                    _processar_linhas_placa(tabela[idx_h + 1:], idx_placa_cols, placas,
+                                            sem_placa)
                     continue
 
             # P5 (2026-07-27): continuação da tabela de placas numa página
@@ -362,7 +505,7 @@ def _extrair_item_veiculo(paginas: list[dict], tem_ficha_cadastral: bool) -> dic
             # outros perfis a lista simplesmente parava na quebra de página, em
             # silêncio (mesmo bug do termo 8788, que lia 12 de 26).
             if layout_placa and _eh_continuacao_tabela(tabela, layout_placa[0], layout_placa[1]):
-                _processar_linhas_placa(tabela, layout_placa[1], placas)
+                _processar_linhas_placa(tabela, layout_placa[1], placas, sem_placa)
                 continue
 
             achado = _achar_linha_header(tabela, "ACESSORIO", "ITEM", "DESCRICAO")
@@ -380,7 +523,7 @@ def _extrair_item_veiculo(paginas: list[dict], tem_ficha_cadastral: bool) -> dic
         if idx_marca == -1:
             idx_marca = 0
         trecho = texto_completo[idx_marca:]
-        for m in _PLACA_RE.finditer(trecho):
+        for m in _PLACA_RE_MESMA_LINHA.finditer(trecho):
             if _eh_placa_fantasma(trecho, m):
                 continue
             linha_ini = trecho.rfind("\n", 0, m.start()) + 1
@@ -415,6 +558,11 @@ def _extrair_item_veiculo(paginas: list[dict], tem_ficha_cadastral: bool) -> dic
         "cnpj": cnpj_ficha or cnpj_cabecalho,
         "cpf": None,
         "placas": placas,
+        # 🚨 Veículo que o PDF traz sem placa (chassi, número de série). Vai
+        # para a tela em vez de sumir: no termo 8800 eram 2 de 11, e a
+        # diferença entre "9 veículos" e "11 veículos, 2 sem placa" é quem
+        # percebe que falta alguma coisa.
+        "veiculos_sem_placa": sem_placa,
         "itens": itens,
         "alerta_transferencia": _detectar_transferencia(texto_transf),
         "termo_relacionado": _termo_relacionado(texto_transf),

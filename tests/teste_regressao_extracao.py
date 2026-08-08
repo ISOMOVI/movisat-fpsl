@@ -130,6 +130,46 @@ checar("placas (bug de roteamento do parser)", 28, n_placas(c))
 checar("itens", 5, n_itens(c))
 checar("cnpj", "55.524.605/0001-73", c.get("cnpj"))
 
+print("\n[10] Upgrade 4G — 8800 (coluna 'VEÍCULOS A MIGRAR', sem coluna PLACA)")
+c = extrair("upgrade_4g_8800.pdf", "aditivo")
+checar("termo", "8800", c.get("termo"))
+checar("cnpj", "31.172.818/0001-15", c.get("cnpj"))
+
+# 🚨 GUARDA CONTRA PLACA INVENTADA (07/08). A tabela era descartada porque o
+# cabeçalho não tem "PLACA" nem "CHASSIS", e a extração caía no fallback de
+# texto corrido -- onde a coluna "DOCUMENTO REFERÊNCIA" fica ENTRE as duas
+# metades de uma placa que quebrou de linha. Saíam `RFD 2447` e `FMS 3078`,
+# que NÃO EXISTEM na WESO, no lugar de `RFD 0E02` e `FMS 3J88`, que existem.
+#
+# Este é o número que mais importa do arquivo inteiro: placa inventada não
+# falha, não avisa, e manda técnico para o veículo errado.
+#
+# 🚨 SÃO 11 VEÍCULOS, NÃO 9. A primeira coluna ("VEÍCULOS A MIGRAR") é a ÚNICA
+# que traz veículo e placa -- uma linha por veículo. Duas delas são máquinas
+# identificadas por série e chassi, e o campo Placa da WESO é texto livre: o
+# rótulo FAZ PARTE do valor. Conferido ao vivo em 07/08:
+#     WESO grava 'SERIE 16994'  e  'Chassi: 1BM6115JJMD002601'
+# Tratá-las como "sem placa" deixava 2 veículos de fora do termo.
+checar("placas", 11, n_placas(c))
+esperadas = ["RFD 0E02", "GFZ 4B77", "FMS 3J88", "GCK 2B65", "EPN 3E39",
+             "SERIE 16994", "CHASSI:1BM6115J JMD002601",
+             "GEQ 2F06", "DUG 3H46", "FKX 9E34", "FFJ 8J10"]
+checar("placas exatas", esperadas, [p.get("placa") for p in c["placas"]])
+checar("as 2 maquinas entram como nao convencionais", 2,
+       sum(1 for p in c["placas"] if p.get("placa_convencional") is False))
+
+# As 4 que quebraram de linha dentro da célula -- as que o bug estragava.
+for placa in ("RFD 0E02", "FMS 3J88", "GEQ 2F06", "DUG 3H46"):
+    checar(f"placa quebrada em 2 linhas: {placa}",
+           True, placa in [p.get("placa") for p in c["placas"]])
+for inventada in ("RFD 2447", "FMS 3078"):
+    checar(f"NAO inventa {inventada} (numero da coluna DOCUMENTO)",
+           False, inventada in [p.get("placa") for p in c["placas"]])
+
+# Nada pode sobrar em "não reconhecido": as 11 linhas viram os 11 veículos.
+sem = c.get("veiculos_sem_placa") or []
+checar("nenhuma linha sobrando para revisao humana", 0, len(sem))
+
 print("\n" + "=" * 52)
 print(f"{ok} passaram, {len(falhas)} falharam")
 for f in falhas:

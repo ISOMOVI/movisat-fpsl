@@ -566,10 +566,26 @@ async def criar_usuario_painel(
 
 
 async def buscar_usuario_painel(login: str) -> dict | None:
+    """Acha o usuário do painel IGNORANDO MAIÚSCULA e espaço nas pontas.
+
+    🚨 CORRIGIDO EM 07/08, depois de o acesso ser recusado com a senha certa.
+    A busca era `WHERE login = ?`, exata: digitar `Admin` devolvia 401 SEM NEM
+    CHEGAR NO BCRYPT, e a mensagem genérica ("login ou senha inválidos") não
+    dava como desconfiar. Pior: o `ratelimit.chave_de` já usava `casefold`,
+    então o log registrava `admin` mesmo quando o digitado era outro -- e a
+    evidência apontava para o lado errado.
+
+    Login é identificador de pessoa, não segredo: quem protege é a senha.
+    Exigir a caixa exata só rende chamado. É a mesma correção que o MoviZap
+    recebeu em 05/08 e que nunca foi propagada para cá.
+    """
+    login = (login or "").strip()
+
     def _run():
         with _connect() as conn:
             row = conn.execute(
-                "SELECT id, login, senha_hash, admin, ativo, abas, owner FROM painel_usuarios WHERE login = ?",
+                "SELECT id, login, senha_hash, admin, ativo, abas, owner "
+                "FROM painel_usuarios WHERE lower(login) = lower(?)",
                 (login,),
             ).fetchone()
         if not row:

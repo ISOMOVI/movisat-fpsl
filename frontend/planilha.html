@@ -91,9 +91,14 @@ tbody tr.linha--cancelada .tarefa{text-decoration:line-through}
 .tarefa input:disabled{color:var(--text3)}
 
 .prazo-cel{width:168px}
-.prazo-cel input[type=date]{width:100%;border:1px solid transparent;border-radius:7px;
+/* ⚠️ O seletor era `input[type=date]`. Em 07/08 o campo virou texto com
+   máscara dd/mm/aaaa (ver `mascaraData`) -- mirar no tipo deixaria o campo
+   sem estilo nenhum, e o painel pareceria quebrado por causa de um seletor. */
+.prazo-cel input{width:100%;border:1px solid transparent;border-radius:7px;
   padding:7px 8px;font:inherit;font-size:15px;background:transparent;
   transition:border-color .14s,background .14s}
+/* Digitou algo que não é data: a borda avisa antes de tentar salvar. */
+.data--ruim{border-color:var(--atraso,#DC2626)!important;background:#FEF2F2!important}
 .prazo-cel input:hover:not(:disabled){border-color:var(--borda);background:#fff}
 .prazo-cel input:focus{outline:0;border-color:var(--prazo);background:#fff}
 /* 🚨 Linha travada mostra POR QUEM espera, com o numero da linha -- "Aguardando 3"
@@ -343,8 +348,9 @@ function linha(i){
     <td class="cel prazo-cel">
       ${i.estado==='aguardando'
         ? `<span class="aguarda">aguardando <b>${i.aguardando_n||'?'}</b></span>`
-        : `<input type="date" id="p${i.id}" value="${i.prazo||''}" ${trava}
-                  onchange="salvar(${i.id})">`}
+        : `<input type="text" id="p${i.id}" value="${isoParaBR(i.prazo)}" ${trava}
+                  inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa"
+                  class="data" oninput="mascaraData(this,()=>salvar(${i.id}))">`}
     </td>
     <td class="cel tarefa">
       <input type="text" id="t${i.id}" value="${esc(i.titulo)}" maxlength="120"
@@ -395,10 +401,64 @@ async function enviar(url,corpo,msg){
 /* 🚨 Manda SEMPRE a observacao atual, mesmo com a linha fechada. O backend
    grava o que recebe: omitir o campo apagaria a observacao so por alguem ter
    mexido na data. */
+/* ── Prazo em dd/mm/aaaa ──────────────────────────────────────────────
+   🚨 POR QUE NÃO USAMOS MAIS `input type="date"` (trocado em 2026-08-07)
+
+   Aquele campo desenha os pedaços na ordem do IDIOMA DO NAVEGADOR. Com o
+   Chrome em inglês, o primeiro pedaço é o MÊS. Quem digita o dia primeiro --
+   que é como se escreve data no Brasil -- põe o dia no lugar do mês.
+
+   Pior: o `onchange` dispara enquanto o ano ainda está sendo digitado, e o
+   valor parcial é SALVO. Foi assim que um card ficou com prazo `0002-08-11`
+   -- ano 2 --, o que o deixava atrasado para sempre, já que a comparação de
+   atraso é `prazo < hoje` em TEXTO.
+
+   Campo de texto com máscara não depende de idioma: a ordem é sempre dia,
+   mês, ano, e só sai daqui data completa e válida. */
+const ANO_MIN = 2020, ANO_MAX = 2100;
+
+function isoParaBR(iso){
+  if(!iso) return '';
+  const p = String(iso).split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : '';
+}
+
+/* Devolve null se vazio e undefined se inválido -- são coisas DIFERENTES:
+   vazio limpa o prazo de propósito, inválido não pode salvar. */
+function brParaISO(br){
+  const t = String(br || '').trim();
+  if(!t) return null;
+  const m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if(!m) return undefined;
+  const [, d, mes, ano] = m;
+  const iso = `${ano}-${mes}-${d}`;
+  const dt = new Date(`${iso}T12:00:00`);   // meio-dia: fuso não empurra o dia
+  if(isNaN(dt) || dt.getUTCDate() !== +d || (dt.getUTCMonth()+1) !== +mes) return undefined;
+  if(+ano < ANO_MIN || +ano > ANO_MAX) return undefined;
+  return iso;
+}
+
+/* Põe as barras enquanto se digita e NÃO salva no meio do caminho: só quando
+   o campo tem os 10 caracteres ou fica vazio. */
+function mascaraData(el, aoCompletar){
+  const so = el.value.replace(/\D/g,'').slice(0,8);
+  let out = so;
+  if(so.length > 4) out = `${so.slice(0,2)}/${so.slice(2,4)}/${so.slice(4)}`;
+  else if(so.length > 2) out = `${so.slice(0,2)}/${so.slice(2)}`;
+  el.value = out;
+  el.classList.toggle('data--ruim', out.length===10 && brParaISO(out)===undefined);
+  if(out === '' || (out.length===10 && brParaISO(out)!==undefined)) aoCompletar();
+}
+
 function salvar(id){
   const i = dados.frentes.flatMap(f=>f.itens).find(x=>x.id===id);
+  // ⚠️ `undefined` = digitado e inválido -> NÃO salva. `null` = vazio, que é
+  // uma escolha legítima (tirar o prazo). Tratar os dois igual apagaria o
+  // prazo de quem só errou a digitação.
+  const iso = brParaISO($('p'+id)?.value);
+  if(iso === undefined){ avisar('Data inválida — use dd/mm/aaaa.','erro'); return; }
   enviar(`/demandas/api/${TOKEN}/item/${id}`,{
-    prazo: $('p'+id)?.value || null,
+    prazo: iso,
     sem_prazo: false,
     obs: $('o'+id) ? $('o'+id).value : (i?.obs ?? null),
     quem: nome()});
@@ -529,7 +589,17 @@ async function confirmarModal(){
     }
     if(!sel.pessoa){ erro.textContent='Escolha o responsável.'; return; }
   }
-  const acao=window._confirmar; fecharModal(); await acao(txt,sel.pessoa);
+  /* 🚨 GUARDAR A PESSOA ANTES DE FECHAR — corrigido em 2026-08-07.
+     `fecharModal()` zera o `sel`, e `sel.pessoa` era lido DEPOIS: argumento só
+     é avaliado na hora da chamada. `pessoa_id` saía `null` em todo card e toda
+     etapa, e o backend devolvia 422 sem a tela explicar nada.
+
+     ⚠️ O MESMO defeito estava em `demandas.html`, na mesma linha: os dois
+     arquivos são cópia um do outro. Corrigir num só teria deixado metade dos
+     quadros quebrada -- e este é o custo, já previsto, de os dois quadros
+     serem cópias em vez de duas vistas do mesmo código. */
+  const acao=window._confirmar; const pessoaEscolhida=sel.pessoa;
+  fecharModal(); await acao(txt,pessoaEscolhida);
 }
 
 function novaPessoaSolo(){
