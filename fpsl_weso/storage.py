@@ -792,3 +792,29 @@ async def limpar_chamadas_antigas() -> int:
         cur = conn.execute("DELETE FROM harmonit_chamadas WHERE momento < ?", (corte,))
         conn.commit()
         return cur.rowcount
+
+
+# ── De-para modelo da WESO -> produto do Harmonit ────────────────────────────
+# 🚨 SINCRONO DE PROPOSITO. E lido de dentro de `_montar_operacoes`, que e
+# sincrona. Envolver em executor so para manter o padrao async obrigaria a
+# tornar toda a montagem assincrona sem ganho nenhum -- sqlite3 e sincrono de
+# qualquer jeito e a consulta e por indice.
+
+def produto_do_modelo(modelo: str) -> dict | None:
+    """Produto do Harmonit para um modelo de rastreador da WESO, ou None.
+
+    None e "nao ha de-para", e NUNCA bloqueia: sem produto a OS sai com o
+    equipamento apenas na descricao. Modelos sem produto no catalogo do
+    Harmonit (TK-100, ST500, NT2x, Concox...) sao exatamente esse caso.
+    """
+    alvo = str(modelo or "").strip()
+    if not alvo:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT harmonit_produto_id, harmonit_descricao, valor_patrimonial "
+            "FROM painel_modelos_produto WHERE modelo_weso = ? COLLATE NOCASE",
+            (alvo,)).fetchone()
+    if not row or not row[0]:
+        return None
+    return {"harmonit_id": row[0], "descricao": row[1], "valor": row[2] or 0.0}

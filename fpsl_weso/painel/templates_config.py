@@ -113,6 +113,24 @@ PERFIS = {
         "tipo_id": 77,        # "Upgrade" -- confirmado (nome bate exato)
         "problema_id": 7484,  # "UPGRADE" -- confirmado (nome bate exato). Existe também 7612 "UPGRADE 4G" mais específico.
         "os_por_placa": 1,
-        "descricao_template": "Upgrade: {placa} | {veiculo} | {serie} | TERMO {termo}",
+        # 🚨 UPGRADE NAO E SUBSTITUICAO. Na Substituicao muda o VEICULO (o
+        # equipamento vai do veiculo A para o B, os dois reais, os dois no
+        # documento) e sao 2 OS. No Upgrade muda o EQUIPAMENTO e o veiculo e o
+        # mesmo -- por isso 1 OS so, na placa real.
+        #
+        # A placa `-UPGRADE` e um RECIPIENTE DE TESTE que o setor de
+        # configuracao cria na WESO para vincular o equipamento novo antes de
+        # ele ir a campo. NAO entra como veiculo da OS: entra so como chave
+        # para descobrir a serie do que entra.
+        "placa_teste_sufixo": "-UPGRADE",
+        # Confere que o recipiente pertence AO TERMO SUBIDO. Placa que ja
+        # passou por upgrade antes tem recipiente VELHO com outro termo; sem
+        # esta conferencia pegariamos a serie do equipamento anterior, em
+        # silencio. Pedido do usuario em 13/08.
+        "placa_teste_descricao": "TERMO {termo}",
+        # 🚨 No upgrade o modelo que interessa e o que ENTRA -- por isso o
+        # `modelo_origem` aponta para o recipiente de teste, nao para a placa.
+        "modelo_origem": "placa_teste",
+        "descricao_template": "Upgrade: {placa} | {veiculo} | SAIRÁ: {serie} ({modelo_saida}) | ENTRARÁ: {serie_entrada} ({modelo}) | TERMO {termo}",
     },
 }

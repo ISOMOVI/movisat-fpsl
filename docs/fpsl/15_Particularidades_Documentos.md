@@ -159,7 +159,7 @@ O rótulo **faz parte do valor** (conferido ao vivo em 07/08):
 | No termo | Na WESO |
 |---|---|
 | `... 2023 - SERIE 16994` | `SERIE 16994` |
-| `... - Chassi:1BM6115J JMD002601` | `Chassi: 1BM6115JJMD002601` |
+| `... - Chassi:1BM6115J JMD002601` | `CHASSI: 1BM6115JJMD002601` |
 
 `_identificador_nao_convencional` extrai o trecho a partir do rótulo
 (`SÉRIE`/`CHASSI`), mantendo-o, e marca `placa_convencional: False` — que a
@@ -184,3 +184,144 @@ via API (junto com espaços e `(RD)`) continua pendente.
 
 Fixture de regressão: `tests/fixtures/upgrade_4g_8800.pdf`, com asserções que
 travam explicitamente **"não inventa RFD 2447"** e **"não inventa FMS 3078"`.
+
+---
+
+## Upgrade — a placa-recipiente de teste (termo 8820, 2026-08-13)
+
+### 🚨 UPGRADE NÃO É SUBSTITUIÇÃO
+
+A diferença é o que muda, e ela decide o desenho inteiro:
+
+| | Substituição | Upgrade |
+|---|---|---|
+| O que muda | o **veículo** | o **equipamento** |
+| O equipamento | sai do veículo A e vai para o veículo B | sai e entra **no mesmo veículo** |
+| A placa que "entra" | outra placa **real**, que vem no documento | placa **genérica de teste**, que **não** vem no documento |
+| É o destino? | sim, permanente | **não** — é bancada |
+| OS | 2 por placa (retirada + instalação) | **1**, na placa real |
+
+No Upgrade o setor de configuração cria na WESO uma placa derivada e vincula
+nela o equipamento novo, **para testar antes de ir a campo**. Conferido ao vivo
+em 13/08:
+
+| Placa real | Rastreador hoje (SAI) | Recipiente | Descrição | Rastreador novo (ENTRA) |
+|---|---|---|---|---|
+| OOM 3895 | `356354872585899` — XT40 | ` OOM3895-UPGRADE` | TERMO 8820 | `356354871410958` — XT40 Portátil |
+| OOM 4131 | `356354872583936` — XT40 | `OOM4131-UPGRADE` | TERMO 8820 | `356354871411980` — XT40 Portátil |
+
+`XT40 → XT40 Portátil` é exatamente a "migração do rastreador fixo para
+rastreador móvel" do cabeçalho do termo.
+
+⚠️ **O RECIPIENTE NUNCA VIRA VEÍCULO DA OS.** Se virar, a OS sai mandando
+instalar em veículo que não existe — mesma família do `RFD 2447`: dado
+plausível apontando para lugar nenhum. Ele entra só como **chave** para
+descobrir a série do equipamento que entra, e é descartado depois.
+
+### A regra de derivação
+
+```
+placa_teste("OOM 4131", "-UPGRADE")  ->  "OOM4131-UPGRADE"
+```
+
+Tira espaço, sobe a caixa, acrescenta o sufixo. O sufixo mora em
+`templates_config.PERFIS["upgrade"]["placa_teste_sufixo"]` — não está
+espalhado no código.
+
+⚠️ **O ` OOM3895-UPGRADE` está gravado na WESO com espaço na frente** (erro de
+digitação de quem cadastrou; `chave_placa` saiu limpo). Não quebra nada porque
+a busca normaliza, mas some de qualquer consulta por `placa` exata.
+
+### 🚨 A conferência de termo
+
+Pedido do usuário em 13/08, e é a trava que importa:
+
+> **placa que já passou por upgrade antes tem um recipiente VELHO na WESO**,
+> com a descrição do termo anterior. Sem conferir, a OS sairia com a série do
+> equipamento **passado** — plausível, errada e silenciosa.
+
+`_conferir_placas_teste` compara a `descricao` do recipiente com
+`TERMO {termo}` do documento subido.
+
+⚠️ **AUSÊNCIA NÃO BLOQUEIA, CONTRADIÇÃO BLOQUEIA.** `descricao_da_placa`
+devolve `None` para "não sei" — cache fora do ar, ou recipiente que o setor de
+configuração ainda não criou. Aí vale o best-effort da casa: a descrição sai
+com o marcador de série não localizada e a OS é gerada. Só descrição
+**divergente**, que é prova positiva de recipiente errado, devolve 400.
+
+Provado no teste: `GCW9H80-UPGRADE` devolve `TERMO 8824` — recipiente de outro
+termo é reconhecido como outro.
+
+### A descrição resultante
+
+```
+Upgrade: OOM 4131 | SR/FACCHINI SRF CA, DIESEL, 2015/2016, CINZA | SAIRÁ: 356354872583936 | ENTRARÁ: 356354871411980 | TERMO 8820
+```
+
+O "id do equipamento" é o **número de série** do rastreador — mesma convenção
+já usada no perfil agrupado da Transferência (`14_Painel_OS.md`).
+
+### Onde mexeu
+
+- `painel/equipamentos.py` — `placa_teste()` e `descricao_da_placa()`
+- `painel/templates_config.py` — perfil `upgrade`: sufixo, modelo de descrição
+  do recipiente e template com SAIRÁ/ENTRARÁ
+- `painel/routers/os_router.py` — `_serie_que_entra()`, `_conferir_placas_teste()`,
+  o recipiente entra na busca de seriais, e **`import re`**, que faltava
+
+🚨 **O `import re` faltava e o `py_compile` passou.** Só pegou porque o deploy
+manda importar de verdade. É a 5ª vez que esse defeito aparece no projeto.
+
+### Validado antes de implantar
+
+- teste novo `tests/teste_upgrade_8820.py`: **26 verificações**, fixture
+  `tests/fixtures/upgrade_8820.pdf`;
+- suítes existentes sem regressão: regressão 57, continuação 11, placas 72,
+  disjuntor 2, higiene de placas;
+- descrição montada ponta a ponta com dado real das duas placas.
+
+
+### Padronização do rótulo de chassi — 2026-08-13
+
+🚨 **O rótulo agora é `CHASSI: ` em caixa alta, com dois pontos e um espaço.**
+Decisão do usuário. Antes a base tinha cinco grafias: `Chassi:`, `CHASSI `,
+`CHASSI:` sem espaço, `CHSS:` e nenhuma.
+
+**41 registros alterados** na WESO (`POST /Veiculos/Atualizar`), sendo 32
+chassis que estavam **crus, sem rótulo nenhum** — esses veículos nunca eram
+reconhecidos automaticamente num termo, porque a regra de 07/08 só aceita
+identificador não convencional com rótulo explícito. Agora são.
+
+**Regra: chassi é 17 alfanuméricos.** Sem exceção, e por um motivo medido: a
+primeira versão do levantamento usou "9 a 20 caracteres, token único" e teria
+transformado em chassi os recipientes `-UPGRADE`, a `TAG identificação` e os
+códigos `OBD 4G`. Duas armadilhas de coincidência apareceram e as duas foram
+pegas pela lista de convenções intocáveis:
+
+| Valor | Normalizado | Por que NÃO é chassi |
+|---|---|---|
+| `TRATOR MF3147165M1` | 17 chars | "TRATOR" é a palavra; o apelido já é MASSEY FERGUSON |
+| `A DEFINIR TERMO 8831` | 17 chars | é o placeholder de termo |
+
+⚠️ **Ficaram de fora, por decisão:** 4 registros já rotulados mas com número de
+6 a 9 caracteres (`CHASSI 806587`, `CHASSI:17100057`, `CHSS: NAAH22440`,
+`CHASSI 9B03414GW`), e os 70 códigos internos de frota (`EGP NN`, `MH0N`,
+`RP 0N`, `TC55`).
+
+⚠️ **A chave normalizada MUDOU** nesses 41: `9BWKB45U8KP018607` virou
+`CHASSI9BWKB45U8KP018607`. Não quebra o casamento com o termo porque o termo
+**também escreve o rótulo** (`Chassi:1BM6115J JMD002601`), e o
+`placas.normalizar` sobe a caixa — os dois lados chegam em
+`CHASSI1BM6115JJMD002601`. Foi justamente a WESO que estava sem o rótulo.
+
+**Ferramenta:** `rotular_chassi_weso.py`, irmão do `normalizar_espacos_placas.py`
+(29/07) e do `corrigir_placas_espaco.py` (27/07) — mesma disciplina: dry-run por
+padrão, `--somente <id>` para validar um antes do lote, relê o estado depois de
+cada escrita, aborta se o `rastreador_id` mudar, exclui colisões e imprime o
+comando de reversão.
+
+🚨 **Erro que quase passou em silêncio:** a primeira versão lia `veiculos` na
+raiz da resposta, mas o envelope é `{"Data": {"veiculos": [...]}}`. Resultado:
+**base vazia, zero registros, nenhum erro** — o dry-run disse "0 a alterar" e
+parecia sucesso. Mesma família do `{sumario, lista}` do Harmonit. O script agora
+aborta se a base vier vazia.

@@ -1,4 +1,5 @@
 """Rotas do painel de geração de OS por contrato."""
+import re
 import io
 import logging
 from collections import Counter
@@ -19,7 +20,9 @@ from ..templates_config import (
     PRIORIDADE_NORMAL_ID,
 )
 from ..pdf_extractor import extrair_campos
-from ..equipamentos import buscar_seriais, serie_de
+from ..equipamentos import (buscar_seriais, descricao_da_placa,
+                            modelo_da_placa, modelo_efetivo, placa_teste,
+                            serie_de, tem_leitor_rfid)
 from ...harmonit_client import harmonit_get, harmonit_post
 from ... import storage
 
@@ -389,13 +392,23 @@ def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict
     operacoes = []
     for idx, p in enumerate(body.placas):
         materiais_placa = alocacao[idx]
+        # O equipamento que a WESO diz estar/entrar nesta placa vira material.
+        equip = _material_do_equipamento(perfil, p.placa, materiais_placa)
+        if equip:
+            materiais_placa = list(materiais_placa) + [equip]
 
         if perfil["os_por_placa"] == 1:
             operacoes.append({
                 "cliente_id": body.cliente_id,
                 "placa": p.placa, "veiculo": p.veiculo,
                 "tipo_id": perfil["tipo_id"], "problema_id": perfil["problema_id"],
-                "descricao": perfil["descricao_template"].format(placa=p.placa, veiculo=p.veiculo, termo=body.termo, serie=serie_de(seriais, p.placa)),
+                "descricao": perfil["descricao_template"].format(
+                    placa=p.placa, veiculo=p.veiculo, termo=body.termo,
+                    serie=serie_de(seriais, p.placa),
+                    serie_entrada=_serie_que_entra(perfil, seriais, p.placa),
+                    modelo=_modelo_da_operacao(perfil, p.placa, materiais_placa),
+                    modelo_saida=modelo_efetivo(modelo_da_placa(p.placa),
+                                                tem_leitor_rfid(materiais_placa))),
                 "rotulo": perfil["label"],
                 "materiais": materiais_placa,
             })
@@ -653,7 +666,13 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         # deixa o marcador e nao impede a geracao.
         todas = [p.placa for p in body.placas]
         todas += [p.placa_entrada for p in body.placas if getattr(p, "placa_entrada", None)]
+        # Upgrade: a serie do equipamento que ENTRA vive na placa-recipiente de
+        # teste (`OOM4131-UPGRADE`). Ela entra aqui SO para a busca resolver --
+        # nao vira veiculo de OS nenhuma.
+        if perfil.get("placa_teste_sufixo"):
+            todas += [placa_teste(p.placa, perfil["placa_teste_sufixo"]) for p in body.placas]
         seriais = await buscar_seriais(todas)
+        _conferir_placas_teste(body, perfil)
         operacoes = _montar_operacoes(body, perfil, alocacao, seriais)
         for op in operacoes:
             # Materiais finais: serviço do cabeçalho (sem flag) + alocados +
@@ -716,3 +735,115 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         criadas.append(resultado_fin)
 
     return {"simulado": False, "total_os": len(todas), "resultados": criadas, "avisos": avisos}
+
+
+def _serie_que_entra(perfil: dict, seriais: dict, placa: str) -> str:
+    """Serie do equipamento que ENTRA, via placa-recipiente de teste.
+
+    Vazio nos perfis que nao usam recipiente -- `str.format` ignora chave que
+    o template nao cita, entao passar sempre e mais simples que ramificar.
+    """
+    sufixo = perfil.get("placa_teste_sufixo")
+    if not sufixo:
+        return ""
+    return serie_de(seriais, placa_teste(placa, sufixo))
+
+
+def _norm_desc(t: str) -> str:
+    return re.sub(r"\s+", " ", str(t or "")).strip().upper()
+
+
+def _conferir_placas_teste(body, perfil: dict) -> None:
+    """🚨 A placa-recipiente tem que ser DESTE termo.
+
+    Placa que ja passou por upgrade antes deixa um recipiente velho na WESO,
+    com a descricao do termo ANTERIOR. Sem esta conferencia a OS sairia com a
+    serie do equipamento passado -- plausivel, errada e silenciosa, que e como
+    nasceram o `RFD 2447` e o card de ano 0002.
+
+    ⚠️ AUSENCIA NAO BLOQUEIA, CONTRADICAO BLOQUEIA. `descricao_da_placa`
+    devolve None para "nao sei" (cache fora, recipiente ainda nao criado pelo
+    setor de configuracao) -- ai vale o best-effort da casa e a descricao sai
+    com o marcador de serie nao localizada. So descricao DIVERGENTE, que e
+    prova positiva de recipiente errado, derruba a geracao.
+    """
+    sufixo = perfil.get("placa_teste_sufixo")
+    if not sufixo:
+        return
+    modelo = perfil.get("placa_teste_descricao") or "TERMO {termo}"
+    esperado = modelo.format(termo=body.termo)
+    for p in body.placas:
+        pt = placa_teste(p.placa, sufixo)
+        achado = descricao_da_placa(pt)
+        if achado is None:
+            continue
+        if _norm_desc(achado) != _norm_desc(esperado):
+            raise HTTPException(
+                400,
+                f"Placa {p.placa}: o recipiente de teste {pt} na WESO esta como "
+                f"{achado!r}, mas o termo subido e {esperado!r}. Provavelmente e "
+                f"o recipiente de um upgrade ANTERIOR desta placa -- gerar assim "
+                f"colocaria na OS a serie do equipamento antigo. Confira com o "
+                f"setor de configuracao antes de gerar.")
+
+
+def _modelo_da_operacao(perfil: dict, placa: str, materiais: list[dict]) -> str:
+    """Modelo do rastreador para a descricao da OS, lido da WESO.
+
+    🚨 IGNORA O VINCULO PARA ESTE ITEM, por decisao do usuario (13/08): o
+    vinculo diz o que o TERMO escreveu, a WESO diz o que ESTA no veiculo.
+
+    Qual placa se le depende do perfil:
+      upgrade ......... o recipiente `<PLACA>-UPGRADE` (o que ENTRARA)
+      demais .......... a propria placa da operacao (o que ESTIVER)
+
+    ⚠️ Cliente novo nao tem o que ler -- e instalacao nova, o veiculo ainda nao
+    existe na WESO. Ali o marcador aparece, e e honesto: nao ha equipamento.
+    """
+    origem = perfil.get("modelo_origem")
+    alvo = placa
+    if origem == "placa_teste" and perfil.get("placa_teste_sufixo"):
+        alvo = placa_teste(placa, perfil["placa_teste_sufixo"])
+    return modelo_efetivo(modelo_da_placa(alvo), tem_leitor_rfid(materiais))
+
+
+# 🚨 O EQUIPAMENTO E MATERIAL, NAO SO TEXTO. Ate 13/08 o modelo resolvido na
+# WESO ia apenas para a descricao da OS, e o material saia so com o servico do
+# cabecalho + ENTREGA OS -- foi o que o usuario achou auditando o termo 8820.
+_MARCA_RASTREADOR = ("RASTREADOR", "EQUIPAMENTO RASTREADOR")
+
+
+def _ja_tem_rastreador(materiais: list[dict]) -> bool:
+    """O termo ja trouxe um item de rastreador (via vinculo)?"""
+    for m in materiais or []:
+        d = str(m.get("descricao") or "").upper()
+        if any(marca in d for marca in _MARCA_RASTREADOR):
+            return True
+    return False
+
+
+def _material_do_equipamento(perfil: dict, placa: str, materiais: list[dict]) -> dict | None:
+    """Material do equipamento que a WESO diz estar (ou entrar) nesta placa.
+
+    ⚠️ COMODATO, NUNCA COBRA. O valor e PATRIMONIAL -- vai para a DANFE de
+    comodato, nao e preco. Mesma regra que `_resolver_vinculos` ja aplica:
+    comodato e cobrar nunca sao verdadeiros ao mesmo tempo.
+
+    ⚠️ NAO DUPLICA. Se o termo ja listou um rastreador, este material NAO e
+    acrescentado -- sairiam dois equipamentos na mesma OS. Substituir o do
+    vinculo pelo real ainda NAO foi decidido pelo usuario, e sobrescrever o que
+    o contrato escreveu sem ordem seria pior que a lacuna.
+    """
+    if not perfil.get("modelo_origem"):
+        return None
+    if _ja_tem_rastreador(materiais):
+        logger.info("equipamento: %s ja tem item de rastreador no termo -- nao acrescento", placa)
+        return None
+    modelo = _modelo_da_operacao(perfil, placa, materiais)
+    prod = storage.produto_do_modelo(modelo)
+    if not prod:
+        logger.info("equipamento: modelo %r sem produto no de-para -- fica so na descricao", modelo)
+        return None
+    return {"harmonit_id": prod["harmonit_id"], "quantidade": 1,
+            "valor_unitario": prod["valor"], "comodato": True, "cobrar": False,
+            "descricao": prod["descricao"]}

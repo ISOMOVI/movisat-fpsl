@@ -180,3 +180,117 @@ async def buscar_seriais(placas: list[str]) -> dict[str, str]:
 def serie_de(seriais: dict[str, str], placa: str) -> str:
     """Texto pronto para a descricao da OS."""
     return seriais.get(_chave(placa)) or MARCADOR_NAO_LOCALIZADO
+
+
+# ── Upgrade: a placa-recipiente de teste ─────────────────────────────────────
+# 🚨 O UPGRADE NAO TROCA DE VEICULO. Troca o equipamento do MESMO veiculo
+# (XT40 fixo -> XT40 Portatil). O setor de configuracao cria na WESO uma placa
+# derivada -- `OOM 4131` vira `OOM4131-UPGRADE`, descricao `TERMO 8820` -- e
+# vincula nela o equipamento novo para testar antes de ir a campo.
+#
+# ⚠️ ESSA PLACA NAO E DESTINO E NUNCA VIRA VEICULO DA OS. Se virar, a OS sai
+# mandando o tecnico instalar num veiculo que nao existe -- mesmo tipo de erro
+# do `RFD 2447`: dado plausivel apontando para lugar nenhum. Ela serve so como
+# CHAVE para descobrir a serie do equipamento que entra.
+
+def placa_teste(placa: str, sufixo: str) -> str:
+    """`OOM 4131` + `-UPGRADE` -> `OOM4131-UPGRADE`.
+
+    Tira o espaco e sobe a caixa, que e a grafia usada na WESO (conferido nos
+    3 registros existentes em 13/08). A busca depois normaliza de novo, entao
+    o espaco perdido do ` OOM3895-UPGRADE` -- que esta gravado com espaco na
+    frente na WESO -- nao atrapalha.
+    """
+    base = re.sub(r"\s+", "", str(placa or "").upper())
+    return f"{base}{sufixo}" if base else ""
+
+
+def descricao_da_placa(placa: str) -> str | None:
+    """Descricao do veiculo na WESO, ou None se nao deu para saber.
+
+    🚨 None significa NAO SEI, nunca "nao confere". Cache fora do ar e placa
+    inexistente sao coisas diferentes de descricao divergente, e so a ultima
+    autoriza bloquear alguma coisa.
+    """
+    c = _cache()
+    if c is None:
+        return None
+    try:
+        v = c.veiculo_por_placa(placa)
+    except Exception as exc:
+        log.warning("equipamentos: descricao de %r indisponivel: %s", placa, exc)
+        return None
+    return (v or {}).get("descricao")
+
+
+# ── Modelo do rastreador ─────────────────────────────────────────────────────
+# 🚨 O MODELO NAO VEM DO VINCULO. O vinculo (`painel_vinculos_itens`) mapeia o
+# TEXTO ESCRITO NO TERMO para um produto fixo do Harmonit: "RASTREADOR" cai
+# sempre em ST310U, "RASTREADOR 4G" sempre em XT40. Ou seja, quem decidia o
+# modelo era o vendedor que redigiu o contrato.
+#
+# Medido em 13/08: a WESO tem 15+ modelos em uso (ST310 1646, ST340 889,
+# ST300 523, XT40 153, ST4305 138, TK-100 85...) e o vinculo distingue DOIS.
+# Um veiculo com ST340 gerava OS dizendo ST310U.
+#
+# A fonte certa e a WESO, pelo ID da placa. Decisao do usuario em 13/08.
+
+MARCADOR_MODELO = "modelo nao localizado"
+
+# 🚨 ST340 COM LEITOR RFID E ST340RB. Regra do usuario (13/08).
+# ⚠️ A WESO NAO SABE DISSO: a API de rastreador devolve
+# id/numeroSerie/lote/notaFiscal/firmware/data_cadastro/modelo/situacao/tipo/
+# simcard/fornecedor -- nenhum campo de acessorio. O `acessorios` do espelho
+# esta VAZIO nos 1998 registros. Entao o RFID so pode vir do TERMO, e por isso
+# a regra depende dos itens alocados NAQUELA placa, nao do termo inteiro: num
+# termo de 10 placas, so as que recebem leitor viram RB.
+MODELO_COM_RFID = {
+    "SUNTECH ST340": "Suntech ST340RB",
+}
+
+
+def modelo_da_placa(placa: str) -> str | None:
+    """Modelo do rastreador vinculado a placa na WESO, ou None.
+
+    🚨 None e NAO SEI, nunca "nao tem". Cache indisponivel, placa ausente e
+    placa sem rastreador sao todos None -- e nenhum deles autoriza afirmar
+    modelo nenhum.
+
+    ⚠️ So o cache (sem rede). Placa cadastrada depois da ultima atualizacao do
+    cache devolve None ate o proximo ciclo. Foi decisao de projeto no
+    `buscar_seriais` nao deixar chamada de tempo imprevisivel dentro da geracao
+    de OS, e vale igual aqui.
+    """
+    c = _cache()
+    if c is None:
+        return None
+    try:
+        v = c.veiculo_por_placa(placa)
+        if not v or not v.get("rastreador_id"):
+            return None
+        r = c.rastreador_por_id(v["rastreador_id"])
+    except Exception as exc:
+        log.warning("equipamentos: modelo de %r indisponivel: %s", placa, exc)
+        return None
+    return (r or {}).get("modelo") or None
+
+
+def tem_leitor_rfid(materiais: list[dict]) -> bool:
+    """A placa recebe leitor RFID neste termo?
+
+    Olha a DESCRICAO do item, nao o harmonit_id: o id do vinculo pode ser
+    recadastrado, o texto do contrato nao. Hoje o vinculo e `LEITOR RFID`
+    (6991); `LEITOR I-BUTTON` (6984) e outro acessorio e NAO conta.
+    """
+    return any("RFID" in str(m.get("descricao") or "").upper() for m in materiais or [])
+
+
+def modelo_efetivo(modelo: str | None, tem_rfid: bool = False) -> str:
+    """Modelo pronto para a OS, ja com a regra do RB aplicada."""
+    if not modelo:
+        return MARCADOR_MODELO
+    if tem_rfid:
+        alvo = MODELO_COM_RFID.get(modelo.strip().upper())
+        if alvo:
+            return alvo
+    return modelo
