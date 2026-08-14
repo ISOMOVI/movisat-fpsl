@@ -434,9 +434,14 @@ async function extrair() {
     document.getElementById('itensRevisao').innerHTML = '';
     document.getElementById('alertaTransferencia').innerHTML = '';
     document.getElementById('clienteDestinoWrap').style.display = 'none';
-    renderPlacas();
+    document.getElementById('solucaoTecnica').value = '';
+    // ⚠️ NÃO há o que renderizar aqui. A placa da manutenção é digitada na
+    // Etapa 2 e lida direto dos campos em `_montarPayloadBase` -- a linha em
+    // branco acima existe só para o payload não sair vazio se algo falhar
+    // antes. Chamar um renderizador de placas aqui foi um ReferenceError que
+    // travava o fluxo inteiro antes de trocar de etapa.
     irPara(2);
-    validarEtapa2();
+    checarPodeAvancar();
     return;
   }
 

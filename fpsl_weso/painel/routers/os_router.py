@@ -457,16 +457,24 @@ def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict
             materiais_placa = list(materiais_placa) + [equip]
 
         if perfil["os_por_placa"] == 1:
-            # Modelo do que SAI: sempre a propria placa. Ao vivo quando ha
-            # leitura ao vivo (manutencao), cache nos perfis de contrato.
-            saida = ((dados or {}).get(_chave_placa(p.placa)) or {}).get("modelo")
+            # O que SAI: sempre a propria placa. Ao vivo quando ha leitura ao
+            # vivo (manutencao), cache nos perfis de contrato.
+            #
+            # 🚨 SERIE E MODELO PRECISAM VIR DA MESMA FONTE. O ENTRARA ja vinha
+            # ao vivo e o SAIRA vinha do cache das 04:15 -- num veiculo que
+            # trocou de equipamento no mesmo dia (a manutencao anterior, por
+            # exemplo) a OS sairia dizendo que remove uma serie que nao esta
+            # mais la. Plausivel, errada e silenciosa.
+            dado_placa = (dados or {}).get(_chave_placa(p.placa)) or {}
+            saida = dado_placa.get("modelo")
+            serie_saida = dado_placa.get("serie") or serie_de(seriais, p.placa)
             operacoes.append({
                 "cliente_id": body.cliente_id,
                 "placa": p.placa, "veiculo": p.veiculo,
                 "tipo_id": perfil["tipo_id"], "problema_id": perfil["problema_id"],
                 "descricao": perfil["descricao_template"].format(
                     placa=p.placa, veiculo=p.veiculo, termo=body.termo,
-                    serie=serie_de(seriais, p.placa),
+                    serie=serie_saida,
                     serie_entrada=_serie_que_entra(perfil, recipientes, p.placa),
                     modelo=_modelo_da_operacao(perfil, p.placa, materiais_placa,
                                                recipientes, dados),
@@ -751,7 +759,7 @@ async def _resolver_cabecalho_por_nome(perfil: dict) -> tuple[dict, list[str]]:
     return resolvido, avisos
 
 
-def _duplicar_nas_duas(itens_resolvidos: list[dict]) -> list[dict]:
+def _duplicar_nas_duas(itens_resolvidos: list[dict], n_placas: int) -> list[dict]:
     """Copia, para a OS operacional, os itens marcados `nas_duas` no vinculo.
 
     🚨 O ITEM CONTINUA COBRANDO NA FINANCEIRA -- aqui e so a copia de
@@ -760,11 +768,17 @@ def _duplicar_nas_duas(itens_resolvidos: list[dict]) -> list[dict]:
     alguem vai somar em algum relatorio, e o valor ja esta contado na
     financeira. Decisao do usuario, 14/08.
 
-    Aditivo de 100 placas com Central 24h: 100 copias operacionais (a alocacao
-    distribui 1 por veiculo) e 1 linha na financeira com a quantidade do
-    contrato.
+    🚨 A QUANTIDADE DA COPIA E O NUMERO DE PLACAS, NAO A DO CONTRATO.
+    Regra do usuario: "um aditivo de 100 placas tera o central em todos os
+    veiculos". A alocacao normal distribui pela quantidade contratada -- e um
+    termo que lista a Central como UMA linha faria a copia chegar em UM
+    veiculo, com os outros 99 sem nada e sem aviso. Medido em 14/08: qtd 1
+    para 100 placas chegava em 1. A cobranca na financeira continua com a
+    quantidade do contrato; so a copia de referencia e forcada a cobrir a
+    frota.
     """
-    return [{**i, "comodato": False, "cobrar": False, "valor_unitario": 0.0}
+    return [{**i, "comodato": False, "cobrar": False, "valor_unitario": 0.0,
+             "quantidade": max(int(n_placas), 1)}
             for i in itens_resolvidos if i.get("nas_duas") and i.get("cobrar")]
 
 
@@ -837,7 +851,8 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
             itens_financeiro = [i for i in itens_resolvidos if i["cobrar"]]
             # Item marcado `nas_duas` no vinculo aparece TAMBEM na operacional,
             # como referencia sem flag -- continua cobrando na financeira.
-            itens_operacional = itens_operacional + _duplicar_nas_duas(itens_resolvidos)
+            itens_operacional = itens_operacional + _duplicar_nas_duas(
+                itens_resolvidos, len(body.placas))
         alocacao, avisos_aloc = _alocar_itens_por_placa(itens_operacional, body.placas)
         avisos += avisos_aloc
         # Serial do rastreador para a descricao. Best-effort e fora do
