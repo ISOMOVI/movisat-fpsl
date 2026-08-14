@@ -210,6 +210,33 @@ _sem_origem = [k for k, p in templates_config.PERFIS.items()
                if not p.get("modelo_origem")]
 checar("todos os perfis leem a WESO para o modelo", [], _sem_origem)
 
+
+# ── 9. o valor patrimonial nao se perde na substituicao (14/08) ──────────────
+# 🚨 ZERO NAO E "VALE NADA", E "NAO SEI". O de-para so tem valor nos modelos 4G;
+# nos 2G a coluna e NULL, e `produto_do_modelo` devolve `row[2] or 0.0` -- ou
+# seja, chega 0.0 e nao None. Testar `is not None` nunca herdava, e o comodato
+# saia com R$ 0,00 enquanto o contrato dizia R$ 1.100,00. O valor vai para a
+# DANFE de comodato: zero ali e numero errado em documento fiscal.
+print("\n[9] o valor patrimonial sobrevive a substituicao")
+
+_perfil_placa = {"label": "teste", "os_por_placa": 1, "modelo_origem": "placa"}
+_do_termo = [{"descricao": "RASTREADOR", "harmonit_id": 20314, "quantidade": 1,
+              "valor_unitario": 1100.0, "comodato": True, "cobrar": False}]
+
+_novo = os_router._material_do_equipamento(_perfil_placa, "GJN 8689", _do_termo)
+checar("achou o equipamento da placa real", True, _novo is not None)
+if _novo:
+    checar("herdou o valor do item do contrato", 1100.0, _novo["valor_unitario"])
+    checar("e continua comodato", True, _novo["comodato"])
+    checar("sem cobrar", False, _novo["cobrar"])
+
+# ⚠️ Sem item de contrato para herdar, o valor fica 0 -- e honesto: nao ha
+# de onde tirar. O que nao pode e PERDER um valor que existia.
+_sem_termo_algum = os_router._material_do_equipamento(_perfil_placa, "GJN 8689", [])
+if _sem_termo_algum:
+    checar("sem nada para herdar, o valor e 0", 0.0,
+           _sem_termo_algum["valor_unitario"])
+
 print()
 print(f"{ok} verificações OK, {len(falhas)} falha(s)")
 if falhas:

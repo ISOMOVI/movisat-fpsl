@@ -398,21 +398,35 @@ function progresso(etapas) {
     document.querySelector('.panel.active').prepend(cx);
   }
   let atual = 0;
+  const t0 = Date.now();
   const desenhar = () => {
+    // 🚨 O RELÓGIO EXISTE PARA A ESPERA LONGA. A consulta à WESO oscila muito
+    // (medido em 14/08: de 1s a 33s para a mesma coisa), e sem nada se mexendo
+    // na tela quem está usando conclui que travou e clica de novo. Segundo que
+    // anda é a diferença entre "está trabalhando" e "morreu".
+    const seg = Math.floor((Date.now() - t0) / 1000);
+    const relogio = seg >= 3
+      ? `<div style="margin-top:6px;opacity:.7">${seg}s — a WESO às vezes demora; não feche nem clique de novo</div>`
+      : '';
     cx.innerHTML = etapas.map((e, i) => {
       if (i < atual) return `<div>✓ ${escapeHtml(e)}</div>`;
       if (i === atual) return `<div><span class="spinner"></span> ${escapeHtml(e)}</div>`;
       return `<div style="opacity:.45">· ${escapeHtml(e)}</div>`;
-    }).join('');
+    }).join('') + relogio;
   };
   desenhar();
   // Avança a marcação a cada 3s -- é o limiar que o usuário pediu para o
   // ícone de carregamento aparecer, e serve de régua honesta: se a etapa
   // durar menos, ninguém a vê; se travar, fica visível onde travou.
+  // ⚠️ Redesenha a cada segundo (para o relógio andar) mas só AVANÇA a etapa a
+  // cada 3s -- que é o limiar em que a espera passa a incomodar.
   if (_progressoTimer) clearInterval(_progressoTimer);
+  let tique = 0;
   _progressoTimer = setInterval(() => {
-    if (atual < etapas.length - 1) { atual += 1; desenhar(); }
-  }, 3000);
+    tique += 1;
+    if (tique % 3 === 0 && atual < etapas.length - 1) atual += 1;
+    desenhar();
+  }, 1000);
 }
 
 document.getElementById('arquivo').addEventListener('change', (e) => {

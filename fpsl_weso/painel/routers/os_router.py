@@ -1272,10 +1272,15 @@ def _material_do_equipamento(perfil: dict, placa: str, materiais: list[dict],
     # ⚠️ O de-para so tem valor patrimonial nos modelos 4G; nos 2G e None. Ao
     # substituir, herda o valor do item do contrato que esta saindo -- senao a
     # OS trocaria um valor patrimonial real por vazio.
+    # 🚨 ZERO AQUI E "NAO SEI", NAO "VALE NADA". `produto_do_modelo` devolve
+    # `row[2] or 0.0`, entao o de-para sem valor chega como 0.0 e nao como
+    # None -- testar `is not None` nunca herdava nada, e o comodato saia
+    # zerado. Achado em 14/08 ensaiando a Substituicao: o ST310U saiu com
+    # R$ 0,00 enquanto o contrato dizia R$ 1.100,00.
     substituidos = [m for m in materiais or [] if _eh_rastreador(m)]
     herdado = next((m.get("valor_unitario") for m in substituidos
                     if m.get("valor_unitario")), 0.0)
-    valor = prod["valor"] if prod["valor"] is not None else herdado
+    valor = prod["valor"] or herdado
     return {"harmonit_id": prod["harmonit_id"], "quantidade": 1,
             "valor_unitario": 0.0 if sem_flags else (valor or 0.0),
             "comodato": not sem_flags, "cobrar": False,
