@@ -24,15 +24,16 @@ ABAS = [
         "sensivel": False,
         "somente_owner": False,
     },
-    {
-        "id": "placas",
-        "nome": "Placas",
-        "rota": "/painel/placas",
-        "icone": "bi-car-front",
-        "descricao": "Confere quais placas do termo existem na WESO e cria as que faltam.",
-        "sensivel": False,
-        "somente_owner": False,
-    },
+    # 🚨 A ABA `placas` FOI REMOVIDA EM 2026-08-14, a pedido do usuário: "não
+    # tem motivo para existir, nunca pedi ela". Ela era permissão que não
+    # protegia nada -- nenhuma rota a exigia, porque o `placas_router` sempre
+    # pediu `gerar_os`. Na prática: quem recebia só "Placas" via a aba e não
+    # conseguia usar; quem tinha "Gerar OS" criava placa na WESO sem ter
+    # recebido "Placas". Aba que ninguém exige é permissão de mentira.
+    #
+    # ⚠️ A TELA `/painel/placas` e o `placas_router` CONTINUAM DE PÉ, agora sem
+    # link na barra lateral. Quem tem `gerar_os` alcança pela URL. Não apaguei
+    # por conta própria -- apagar tela é outra decisão.
     {
         "id": "vinculos",
         "nome": "Vínculos",

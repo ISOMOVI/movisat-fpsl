@@ -346,6 +346,53 @@ def _orfas(caminho):
 for pagina in ("gerar_os.html", "vinculos.html"):
     checar(f"{pagina}: nenhuma chamada órfã", [], _orfas(RAIZ / "frontend" / pagina))
 
+# ── 9b. a caixa de progresso aguenta o que lhe mandam ────────────────────────
+# 🚨 DEFEITO REAL, achado pelo usuário testando em 14/08: `progresso()` passou a
+# receber uma LISTA de etapas, e uma chamada antiga ficou passando STRING.
+# String tem `.length` (não caiu no early return) e não tem `.map` -- o
+# TypeError estourava antes do `fetch`, FORA do try, e a tela não fazia nada:
+# nem erro, nem mensagem, nem botão liberado. A extração de termo parou de
+# funcionar e nada apareceu em log nenhum.
+#
+# ⚠️ O detector de chamada órfã acima NÃO pega isto: a função existe, o
+# problema é o TIPO do argumento. Por isso a função roda de verdade aqui.
+import json  # noqa: E402
+import subprocess  # noqa: E402
+
+_JS_TESTE = r"""
+const fs = require("fs");
+// argv[0]=node, argv[1]=este script, argv[2]=o HTML. Usar argv[1] fazia ele
+// ler a si mesmo, não achar <script> nenhum, e reprovar por "not defined".
+const html = fs.readFileSync(process.argv[2], "utf8");
+const src = html.split("<script>").slice(1).map(p => p.split("</script>")[0]).join("\n");
+const ini = src.indexOf("let _progressoTimer");
+const fim = src.indexOf("\n}", src.indexOf("function progresso")) + 2;
+global.document = {getElementById: () => null, createElement: () => ({}),
+                   querySelector: () => ({prepend(){}})};
+global.escapeHtml = s => s;
+global.setInterval = () => 1; global.clearInterval = () => {};
+eval(src.slice(ini, fim));
+const r = {};
+for (const [rot, arg] of [["string", "texto"], ["lista", ["a","b"]], ["null", null]]) {
+  try { progresso(arg); r[rot] = "ok"; } catch (e) { r[rot] = e.message; }
+}
+console.log(JSON.stringify(r));
+"""
+
+_js = RAIZ / "tests" / ".progresso_check.js"
+try:
+    _js.write_text(_JS_TESTE, encoding="utf-8")
+    _saida = subprocess.run(["node", str(_js), str(RAIZ / "frontend" / "gerar_os.html")],
+                            capture_output=True, text=True, timeout=30)
+    _r = json.loads(_saida.stdout or "{}")
+    checar("progresso() aceita LISTA de etapas", "ok", _r.get("lista"))
+    checar("progresso() aceita texto solto (era o defeito)", "ok", _r.get("string"))
+    checar("progresso() aceita null para fechar", "ok", _r.get("null"))
+except FileNotFoundError:
+    print("  (node ausente -- checagem da caixa de progresso pulada)")
+finally:
+    _js.unlink(missing_ok=True)
+
 # O detector precisa PEGAR o defeito, não só passar quando está tudo certo.
 _falso = "function a(){ b(); }"
 checar("o detector acha chamada inexistente", True,

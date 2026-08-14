@@ -173,21 +173,19 @@ async def main():
             print("\n[7] toda aba concedível é exigida por alguma rota")
             # 🚨 ABA QUE NINGUÉM EXIGE É PERMISSÃO QUE NÃO PROTEGE NADA.
             #
-            # ⚠️ EXCEÇÃO MEDIDA EM 14/08: a aba `placas` existe no catálogo,
-            # aparece na barra lateral e pode ser concedida -- mas NENHUMA rota
-            # a exige. O `placas_router` pede `gerar_os`. Na prática: quem
-            # recebe só "Placas" vê a aba e não consegue usar; e quem tem
-            # "Gerar OS" cria placa na WESO sem ter recebido "Placas".
-            # Não corrijo por conta própria -- mudar quem pode o quê é decisão
-            # do usuário. Fica travado aqui para não se perder, e o teste
-            # reprova se aparecer uma órfã NOVA ou se esta for resolvida.
-            ORFAS_CONHECIDAS = {"placas"}
+            # ⚠️ HOUVE UMA ÓRFÃ ATÉ 14/08: a aba "placas", que aparecia no
+            # catálogo e na barra lateral mas que rota nenhuma exigia -- o
+            # placas_router sempre pediu "gerar_os". Quem recebia só "Placas"
+            # via a aba e não conseguia usar; quem tinha "Gerar OS" criava
+            # placa na WESO sem ter recebido "Placas". Foi REMOVIDA a pedido do
+            # usuário: "não tem motivo para existir, nunca pedi ela".
+            #
+            # O conjunto abaixo ficou vazio de propósito: se voltar a ter
+            # alguma coisa, é porque nasceu permissão que não protege nada.
             exigidas = {aba for _m, _r, aba, _c, _e in ROTAS}
             concediveis = {a["id"] for a in ABAS if not a.get("somente_owner")}
-            checar("nenhuma aba NOVA ficou sem rota que a exija",
-                   set(), concediveis - exigidas - ORFAS_CONHECIDAS)
-            checar("a órfã conhecida continua sendo só a `placas`",
-                   ORFAS_CONHECIDAS, concediveis - exigidas)
+            checar("nenhuma aba concedível ficou sem rota que a exija",
+                   set(), concediveis - exigidas)
     finally:
         limpar_usuario()
         # 🚨 A prova de que apagou é RELER, não o retorno do DELETE.

@@ -49,15 +49,17 @@ async def main():
         me = r.json()
         checar("me responde 200", r.status_code == 200, r.text[:120])
         checar("owner=True", me.get("owner") is True)
-        # 7 abas desde 2026-07-29 (entrou "placas"). Numero travado de proposito:
-        # se alguem adicionar aba sem pensar em permissao, o teste avisa.
-        checar("owner enxerga as 8 abas", len(me.get("abas", [])) == 8, str(len(me.get("abas", []))))
+        # 🚨 NUMERO TRAVADO DE PROPOSITO: aba nova sem pensar em permissao faz
+        # o teste avisar. Eram 8 ate 14/08, quando a aba "placas" saiu -- ela
+        # nao era exigida por rota nenhuma, entao nao protegia nada.
+        checar("owner enxerga as 7 abas", len(me.get("abas", [])) == 7, str(len(me.get("abas", []))))
 
         r = await c.get("/painel/api/usuarios/abas", headers=h_owner)
         catalogo = r.json()
         ids = [a["id"] for a in catalogo]
-        checar("catalogo tem 6 abas concediveis", len(catalogo) == 6, str(ids))
-        checar("placas E concedivel", "placas" in ids, str(ids))
+        checar("catalogo tem 5 abas concediveis", len(catalogo) == 5, str(ids))
+        # a aba `placas` saiu do catalogo em 14/08 -- ver abas.py
+        checar("placas NAO e mais concedivel", "placas" not in ids, str(ids))
         checar("usuarios NAO e concedivel", "usuarios" not in ids)
         checar("config NAO e concedivel (so owner)", "config" not in ids, str(ids))
 

@@ -378,6 +378,13 @@ async function preencherServicoPadrao(nome) {
 // chamada de rede é chute, e chute que parece medida é pior que nada.
 let _progressoTimer = null;
 function progresso(etapas) {
+  // 🚨 ACEITA TEXTO TAMBÉM, DE PROPÓSITO. Esta função passou a receber uma
+  // LISTA de etapas em 14/08, e uma chamada antiga ficou passando string.
+  // String tem `.length` (não caiu no early return) e NÃO tem `.map` — o
+  // TypeError estourava antes do `fetch`, FORA do try, e a tela não fazia
+  // nada: nem erro, nem mensagem, nem botão liberado. Foi assim que a
+  // extração de termo parou de funcionar sem ninguém ver.
+  if (typeof etapas === 'string') etapas = [etapas];
   let cx = document.getElementById('progressoCaixa');
   if (!etapas || !etapas.length) {
     if (_progressoTimer) { clearInterval(_progressoTimer); _progressoTimer = null; }
@@ -449,10 +456,12 @@ async function extrair() {
   if (!arquivo) { alert('Escolha um PDF primeiro.'); return; }
   const btn = document.getElementById('btnExtrair');
   btn.disabled = true; btn.textContent = 'Extraindo...';
-  progresso('Lendo o documento e extraindo placas e itens...');
   const fd = new FormData();
   fd.append('arquivo', arquivo);
   try {
+    // ⚠️ DENTRO do try. Fora dele, qualquer erro aqui some sem mensagem.
+    progresso(['Lendo o documento', 'Extraindo placas e itens',
+               'Conferindo os vínculos']);
     const res = await fetch(`/painel/api/extrair?perfil=${perfil}`, { method: 'POST', headers: auth(), body: fd });
     if (!res.ok) throw new Error((await res.json()).detail || 'Falha na extração');
     extraido = await res.json();
