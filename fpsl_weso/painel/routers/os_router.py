@@ -2,6 +2,7 @@
 import re
 import io
 import logging
+import unicodedata
 from collections import Counter
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
@@ -20,9 +21,12 @@ from ..templates_config import (
     PRIORIDADE_NORMAL_ID,
 )
 from ..pdf_extractor import extrair_campos
-from ..equipamentos import (buscar_seriais, descricao_da_placa,
+from ..equipamentos import (MARCADOR_NAO_LOCALIZADO, MARCADOR_SERIE_A_PREENCHER,
+                            buscar_recipientes, buscar_seriais, dados_das_placas,
+                            descricao_da_placa, liberar_recipiente,
                             modelo_da_placa, modelo_efetivo, placa_teste,
                             serie_de, tem_leitor_rfid)
+from ..equipamentos import _chave as _chave_placa
 from ...harmonit_client import harmonit_get, harmonit_post
 from ... import storage
 
@@ -33,7 +37,13 @@ router = APIRouter(prefix="/painel/api", tags=["painel"])
 @router.get("/perfis")
 async def listar_perfis(_=Depends(requer_aba("gerar_os", "vinculos"))):
     return {
-        chave: {"label": p["label"], "os_por_placa": p["os_por_placa"], "agrupado": p.get("agrupado", False)}
+        chave: {"label": p["label"], "os_por_placa": p["os_por_placa"],
+                "agrupado": p.get("agrupado", False),
+                # `sem_termo` é o que a Etapa 1 usa para esconder o campo de
+                # anexo: sem documento não há o que extrair.
+                "sem_termo": p.get("sem_termo", False),
+                "sem_financeira": p.get("sem_financeira", False),
+                "produto_servico_nome": p.get("produto_servico_nome")}
         for chave, p in PERFIS.items()
     }
 
@@ -155,6 +165,9 @@ class VinculoInput(BaseModel):
     harmonit_tipo: str | None = None  # 'produto' | 'servico'
     harmonit_descricao: str | None = None
     oculto: bool = False
+    # O item entra TAMBÉM na OS operacional, como referência sem flag. Ver
+    # `_duplicar_nas_duas`. Marcado por vínculo para não virar nome no código.
+    nas_duas: bool = False
 
 
 @router.get("/vinculos")
@@ -166,8 +179,15 @@ async def listar_vinculos(_=Depends(requer_aba("vinculos"))):
 async def salvar_vinculo(body: VinculoInput, _=Depends(requer_aba("vinculos"))):
     if not body.oculto and body.harmonit_id is None:
         raise HTTPException(400, "Informe harmonit_id ou marque oculto=true")
+    if body.oculto and body.nas_duas:
+        # Oculto não entra em OS nenhuma; "nas duas" diz para entrar em duas.
+        # Aceitar os dois juntos gravaria uma contradição que só apareceria na
+        # hora de gerar, e em silêncio.
+        raise HTTPException(400, "Um item não pode ser 'oculto' e 'nas duas OS' "
+                                 "ao mesmo tempo — escolha um.")
     await storage.salvar_vinculo_item(
-        body.nome_contrato, body.harmonit_id, body.harmonit_tipo, body.harmonit_descricao, body.oculto
+        body.nome_contrato, body.harmonit_id, body.harmonit_tipo,
+        body.harmonit_descricao, body.oculto, body.nas_duas
     )
     return {"ok": True}
 
@@ -213,7 +233,13 @@ class ItemContratoInput(BaseModel):
 class GerarOsInput(BaseModel):
     perfil: str
     cliente_id: int  # cliente "principal" -- origem, no caso de Transferência
-    termo: str
+    # 🚨 DEIXOU DE SER OBRIGATORIO EM 14/08. Os perfis de manutencao nascem de
+    # um chamado, nao de documento assinado -- nao ha numero de termo. Quem
+    # exige o termo agora e o perfil (`sem_termo`), nao o modelo.
+    termo: str = ""
+    # Campo livre do painel. Vai para a OBS da OS (solucaoTecnica), ABAIXO da
+    # linha de criacao -- nao entra na descricao.
+    observacao: str = ""
     termo_relacionado: str = ""  # nº do contrato do OUTRO lado (titularidade) -- vai pra descrição
     produto_servico_id: int
     placas: list[PlacaInput]
@@ -242,16 +268,21 @@ def _parse_qtd(txt: str | None) -> int:
         return 0
 
 
-def _formatar_solucao_tecnica(contexto: str | None) -> str:
+def _formatar_solucao_tecnica(contexto: str | None, observacao: str = "") -> str:
     """solucaoTecnica é o campo que o técnico preenche DEPOIS do serviço --
     não sobrescrevemos, só deixamos um cabeçalho com data + separador,
     orientando a preencher dali pra baixo. Combinado com o usuário em
-    2026-07-15."""
+    2026-07-15.
+
+    A OBS do painel (14/08) entra ABAIXO da linha de criação e ACIMA do
+    separador: é contexto de quem abriu, não resultado de quem atendeu."""
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
-    linha_contexto = (contexto or "").strip()
-    if linha_contexto:
-        return f"[{agora}] Contexto da extração automática:\n{linha_contexto}\n-------------\n"
-    return f"[{agora}] Contexto da extração automática:\n-------------\n"
+    linhas = [f"[{agora}] Contexto da extração automática:"]
+    if (contexto or "").strip():
+        linhas.append(contexto.strip())
+    if (observacao or "").strip():
+        linhas.append(f"OBS: {observacao.strip()}")
+    return "\n".join(linhas) + "\n-------------\n"
 
 
 async def _resolver_vinculos(itens: list[ItemContratoInput]) -> tuple[list[dict], list[str], list[str]]:
@@ -290,6 +321,8 @@ async def _resolver_vinculos(itens: list[ItemContratoInput]) -> tuple[list[dict]
             "comodato": comodato,
             # comodato nunca cobra; senão cobra se a linha tem valor
             "cobrar": False if comodato else _parse_valor(item.valor_unitario) > 0,
+            # marcado no vínculo: aparece também na OS operacional, sem flag
+            "nas_duas": bool(vinc.get("nas_duas")),
         })
     return resolvidos, pendentes, descartados
 
@@ -343,7 +376,9 @@ def _alocar_itens_por_placa(itens_resolvidos: list[dict], placas: list[PlacaInpu
 
 
 def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict]],
-                      seriais: dict[str, str] | None = None) -> list[dict]:
+                      seriais: dict[str, str] | None = None,
+                      recipientes: dict | None = None,
+                      dados: dict | None = None) -> list[dict]:
     """1 operação = 1 OS a criar. Perfis com os_por_placa==1 geram 1 por
     placa. Substituição (2 veículos diferentes, mesmo cliente) e Transferência
     (mesmo veículo, 2 clientes) são formas DIFERENTES de 'os_por_placa==2' --
@@ -393,11 +428,15 @@ def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict
     for idx, p in enumerate(body.placas):
         materiais_placa = alocacao[idx]
         # O equipamento que a WESO diz estar/entrar nesta placa vira material.
-        equip = _material_do_equipamento(perfil, p.placa, materiais_placa)
+        equip = _material_do_equipamento(perfil, p.placa, materiais_placa,
+                                         recipientes, dados)
         if equip:
             materiais_placa = list(materiais_placa) + [equip]
 
         if perfil["os_por_placa"] == 1:
+            # Modelo do que SAI: sempre a propria placa. Ao vivo quando ha
+            # leitura ao vivo (manutencao), cache nos perfis de contrato.
+            saida = ((dados or {}).get(_chave_placa(p.placa)) or {}).get("modelo")
             operacoes.append({
                 "cliente_id": body.cliente_id,
                 "placa": p.placa, "veiculo": p.veiculo,
@@ -405,9 +444,10 @@ def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict
                 "descricao": perfil["descricao_template"].format(
                     placa=p.placa, veiculo=p.veiculo, termo=body.termo,
                     serie=serie_de(seriais, p.placa),
-                    serie_entrada=_serie_que_entra(perfil, seriais, p.placa),
-                    modelo=_modelo_da_operacao(perfil, p.placa, materiais_placa),
-                    modelo_saida=modelo_efetivo(modelo_da_placa(p.placa),
+                    serie_entrada=_serie_que_entra(perfil, recipientes, p.placa),
+                    modelo=_modelo_da_operacao(perfil, p.placa, materiais_placa,
+                                               recipientes, dados),
+                    modelo_saida=modelo_efetivo(saida or modelo_da_placa(p.placa),
                                                 tem_leitor_rfid(materiais_placa))),
                 "rotulo": perfil["label"],
                 "materiais": materiais_placa,
@@ -603,6 +643,87 @@ async def _criar_uma_os(op: dict, solucao_txt: str) -> tuple[dict, int | None]:
     }, numero
 
 
+async def _lista_do_harmonit(path: str) -> list[dict] | None:
+    """Lista do Harmonit, ou None quando a chamada nao respondeu.
+
+    🚨 None E "NAO SEI", e nao autoriza recusar nada. E a diferenca entre a
+    rede ter falhado e o item ter sumido do cadastro -- so a segunda justifica
+    parar a geracao.
+    """
+    try:
+        r = await harmonit_get(path, params={"empresaId": 98})
+    except Exception as exc:
+        logger.warning("harmonit: lista %s indisponivel: %s", path, exc)
+        return None
+    d = r.get("data", r) if isinstance(r, dict) else r
+    if isinstance(d, dict):
+        d = d.get("lista") or d.get("itens") or []
+    return list(d or [])
+
+
+def _achar_por_nome(lista: list[dict], nome: str) -> int | None:
+    alvo = _norm_desc(nome)
+    for x in lista:
+        for campo in ("descricao", "nome", "titulo"):
+            if x.get(campo) and _norm_desc(x[campo]) == alvo:
+                return x.get("id")
+    return None
+
+
+async def _resolver_cabecalho_por_nome(perfil: dict) -> tuple[dict, list[str]]:
+    """{tipo_id, problema_id} resolvidos pelo NOME contra a lista viva.
+
+    🚨 ID FIXO EM CODIGO APODRECE EM SILENCIO. Medido em 14/08: das 14 OS de
+    manutencao que a casa abriu na mao, 7 usam `tipo = 55` -- que nao esta
+    mais na lista de tipos do Harmonit. Se o painel tivesse nascido com aquele
+    numero, hoje estaria gravando um tipo morto sem ninguem perceber.
+
+    Politica: nome some da lista -> RECUSA (e rot, precisa de decisao humana).
+    Lista nao responde -> usa o `*_id` do perfil e avisa (e transiente, e
+    travar a geracao por causa de rede seria pior).
+    """
+    alvos = (("tipo_nome", "tipo_id", "/TipoOrdemServico/ObterListaTipoOrdemServico", "Tipo"),
+             ("problema_nome", "problema_id", "/Problema/ObterProblemas", "Problema"))
+    resolvido: dict[str, int] = {}
+    avisos: list[str] = []
+    for chave_nome, chave_id, path, rotulo in alvos:
+        nome = perfil.get(chave_nome)
+        if not nome:
+            continue
+        lista = await _lista_do_harmonit(path)
+        if lista is None:
+            resolvido[chave_id] = perfil.get(chave_id)
+            avisos.append(f"A lista de {rotulo} do Harmonit nao respondeu — usei o "
+                          f"ultimo id conhecido para {nome!r}. Confira a OS gerada.")
+            continue
+        achado = _achar_por_nome(lista, nome)
+        if achado is None:
+            raise HTTPException(
+                400,
+                f"{rotulo} {nome!r} nao existe mais na lista do Harmonit. Alguem "
+                f"renomeou ou removeu o cadastro — escolha o novo antes de gerar, "
+                f"em vez de eu mandar um id velho.")
+        resolvido[chave_id] = achado
+    return resolvido, avisos
+
+
+def _duplicar_nas_duas(itens_resolvidos: list[dict]) -> list[dict]:
+    """Copia, para a OS operacional, os itens marcados `nas_duas` no vinculo.
+
+    🚨 O ITEM CONTINUA COBRANDO NA FINANCEIRA -- aqui e so a copia de
+    referencia. Por isso a copia vai SEM flag nenhuma e com valor ZERO: um
+    item que nao e comodato nem cobranca carregando preco e um numero que
+    alguem vai somar em algum relatorio, e o valor ja esta contado na
+    financeira. Decisao do usuario, 14/08.
+
+    Aditivo de 100 placas com Central 24h: 100 copias operacionais (a alocacao
+    distribui 1 por veiculo) e 1 linha na financeira com a quantidade do
+    contrato.
+    """
+    return [{**i, "comodato": False, "cobrar": False, "valor_unitario": 0.0}
+            for i in itens_resolvidos if i.get("nas_duas") and i.get("cobrar")]
+
+
 @router.post("/gerar-os")
 async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
     perfil = PERFIS.get(body.perfil)
@@ -610,6 +731,13 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         raise HTTPException(400, f"Perfil desconhecido: {body.perfil}")
     if not body.placas:
         raise HTTPException(400, "Nenhuma placa informada")
+    # Quem exige o termo e o perfil, nao o modelo: manutencao nasce de chamado.
+    if not perfil.get("sem_termo") and not (body.termo or "").strip():
+        raise HTTPException(400, f"O perfil {perfil['label']!r} exige o numero do termo.")
+    if perfil.get("sem_termo") and len(body.placas) > 1:
+        # Decisao do usuario (14/08): manutencao e uma placa por geracao.
+        raise HTTPException(400, "Manutenção é uma placa por geração — "
+                                 "gere uma OS para cada veículo.")
 
     # Placa repetida no termo -> 1 OS só + aviso (decisão do usuário 2026-07-23).
     body.placas, avisos_dup = _dedup_placas(body.placas)
@@ -632,6 +760,7 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
     #   antigo titular -> 1 OS só comodato, SEM financeira.
     # Os demais perfis seguem o split da E2 (operacional × financeira).
     financeira = None
+    recipientes: dict = {}   # só o caminho padrão preenche; titularidade não usa
     titularidade = perfil.get("titularidade")
     if titularidade == "novo":
         operacoes = _montar_novo_titular(body, perfil, itens_resolvidos)
@@ -653,9 +782,18 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
             # que cobrar -- muda so ONDE. Sem financeira agregada.
             itens_operacional = list(itens_resolvidos)
             itens_financeiro = []
+        elif perfil.get("sem_flags"):
+            # Manutencao: nenhum item flega cobrar nem comodato, e nao ha
+            # financeira. Decisao do usuario, 14/08.
+            itens_operacional = [{**i, "cobrar": False, "comodato": False}
+                                 for i in itens_resolvidos]
+            itens_financeiro = []
         else:
             itens_operacional = [i for i in itens_resolvidos if not i["cobrar"]]
             itens_financeiro = [i for i in itens_resolvidos if i["cobrar"]]
+            # Item marcado `nas_duas` no vinculo aparece TAMBEM na operacional,
+            # como referencia sem flag -- continua cobrando na financeira.
+            itens_operacional = itens_operacional + _duplicar_nas_duas(itens_resolvidos)
         alocacao, avisos_aloc = _alocar_itens_por_placa(itens_operacional, body.placas)
         avisos += avisos_aloc
         # Serial do rastreador para a descricao. Best-effort e fora do
@@ -672,14 +810,44 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         if perfil.get("placa_teste_sufixo"):
             todas += [placa_teste(p.placa, perfil["placa_teste_sufixo"]) for p in body.placas]
         seriais = await buscar_seriais(todas)
-        _conferir_placas_teste(body, perfil)
-        operacoes = _montar_operacoes(body, perfil, alocacao, seriais)
+
+        # 🚨 MANUTENCAO LE AO VIVO. O recipiente nasce minutos antes da OS e o
+        # cache local so atualiza as 04:15 -- ler do cache aqui devolveria
+        # "modelo nao localizado" para equipamento que existe. Nos perfis de
+        # contrato o cache continua valendo: o termo demora dias, e 2,3s de
+        # rede por geracao nao se paga.
+        dados_ao_vivo: dict = {}
+        recipientes: dict = {}
+        if perfil.get("sem_termo"):
+            dados_ao_vivo = await dados_das_placas([p.placa for p in body.placas])
+        if perfil.get("placa_teste_sufixo"):
+            if perfil.get("sem_termo"):
+                recipientes = await buscar_recipientes(
+                    [p.placa for p in body.placas], perfil["placa_teste_sufixo"])
+            else:
+                # Upgrade: o recipiente e criado junto com o termo, entao o
+                # cache basta -- monta o mesmo formato a partir dele.
+                for p in body.placas:
+                    pt = placa_teste(p.placa, perfil["placa_teste_sufixo"])
+                    recipientes[_chave_placa(p.placa)] = {
+                        "descricao": descricao_da_placa(pt),
+                        "modelo": modelo_da_placa(pt),
+                        "serie": serie_de(seriais, pt)
+                        if serie_de(seriais, pt) != MARCADOR_NAO_LOCALIZADO else None,
+                    }
+        recipientes, avisos_rec = _conferir_recipientes(body, perfil, recipientes)
+        avisos += avisos_rec
+
+        operacoes = _montar_operacoes(body, perfil, alocacao, seriais,
+                                      recipientes, dados_ao_vivo)
         for op in operacoes:
             # Materiais finais: serviço do cabeçalho (sem flag) + alocados +
             # ENTREGA OS. Substitui a lista só-alocada -> dry-run == real.
             op["materiais"] = _materiais_operacional(op["materiais"], body)
         # Financeira sempre nos perfis padrão (mesmo saldo 0 -> motivo na descrição).
-        if not perfil.get("financeira_embutida"):
+        # Manutenção não gera nenhuma: sem termo não há item de cobrança, e uma
+        # financeira zerada por manutenção só criaria papel (decisão 14/08).
+        if not perfil.get("financeira_embutida") and not perfil.get("sem_financeira"):
             financeira = _montar_financeira(body, itens_resolvidos, itens_financeiro)
         # Cobranca zerada exige motivo -- vale nos DOIS caminhos. Com a
         # financeira embutida (rescisao) `itens_financeiro` fica sempre vazio
@@ -691,18 +859,31 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         sem_valor = (not cobrancas) or all(
             float(i.get("valor_unitario") or 0) == 0 for i in cobrancas
         )
-        if sem_valor and not body.motivo_financeira_zero.strip():
+        if (sem_valor and not perfil.get("sem_financeira")
+                and not body.motivo_financeira_zero.strip()):
             avisos.append("Cobrança sem valor (saldo 0) e sem motivo informado — "
                           "preencha o motivo (mudança de gestão, acordo interno, etc.) antes de gerar.")
 
-    # E1: Tipo é sempre Contrato; situação padrão Nova sollicitação e produto do
-    # painel (o novo titular/financeira já trazem os seus -> setdefault preserva).
+    # E1: Tipo é sempre Contrato NOS PERFIS DE CONTRATO; situação padrão Nova
+    # sollicitação e produto do painel (o novo titular/financeira já trazem os
+    # seus -> setdefault preserva).
+    #
+    # 🚨 A MANUTENÇÃO FOGE DAQUI. Ela não vem de contrato: o Tipo dela é
+    # resolvido pelo NOME contra a lista viva do Harmonit (decisão 14/08), e
+    # forçar Contrato aqui apagaria essa resolução em silêncio.
+    cabecalho, avisos_cab = ({}, [])
+    if perfil.get("tipo_nome") or perfil.get("problema_nome"):
+        cabecalho, avisos_cab = await _resolver_cabecalho_por_nome(perfil)
+        avisos += avisos_cab
     for op in operacoes:
-        op["tipo_id"] = TIPO_CONTRATO_ID
+        op["tipo_id"] = cabecalho.get("tipo_id") or (
+            op.get("tipo_id") if perfil.get("tipo_nome") else TIPO_CONTRATO_ID)
+        if cabecalho.get("problema_id"):
+            op["problema_id"] = cabecalho["problema_id"]
         op.setdefault("situacao_id", SITUACAO_NOVA_ID)
         op.setdefault("produto_servico_id", body.produto_servico_id)
         op["prioridade_id"] = body.prioridade_id  # OPs usam a prioridade do painel (financeira já traz Normal)
-    solucao_tecnica_txt = _formatar_solucao_tecnica(body.solucao_tecnica)
+    solucao_tecnica_txt = _formatar_solucao_tecnica(body.solucao_tecnica, body.observacao)
 
     # Lista pra exibição/contagem: operacionais + financeira (por último).
     todas = operacoes + ([financeira] if financeira else [])
@@ -734,77 +915,174 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         resultado_fin, _num = await _criar_uma_os(financeira, solucao_fin)
         criadas.append(resultado_fin)
 
-    return {"simulado": False, "total_os": len(todas), "resultados": criadas, "avisos": avisos}
+    liberacoes = await _liberar_series(perfil, operacoes, criadas, recipientes)
+
+    return {"simulado": False, "total_os": len(todas), "resultados": criadas,
+            "avisos": avisos, "liberacoes": liberacoes}
 
 
-def _serie_que_entra(perfil: dict, seriais: dict, placa: str) -> str:
-    """Serie do equipamento que ENTRA, via placa-recipiente de teste.
+async def _liberar_series(perfil: dict, operacoes: list[dict], criadas: list[dict],
+                          recipientes: dict) -> list[dict]:
+    """Devolve ao estoque a serie de cada recipiente usado, e apaga o recipiente.
+
+    🚨 SO DEPOIS DE TUDO CERTO (condicao do usuario, 14/08). Tres provas, e as
+    tres precisam valer:
+      1. a OS foi criada (`ok`)
+      2. a serie ESTA na descricao -- se saiu `NUMERO DE SERIE`, nao houve
+         equipamento nenhum e nao ha o que liberar
+      3. o material do equipamento foi mesmo anexado (`materiais_ok`)
+
+    Falhou qualquer uma, o recipiente fica onde esta. E melhor sobrar um
+    recipiente do que liberar a serie de uma OS que nasceu incompleta.
+    """
+    if not perfil.get("liberar_serie") or not recipientes:
+        return []
+    resultados = []
+    for op, criada in zip(operacoes, criadas):
+        rec = recipientes.get(_chave_placa(op.get("placa", "")))
+        if not rec:
+            continue
+        equipamentos = [m for m in op.get("materiais") or [] if m.get("_equipamento")]
+        if not criada.get("ok"):
+            motivo = "a OS não foi criada"
+        elif MARCADOR_SERIE_A_PREENCHER in str(op.get("descricao") or ""):
+            motivo = "a descrição saiu sem o número de série"
+        elif not equipamentos:
+            motivo = "o equipamento não entrou nos materiais"
+        elif any(e["descricao"] not in (criada.get("materiais_ok") or [])
+                 for e in equipamentos):
+            motivo = "o equipamento não foi aceito pelo Harmonit"
+        else:
+            motivo = None
+        if motivo:
+            resultados.append({"placa": op.get("placa"), "ok": False,
+                               "erro": f"equipamento NÃO liberado: {motivo}",
+                               "passos": [], "dados_para_correcao": {
+                                   "veiculo_id": rec.get("veiculo_id"),
+                                   "rastreador_id": rec.get("rastreador_id")}})
+            continue
+        r = await liberar_recipiente(rec.get("veiculo_id"), rec.get("rastreador_id"))
+        r["placa"] = op.get("placa")
+        resultados.append(r)
+    return resultados
+
+
+def _serie_que_entra(perfil: dict, recipientes: dict, placa: str) -> str:
+    """Serie do equipamento que ENTRA, vinda do recipiente ja conferido.
 
     Vazio nos perfis que nao usam recipiente -- `str.format` ignora chave que
     o template nao cita, entao passar sempre e mais simples que ramificar.
+
+    🚨 Sem recipiente confiavel sai `NUMERO DE SERIE`, para o tecnico escrever
+    na instalacao -- e nao o marcador de "nao localizada", que significa outra
+    coisa (ver equipamentos.MARCADOR_SERIE_A_PREENCHER).
     """
-    sufixo = perfil.get("placa_teste_sufixo")
-    if not sufixo:
+    if not perfil.get("placa_teste_sufixo"):
         return ""
-    return serie_de(seriais, placa_teste(placa, sufixo))
+    d = (recipientes or {}).get(_chave_placa(placa)) or {}
+    return d.get("serie") or MARCADOR_SERIE_A_PREENCHER
 
 
 def _norm_desc(t: str) -> str:
-    return re.sub(r"\s+", " ", str(t or "")).strip().upper()
+    """Texto comparavel: espaco colapsado, caixa alta e SEM ACENTO.
+
+    🚨 O ACENTO QUASE DERRUBOU A MANUTENCAO INTEIRA. Os 5 recipientes `-MANUT`
+    da WESO estao gravados `MANUTENCAO`, sem cedilha e sem til; o usuario
+    padroniza escrevendo `MANUTENÇÃO`. Sem dobrar acento aqui, os dois nunca
+    casariam e TODA geracao de manutencao morreria em HTTP 400 -- com uma
+    mensagem falando de upgrade anterior, que nao tem nada a ver.
+    """
+    t = unicodedata.normalize("NFKD", str(t or ""))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", t).strip().upper()
 
 
-def _conferir_placas_teste(body, perfil: dict) -> None:
-    """🚨 A placa-recipiente tem que ser DESTE termo.
+def _conferir_recipientes(body, perfil: dict, recipientes: dict) -> tuple[dict, list[str]]:
+    """Separa os recipientes CONFIAVEIS dos demais, e avisa sobre cada descarte.
 
-    Placa que ja passou por upgrade antes deixa um recipiente velho na WESO,
-    com a descricao do termo ANTERIOR. Sem esta conferencia a OS sairia com a
-    serie do equipamento passado -- plausivel, errada e silenciosa, que e como
-    nasceram o `RFD 2447` e o card de ano 0002.
+    🚨 SEM ENTRARA PLAUSIVEL, NAO INVENTA (decisao do usuario, 14/08). Ate esta
+    data o upgrade derrubava a geracao com HTTP 400 quando o recipiente nao
+    batia. Agora o recipiente duvidoso e simplesmente DESCARTADO: a descricao
+    sai com `NUMERO DE SERIE` para o tecnico preencher e o equipamento NAO
+    entra nos materiais. O resultado e o mesmo -- nenhum dado errado entra --
+    sem travar quem esta tentando trabalhar.
 
-    ⚠️ AUSENCIA NAO BLOQUEIA, CONTRADICAO BLOQUEIA. `descricao_da_placa`
-    devolve None para "nao sei" (cache fora, recipiente ainda nao criado pelo
-    setor de configuracao) -- ai vale o best-effort da casa e a descricao sai
-    com o marcador de serie nao localizada. So descricao DIVERGENTE, que e
-    prova positiva de recipiente errado, derruba a geracao.
+    ⚠️ TODO DESCARTE VIRA AVISO NA TELA. Recipiente ignorado em silencio seria
+    pior que o 400: a OS pareceria completa e sairia sem o equipamento, que e
+    exatamente o defeito que o usuario achou auditando o termo 8820.
+
+    Quatro motivos de descarte, cada um com o seu texto:
+      ausente ....... o setor de configuracao ainda nao criou o recipiente
+      ambiguo ....... duas placas da WESO normalizam para a mesma chave
+      divergente .... a descricao nao e a esperada (upgrade de outro termo)
+      sem serie ..... o recipiente existe mas nao tem rastreador vinculado
     """
     sufixo = perfil.get("placa_teste_sufixo")
     if not sufixo:
-        return
+        return {}, []
     modelo = perfil.get("placa_teste_descricao") or "TERMO {termo}"
-    esperado = modelo.format(termo=body.termo)
+    esperado = modelo.format(termo=body.termo or "")
+    bons: dict[str, dict] = {}
+    avisos: list[str] = []
     for p in body.placas:
+        chave = _chave_placa(p.placa)
         pt = placa_teste(p.placa, sufixo)
-        achado = descricao_da_placa(pt)
-        if achado is None:
+        dado = recipientes.get(chave)
+        if not dado:
+            avisos.append(
+                f"Placa {p.placa}: o recipiente {pt} nao existe na WESO. A OS sai "
+                f"com '{MARCADOR_SERIE_A_PREENCHER}' e SEM o equipamento nos "
+                f"materiais -- peca ao setor de configuracao para vincular.")
             continue
-        if _norm_desc(achado) != _norm_desc(esperado):
-            raise HTTPException(
-                400,
-                f"Placa {p.placa}: o recipiente de teste {pt} na WESO esta como "
-                f"{achado!r}, mas o termo subido e {esperado!r}. Provavelmente e "
-                f"o recipiente de um upgrade ANTERIOR desta placa -- gerar assim "
-                f"colocaria na OS a serie do equipamento antigo. Confira com o "
-                f"setor de configuracao antes de gerar.")
+        if dado.get("ambiguo"):
+            avisos.append(
+                f"Placa {p.placa}: mais de um recipiente na WESO casa com {pt} "
+                f"({', '.join(str(x) for x in dado['ambiguo'])}). Ambiguidade nao "
+                f"se resolve por escolha automatica -- a OS sai sem o equipamento.")
+            continue
+        achado = dado.get("descricao")
+        if achado is not None and _norm_desc(achado) != _norm_desc(esperado):
+            avisos.append(
+                f"Placa {p.placa}: o recipiente {pt} esta descrito como {achado!r}, "
+                f"e o esperado e {esperado!r} -- provavelmente e o recipiente de "
+                f"uma rodada ANTERIOR desta placa. A OS sai sem o equipamento.")
+            continue
+        if not dado.get("serie"):
+            avisos.append(
+                f"Placa {p.placa}: o recipiente {pt} existe mas nao tem rastreador "
+                f"vinculado. A OS sai com '{MARCADOR_SERIE_A_PREENCHER}'.")
+            continue
+        bons[chave] = dado
+    return bons, avisos
 
 
-def _modelo_da_operacao(perfil: dict, placa: str, materiais: list[dict]) -> str:
+def _modelo_da_operacao(perfil: dict, placa: str, materiais: list[dict],
+                        recipientes: dict | None = None,
+                        dados: dict | None = None) -> str:
     """Modelo do rastreador para a descricao da OS, lido da WESO.
 
     🚨 IGNORA O VINCULO PARA ESTE ITEM, por decisao do usuario (13/08): o
     vinculo diz o que o TERMO escreveu, a WESO diz o que ESTA no veiculo.
 
     Qual placa se le depende do perfil:
-      upgrade ......... o recipiente `<PLACA>-UPGRADE` (o que ENTRARA)
-      demais .......... a propria placa da operacao (o que ESTIVER)
+      upgrade / manutencao com troca ... o recipiente (o que ENTRARA)
+      manutencao no local / demais ..... a propria placa (o que ESTIVER)
 
     ⚠️ Cliente novo nao tem o que ler -- e instalacao nova, o veiculo ainda nao
     existe na WESO. Ali o marcador aparece, e e honesto: nao ha equipamento.
     """
     origem = perfil.get("modelo_origem")
-    alvo = placa
     if origem == "placa_teste" and perfil.get("placa_teste_sufixo"):
-        alvo = placa_teste(placa, perfil["placa_teste_sufixo"])
-    return modelo_efetivo(modelo_da_placa(alvo), tem_leitor_rfid(materiais))
+        # So recipiente CONFERIDO chega aqui -- o duvidoso ja foi descartado em
+        # `_conferir_recipientes`, com aviso. Nada de reler a WESO por dentro.
+        d = (recipientes or {}).get(_chave_placa(placa)) or {}
+        bruto = d.get("modelo")
+    else:
+        # Leitura ao vivo quando ela existe (manutencao), cache quando nao
+        # (perfis de contrato, que nao pagam por 2,3s de rede a toa).
+        d = (dados or {}).get(_chave_placa(placa)) or {}
+        bruto = d.get("modelo") or modelo_da_placa(placa)
+    return modelo_efetivo(bruto, tem_leitor_rfid(materiais))
 
 
 # 🚨 O EQUIPAMENTO E MATERIAL, NAO SO TEXTO. Ate 13/08 o modelo resolvido na
@@ -822,28 +1100,44 @@ def _ja_tem_rastreador(materiais: list[dict]) -> bool:
     return False
 
 
-def _material_do_equipamento(perfil: dict, placa: str, materiais: list[dict]) -> dict | None:
+def _material_do_equipamento(perfil: dict, placa: str, materiais: list[dict],
+                             recipientes: dict | None = None,
+                             dados: dict | None = None) -> dict | None:
     """Material do equipamento que a WESO diz estar (ou entrar) nesta placa.
 
-    ⚠️ COMODATO, NUNCA COBRA. O valor e PATRIMONIAL -- vai para a DANFE de
-    comodato, nao e preco. Mesma regra que `_resolver_vinculos` ja aplica:
-    comodato e cobrar nunca sao verdadeiros ao mesmo tempo.
+    ⚠️ COMODATO, NUNCA COBRA -- nos perfis de CONTRATO. O valor e PATRIMONIAL,
+    vai para a DANFE de comodato e nao e preco. Mesma regra que
+    `_resolver_vinculos` aplica: comodato e cobrar nunca sao verdadeiros ao
+    mesmo tempo.
+
+    🚨 MANUTENCAO NAO FLEGA NADA (decisao do usuario, 14/08, `sem_flags`).
+    Ali o equipamento nao esta saindo do patrimonio nem sendo vendido: ele
+    aparece para o tecnico saber com o que vai lidar e qual pegar. Flegar
+    comodato numa manutencao emitiria patrimonio que ja esta com o cliente.
 
     ⚠️ NAO DUPLICA. Se o termo ja listou um rastreador, este material NAO e
     acrescentado -- sairiam dois equipamentos na mesma OS. Substituir o do
     vinculo pelo real ainda NAO foi decidido pelo usuario, e sobrescrever o que
-    o contrato escreveu sem ordem seria pior que a lacuna.
+    o contrato escreveu sem ordem seria pior que a lacuna. (Na manutencao nao
+    ha termo e portanto nao ha vinculo, entao esta trava nunca dispara ali.)
     """
     if not perfil.get("modelo_origem"):
         return None
     if _ja_tem_rastreador(materiais):
         logger.info("equipamento: %s ja tem item de rastreador no termo -- nao acrescento", placa)
         return None
-    modelo = _modelo_da_operacao(perfil, placa, materiais)
+    modelo = _modelo_da_operacao(perfil, placa, materiais, recipientes, dados)
     prod = storage.produto_do_modelo(modelo)
     if not prod:
         logger.info("equipamento: modelo %r sem produto no de-para -- fica so na descricao", modelo)
         return None
+    sem_flags = bool(perfil.get("sem_flags"))
     return {"harmonit_id": prod["harmonit_id"], "quantidade": 1,
-            "valor_unitario": prod["valor"], "comodato": True, "cobrar": False,
-            "descricao": prod["descricao"]}
+            "valor_unitario": 0.0 if sem_flags else prod["valor"],
+            "comodato": not sem_flags, "cobrar": False,
+            "descricao": prod["descricao"],
+            # Marca interna: e por ela que a liberacao da serie confirma que o
+            # equipamento REALMENTE foi anexado antes de apagar o recipiente.
+            # `_criar_uma_os` so le as chaves que o Harmonit espera, entao esta
+            # sobra nao viaja no payload.
+            "_equipamento": True}

@@ -158,6 +158,12 @@
         <input type="checkbox" id="vinculoOculto" onchange="alternarOcultoModal()">
         <label for="vinculoOculto" style="margin:0">Ocultar (nunca vira material de OS)</label>
       </div>
+      <!-- Nasceu do termo 8839: "Central 24 horas" vem como CONTRATADO com
+           valor, cai em cobrança e some da OS que o técnico lê. -->
+      <div class="check-row" style="margin-top:8px">
+        <input type="checkbox" id="vinculoNasDuas" onchange="alternarOcultoModal()">
+        <label for="vinculoNasDuas" style="margin:0">Entra nas duas OS (cobra na financeira e aparece na operacional, sem valor)</label>
+      </div>
     </div>
     <div id="vinculoHarmonitWrap">
       <div class="field" style="margin-bottom:10px">
@@ -279,6 +285,8 @@ async function carregarVinculos() {
       : `${escapeHtml(v.harmonit_tipo || '')} #${escapeHtml(v.harmonit_id ?? '')} — ${escapeHtml(v.harmonit_descricao || '')}`;
     const status = v.oculto
       ? '<span class="badge badge-amber">Oculto</span>'
+      : v.nas_duas
+      ? '<span class="badge badge-green">Vinculado</span> <span class="badge badge-blue">nas duas OS</span>'
       : '<span class="badge badge-green">Vinculado</span>';
     return `<tr>
       <td><strong>${escapeHtml(v.nome_contrato)}</strong></td>
@@ -297,6 +305,7 @@ async function abrirModalVinculo(nomePreenchido) {
   document.getElementById('erroVinculo').style.display = 'none';
   document.getElementById('vinculoNome').value = nomePreenchido || '';
   document.getElementById('vinculoOculto').checked = false;
+  document.getElementById('vinculoNasDuas').checked = false;
   document.getElementById('vinculoHarmonitCampo').value = '';
   document.querySelector('input[name=vinculoTipo][value=produto]').checked = true;
   harmonitSelecionado = null;
@@ -309,6 +318,7 @@ async function abrirModalVinculo(nomePreenchido) {
     const existente = lista.find((v) => v.nome_contrato === nomeNorm);
     if (existente) {
       document.getElementById('vinculoOculto').checked = existente.oculto;
+      document.getElementById('vinculoNasDuas').checked = !!existente.nas_duas;
       if (!existente.oculto) {
         document.querySelector(`input[name=vinculoTipo][value=${existente.harmonit_tipo}]`).checked = true;
         document.getElementById('vinculoHarmonitCampo').value = existente.harmonit_descricao || '';
@@ -323,6 +333,12 @@ async function abrirModalVinculo(nomePreenchido) {
 function alternarOcultoModal() {
   const oculto = document.getElementById('vinculoOculto').checked;
   document.getElementById('vinculoHarmonitWrap').style.display = oculto ? 'none' : 'block';
+  // Oculto não entra em OS nenhuma; "nas duas" manda entrar em duas. Marcar os
+  // dois é contradição -- desabilitar aqui evita gravar algo que só quebraria
+  // na hora de gerar, e em silêncio (o backend recusa igual, por garantia).
+  const nasDuas = document.getElementById('vinculoNasDuas');
+  nasDuas.disabled = oculto;
+  if (oculto) nasDuas.checked = false;
 }
 
 async function salvarVinculo() {
@@ -337,6 +353,7 @@ async function salvarVinculo() {
   const body = {
     nome_contrato,
     oculto,
+    nas_duas: document.getElementById('vinculoNasDuas').checked,
     harmonit_id: oculto ? null : harmonitSelecionado.id,
     harmonit_tipo: oculto ? null : tipo,
     harmonit_descricao: oculto ? null : harmonitSelecionado.descricao,

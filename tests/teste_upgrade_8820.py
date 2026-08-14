@@ -78,6 +78,20 @@ checar("serie que SAI da OOM 3895", "356354872585899", equipamentos.serie_de(ser
 checar("serie que ENTRA na OOM 3895 (apesar do espaco na WESO)", "356354871410958",
        equipamentos.serie_de(seriais, "OOM3895-UPGRADE"))
 
+# 🚨 MUDOU EM 14/08: o dado do recipiente deixou de ser lido DENTRO de
+# `_modelo_da_operacao` e passa por fora, num dicionario montado uma vez por
+# geracao. O motivo e a manutencao, que precisa ler ao vivo (o recipiente nasce
+# minutos antes da OS e o cache so atualiza as 04:15). O upgrade continua
+# lendo do cache -- monta o mesmo formato a partir dele, como faz `gerar_os`.
+RECIPIENTES = {
+    equipamentos._chave(p): {
+        "descricao": equipamentos.descricao_da_placa(equipamentos.placa_teste(p, "-UPGRADE")),
+        "modelo": equipamentos.modelo_da_placa(equipamentos.placa_teste(p, "-UPGRADE")),
+        "serie": equipamentos.serie_de(seriais, equipamentos.placa_teste(p, "-UPGRADE")),
+    }
+    for p in ("OOM 4131", "OOM 3895")
+}
+
 checar("descricao completa da OOM 4131",
        "Upgrade: OOM 4131 | SR/FACCHINI SRF CA, DIESEL, 2015/2016, CINZA | "
        "SAIRÁ: 356354872583936 (XT40) | ENTRARÁ: 356354871411980 (XT40 Portatil) | "
@@ -86,7 +100,7 @@ checar("descricao completa da OOM 4131",
            placa="OOM 4131", veiculo="SR/FACCHINI SRF CA, DIESEL, 2015/2016, CINZA",
            termo="8820", serie=equipamentos.serie_de(seriais, "OOM 4131"),
            serie_entrada=equipamentos.serie_de(seriais, "OOM4131-UPGRADE"),
-           modelo=os_router._modelo_da_operacao(perfil, "OOM 4131", []),
+           modelo=os_router._modelo_da_operacao(perfil, "OOM 4131", [], RECIPIENTES),
            modelo_saida=equipamentos.modelo_efetivo(
                equipamentos.modelo_da_placa("OOM 4131"), False)))
 
@@ -102,7 +116,15 @@ checar("modelo do que ENTRA na OOM 3895", "XT40 Portatil",
 checar("perfil upgrade le o modelo do recipiente", "placa_teste",
        perfil.get("modelo_origem"))
 checar("_modelo_da_operacao do upgrade devolve o que ENTRA", "XT40 Portatil",
-       os_router._modelo_da_operacao(perfil, "OOM 4131", []))
+       os_router._modelo_da_operacao(perfil, "OOM 4131", [], RECIPIENTES))
+# 🚨 SEM RECIPIENTE NAO INVENTA MODELO. Antes de 14/08 a funcao ia ao cache por
+# dentro; agora, se o recipiente nao chegou (nao existe, ambiguo ou de outra
+# rodada), o modelo e o marcador -- e sem modelo nao ha produto, entao o
+# equipamento nao entra nos materiais. E a trava que sustenta a decisao de
+# gerar com `NUMERO DE SERIE` em vez de recusar.
+checar("upgrade sem recipiente devolve o marcador, nao um modelo plausivel",
+       equipamentos.MARCADOR_MODELO,
+       os_router._modelo_da_operacao(perfil, "OOM 4131", [], {}))
 checar("placa inexistente devolve None, nao string", None,
        equipamentos.modelo_da_placa("XXX0000"))
 

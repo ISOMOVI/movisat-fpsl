@@ -133,4 +133,67 @@ PERFIS = {
         "modelo_origem": "placa_teste",
         "descricao_template": "Upgrade: {placa} | {veiculo} | SAIRÁ: {serie} ({modelo_saida}) | ENTRARÁ: {serie_entrada} ({modelo}) | TERMO {termo}",
     },
+
+    # ── Manutencao (2026-08-14) — os dois primeiros perfis SEM TERMO ──────────
+    # 🚨 NAO NASCEM DE DOCUMENTO. Os 7 perfis acima vem de um PDF assinado; a
+    # manutencao vem de um chamado. Nao ha extracao, nao ha numero de termo e
+    # nao ha item de contrato -- o que existe e uma placa e um defeito.
+    #
+    # 🚨 TIPO E PROBLEMA VAO POR NOME, NAO POR ID. Medido em 14/08: das 14 OS
+    # de manutencao que a casa ja abriu na mao, 7 usam `tipo = 55`, que NAO
+    # ESTA MAIS na lista do Harmonit. ID fixo em codigo apodrece em silencio;
+    # o nome e resolvido contra a lista viva na hora de gerar (ver
+    # `resolver_tipo_e_problema` em os_router.py). Os `*_id` abaixo sao so o
+    # ultimo recurso para quando a lista nao responder -- transiente de rede
+    # nao pode impedir a geracao, mas nome que sumiu tem de impedir.
+    #
+    # 🚨 MANUTENCAO NAO FLEGA COBRAR NEM COMODATO EM NENHUM ITEM (decisao do
+    # usuario, 14/08). O equipamento aparece como material para o tecnico
+    # saber com o que vai lidar -- nao e patrimonio saindo nem cobranca
+    # entrando. Por isso `sem_flags` e `sem_financeira` andam juntos.
+    "manutencao_local": {
+        "label": "Manutenção no local",
+        "tipo_nome": "Solicitação de Cliente",
+        "tipo_id": 1783,
+        "problema_nome": "MANUTENÇÃO",
+        "problema_id": 7384,
+        "produto_servico_nome": "MANUTENÇÃO",
+        "os_por_placa": 1,
+        "sem_termo": True,
+        "sem_flags": True,
+        "sem_financeira": True,
+        # Sem recipiente: o equipamento que interessa e o que JA ESTA no
+        # veiculo, entao o modelo se le da propria placa.
+        "modelo_origem": "placa",
+        "descricao_template": "MANUTENÇÃO NO LOCAL: {placa} | {veiculo} | {serie} ({modelo})",
+    },
+    "manutencao_troca": {
+        "label": "Manutenção com troca",
+        "tipo_nome": "Solicitação de Cliente",
+        "tipo_id": 1783,
+        "problema_nome": "MANUTENÇÃO",
+        "problema_id": 7384,
+        "produto_servico_nome": "MANUTENÇÃO",
+        "os_por_placa": 1,
+        "sem_termo": True,
+        "sem_flags": True,
+        "sem_financeira": True,
+        # Mesmo mecanismo do Upgrade, com outro sufixo: o setor de
+        # configuracao cria `<PLACA>-MANUT` na WESO e vincula nela o
+        # equipamento novo. Medido em 14/08: 5 recipientes existem, todos com
+        # a descricao `MANUTENCAO`.
+        "placa_teste_sufixo": "-MANUT",
+        # ⚠️ AQUI A TRAVA E MAIS FRACA QUE A DO UPGRADE, e de proposito. O
+        # upgrade compara com `TERMO {termo}`, que identifica a rodada; a
+        # manutencao nao tem termo e todo recipiente se chama `MANUTENCAO`.
+        # Entao isto prova que e UM recipiente de manutencao, nao que e o
+        # DESTA manutencao. O que fecha o resto e liberar a serie no fim
+        # (`liberar_serie`): recipiente usado deixa de existir.
+        "placa_teste_descricao": "MANUTENCAO",
+        "modelo_origem": "placa_teste",
+        # Depois da OS criada com serie e material, devolve o equipamento ao
+        # estoque e apaga o recipiente -- nessa ordem.
+        "liberar_serie": True,
+        "descricao_template": "MANUTENÇÃO COM TROCA: {placa} | {veiculo} | SAIRÁ: {serie} ({modelo_saida}) | ENTRARÁ: {serie_entrada} ({modelo})",
+    },
 }

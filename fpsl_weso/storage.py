@@ -111,6 +111,16 @@ def init_db():
         if "excluida" not in _cols:
             conn.execute("ALTER TABLE os_historico ADD COLUMN excluida INTEGER NOT NULL DEFAULT 0")
 
+        # migração (2026-08-14): `nas_duas` -- o item aparece TAMBÉM na OS
+        # operacional, além da financeira. Nasceu do termo 8839: "Central 24
+        # horas" vem como CONTRATADO com valor, cai em cobrança e some da OS
+        # que o técnico lê. Marcar por vínculo, e não por nome no código, para
+        # o próximo item ser um clique em vez de um deploy.
+        _cols = [r[1] for r in conn.execute("PRAGMA table_info(painel_vinculos_itens)").fetchall()]
+        if "nas_duas" not in _cols:
+            conn.execute("ALTER TABLE painel_vinculos_itens "
+                         "ADD COLUMN nas_duas INTEGER NOT NULL DEFAULT 0")
+
         # migração: perfil de acesso por aba + owner. Antes disso só existia o
         # booleano `admin`, e as 4 abas operacionais ficavam abertas a qualquer
         # usuário logado. `abas` guarda um JSON de ids de aba (ver painel/abas.py).
@@ -678,7 +688,8 @@ async def buscar_vinculo_item(nome_contrato: str) -> dict | None:
     def _run():
         with _connect() as conn:
             row = conn.execute(
-                "SELECT id, nome_contrato, harmonit_id, harmonit_tipo, harmonit_descricao, oculto "
+                "SELECT id, nome_contrato, harmonit_id, harmonit_tipo, harmonit_descricao, "
+                "oculto, nas_duas "
                 "FROM painel_vinculos_itens WHERE nome_contrato = ?",
                 (nome_norm,),
             ).fetchone()
@@ -687,24 +698,28 @@ async def buscar_vinculo_item(nome_contrato: str) -> dict | None:
         return {
             "id": row[0], "nome_contrato": row[1], "harmonit_id": row[2],
             "harmonit_tipo": row[3], "harmonit_descricao": row[4], "oculto": bool(row[5]),
+            "nas_duas": bool(row[6]),
         }
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
 async def salvar_vinculo_item(nome_contrato: str, harmonit_id: int | None, harmonit_tipo: str | None,
-                                harmonit_descricao: str | None, oculto: bool = False) -> None:
+                                harmonit_descricao: str | None, oculto: bool = False,
+                                nas_duas: bool = False) -> None:
     nome_norm = _normalizar_nome_item(nome_contrato)
     def _run():
         with _connect() as conn:
             conn.execute(
                 "INSERT INTO painel_vinculos_itens "
-                "(nome_contrato, harmonit_id, harmonit_tipo, harmonit_descricao, oculto, criado_em) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
+                "(nome_contrato, harmonit_id, harmonit_tipo, harmonit_descricao, oculto, "
+                "nas_duas, criado_em) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(nome_contrato) DO UPDATE SET "
                 "harmonit_id=excluded.harmonit_id, harmonit_tipo=excluded.harmonit_tipo, "
-                "harmonit_descricao=excluded.harmonit_descricao, oculto=excluded.oculto",
+                "harmonit_descricao=excluded.harmonit_descricao, oculto=excluded.oculto, "
+                "nas_duas=excluded.nas_duas",
                 (nome_norm, harmonit_id, harmonit_tipo, harmonit_descricao, int(oculto),
-                 datetime.now(timezone.utc).isoformat()),
+                 int(nas_duas), datetime.now(timezone.utc).isoformat()),
             )
     await asyncio.get_running_loop().run_in_executor(None, _run)
 
@@ -713,12 +728,14 @@ async def listar_vinculos_itens() -> list[dict]:
     def _run():
         with _connect() as conn:
             rows = conn.execute(
-                "SELECT id, nome_contrato, harmonit_id, harmonit_tipo, harmonit_descricao, oculto, criado_em "
+                "SELECT id, nome_contrato, harmonit_id, harmonit_tipo, harmonit_descricao, "
+                "oculto, criado_em, nas_duas "
                 "FROM painel_vinculos_itens ORDER BY nome_contrato"
             ).fetchall()
         return [
             {"id": r[0], "nome_contrato": r[1], "harmonit_id": r[2], "harmonit_tipo": r[3],
-             "harmonit_descricao": r[4], "oculto": bool(r[5]), "criado_em": r[6]}
+             "harmonit_descricao": r[4], "oculto": bool(r[5]), "criado_em": r[6],
+             "nas_duas": bool(r[7])}
             for r in rows
         ]
     return await asyncio.get_running_loop().run_in_executor(None, _run)

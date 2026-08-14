@@ -73,6 +73,14 @@
   .msg-erro { background:var(--red-dim); color:var(--red); }
   .msg-ok { background:var(--green-dim); color:var(--green); }
   .aviso { font-size:.78rem; color:var(--yellow); background:var(--yellow-dim); padding:8px 12px; border-radius:6px; }
+  /* Caixa neutra de informação/progresso -- não é alerta, então não usa o
+     amarelo do .aviso, que treina a pessoa a ignorar o aviso de verdade. */
+  .aviso-info { font-size:.78rem; color:var(--text2); background:var(--bg2);
+                padding:8px 12px; border-radius:6px; margin-bottom:10px; }
+  .spinner { display:inline-block; width:11px; height:11px; vertical-align:-1px;
+             border:2px solid var(--border); border-top-color:var(--text2);
+             border-radius:50%; animation:girar .7s linear infinite; }
+  @keyframes girar { to { transform:rotate(360deg); } }
 
   /* modal */
   .modal-bg { display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100;
@@ -117,19 +125,26 @@
           <label for="perfil">Tipo de operação</label>
           <select id="perfil"></select>
         </div>
-        <div>
+        <!-- Some inteiro nos perfis sem termo (manutenção): não há documento
+             para extrair, então oferecer o campo seria oferecer um caminho
+             que não existe. -->
+        <div id="anexoWrap">
           <label>Contrato (PDF)</label>
           <div class="drop" id="drop" onclick="document.getElementById('arquivo').click()">
             <div id="dropLabel">Clique ou arraste o PDF do contrato aqui</div>
             <input type="file" id="arquivo" accept="application/pdf">
           </div>
         </div>
+        <div id="semTermoAviso" style="display:none" class="aviso-info">
+          Manutenção não vem de contrato — não há documento para anexar.
+          Você informa cliente, placa e serviço na próxima etapa.
+        </div>
         <div id="extraidoMsg"></div>
         <div id="alertaTransferencia"></div>
         <div id="itensRevisao"></div>
         <div class="footer-nav">
           <span></span>
-          <button class="btn btn-primary" id="btnExtrair" onclick="extrair()">Extrair dados →</button>
+          <button class="btn btn-primary" id="btnExtrair" onclick="extrair()">Gerar OS →</button>
         </div>
       </div>
 
@@ -149,6 +164,14 @@
             <button class="btn btn-ghost" onclick="abrirModalCliente('destino')">Buscar</button>
           </div>
         </div>
+        <!-- Manutenção não tem documento de onde tirar a placa: o operador
+             digita. Uma placa por geração, por decisão do usuário. -->
+        <div id="placaManualWrap" style="display:none">
+          <label for="placaManual">Placa do veículo</label>
+          <input type="text" id="placaManual" placeholder="ex.: GJN 8689" oninput="checarPodeAvancar()">
+          <label for="veiculoManual" style="margin-top:10px;display:block">Veículo (descrição que vai na OS)</label>
+          <input type="text" id="veiculoManual" placeholder="ex.: VW 24.280">
+        </div>
         <div>
           <label for="servicoCampo">Serviço (produtoServicoId)</label>
           <div class="campo-com-botao">
@@ -156,9 +179,13 @@
             <button class="btn btn-ghost" onclick="abrirModalServico()">Buscar</button>
           </div>
         </div>
-        <div>
+        <div id="termoWrap">
           <label for="termo">Termo (nº do contrato)</label>
           <input type="text" id="termo">
+        </div>
+        <div>
+          <label for="observacao">OBS (campo livre — vai para a OBS da OS, abaixo da linha de criação)</label>
+          <input type="text" id="observacao" placeholder="ex.: cliente relatou equipamento sem comunicar desde 12/08">
         </div>
         <div>
           <label for="prioridadeCampo">Prioridade das OS operacionais (a financeira sai sempre Normal)</label>
@@ -168,7 +195,7 @@
           <label for="solucaoTecnica">Contexto da extração (vai pro campo "solução técnica" da OS -- o técnico preenche o resultado do serviço abaixo do separador)</label>
           <textarea id="solucaoTecnica" rows="2" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:.86rem;font-family:inherit"></textarea>
         </div>
-        <div>
+        <div id="motivoWrap">
           <label for="motivoFinanceira">Motivo — financeira sem custo (só usado se a OS financeira sair saldo 0)</label>
           <input type="text" id="motivoFinanceira" placeholder="ex.: por conta do técnico / acordo interno / liberado pela gestão">
         </div>
@@ -272,8 +299,46 @@ async function init() {
       });
     }
   } catch (e) { /* mantém select vazio -> backend usa default Normal */ }
+  sel.addEventListener('change', aplicarPerfil);
+  aplicarPerfil();
 }
 init();
+
+// Perfil escolhido na Etapa 1, com os flags que o backend expõe em /perfis.
+function perfilAtual() {
+  return PERFIS[document.getElementById('perfil').value] || {};
+}
+
+// Sem termo = sem documento: o campo de anexo some, e com ele o Termo e o
+// motivo da financeira, que não existem nesse caminho. Esconder em vez de
+// desabilitar é de propósito -- campo cinza ainda parece campo que falta.
+function aplicarPerfil() {
+  const p = perfilAtual();
+  const semTermo = !!p.sem_termo;
+  document.getElementById('anexoWrap').style.display = semTermo ? 'none' : '';
+  document.getElementById('semTermoAviso').style.display = semTermo ? '' : 'none';
+  const termoWrap = document.getElementById('termoWrap');
+  if (termoWrap) termoWrap.style.display = semTermo ? 'none' : '';
+  const motivoWrap = document.getElementById('motivoWrap');
+  if (motivoWrap) motivoWrap.style.display = p.sem_financeira ? 'none' : '';
+  const placaWrap = document.getElementById('placaManualWrap');
+  if (placaWrap) placaWrap.style.display = semTermo ? '' : 'none';
+}
+
+// ── Caixa de progresso ──────────────────────────────────────────────────────
+// A geração de manutenção vai à WESO ao vivo (~2,5s) e ao Harmonit para
+// resolver Tipo e Problema. Sem retorno visual, o operador clica de novo.
+function progresso(texto) {
+  let cx = document.getElementById('progressoCaixa');
+  if (!texto) { if (cx) cx.remove(); return; }
+  if (!cx) {
+    cx = document.createElement('div');
+    cx.id = 'progressoCaixa';
+    cx.className = 'aviso-info';
+    document.querySelector('.panel.active').prepend(cx);
+  }
+  cx.innerHTML = '<span class="spinner"></span> ' + escapeHtml(texto);
+}
 
 document.getElementById('arquivo').addEventListener('change', (e) => {
   if (e.target.files[0]) document.getElementById('dropLabel').textContent = e.target.files[0].name;
@@ -289,11 +354,29 @@ function irPara(n) {
 }
 
 async function extrair() {
+  const perfil = document.getElementById('perfil').value;
+
+  // 🚨 SEM TERMO NÃO HÁ O QUE EXTRAIR. Manutenção pula a extração inteira e
+  // vai direto para a Etapa 2 com uma linha de placa em branco, para o
+  // operador digitar. Uma placa por geração (regra do usuário, 14/08).
+  if (perfilAtual().sem_termo) {
+    extraido = { itens: [], placas: [] };
+    placasEditaveis = [{ placa: '', veiculo: '', sem_bloqueio: false }];
+    document.getElementById('extraidoMsg').innerHTML = '';
+    document.getElementById('itensRevisao').innerHTML = '';
+    document.getElementById('alertaTransferencia').innerHTML = '';
+    document.getElementById('clienteDestinoWrap').style.display = 'none';
+    renderPlacas();
+    irPara(2);
+    validarEtapa2();
+    return;
+  }
+
   const arquivo = document.getElementById('arquivo').files[0];
   if (!arquivo) { alert('Escolha um PDF primeiro.'); return; }
-  const perfil = document.getElementById('perfil').value;
   const btn = document.getElementById('btnExtrair');
   btn.disabled = true; btn.textContent = 'Extraindo...';
+  progresso('Lendo o documento e extraindo placas e itens...');
   const fd = new FormData();
   fd.append('arquivo', arquivo);
   try {
@@ -404,7 +487,8 @@ async function extrair() {
   } catch (err) {
     document.getElementById('extraidoMsg').innerHTML = `<div class="msg msg-erro">${escapeHtml(err.message)}</div>`;
   } finally {
-    btn.disabled = false; btn.textContent = 'Extrair dados →';
+    progresso('');
+    btn.disabled = false; btn.textContent = 'Gerar OS →';
   }
 }
 
@@ -485,13 +569,24 @@ function selecionarServico(s) {
 function checarPodeAvancar() {
   const perfil = document.getElementById('perfil').value;
   const precisaDestino = perfil === 'transferencia';
+  // Sem termo a placa é digitada, e sem ela não há OS possível.
+  const placaOk = !perfilAtual().sem_termo
+    || !!(document.getElementById('placaManual') || {}).value?.trim();
   document.getElementById('btnMontar').disabled = !(
-    clienteSelecionado && servicoSelecionado && (!precisaDestino || clienteDestinoSelecionado)
+    clienteSelecionado && servicoSelecionado && placaOk
+    && (!precisaDestino || clienteDestinoSelecionado)
   );
 }
 
 function _montarPayloadBase(confirmar) {
   const perfilChave = document.getElementById('perfil').value;
+  if (perfilAtual().sem_termo) {
+    placasEditaveis = [{
+      placa: document.getElementById('placaManual').value.trim(),
+      veiculo: document.getElementById('veiculoManual').value.trim(),
+      sem_bloqueio: false,
+    }];
+  }
   const placas = placasEditaveis.map((p) => {
     const base = { placa: p.placa, veiculo: p.veiculo || '', sem_bloqueio: !!p.sem_bloqueio };
     if (perfilChave === 'substituicao') {
@@ -515,6 +610,7 @@ function _montarPayloadBase(confirmar) {
       valor_unitario: it.valor_unitario, comodato_ou_aquisicao: it.comodato_ou_aquisicao,
     })),
     solucao_tecnica: document.getElementById('solucaoTecnica').value,
+    observacao: document.getElementById('observacao').value,
     prioridade_id: parseInt(document.getElementById('prioridadeCampo').value, 10) || 382,
     motivo_financeira_zero: document.getElementById('motivoFinanceira').value,
     confirmar,
@@ -530,6 +626,9 @@ function _montarPayloadBase(confirmar) {
 async function montarResumo() {
   const btn = document.getElementById('btnMontar');
   btn.disabled = true; btn.textContent = 'Calculando...';
+  progresso(perfilAtual().sem_termo
+    ? 'Consultando a placa na WESO e localizando o equipamento...'
+    : 'Resolvendo vínculos, alocando materiais e montando as OS...');
   try {
     const payload = _montarPayloadBase(false);
     const res = await fetch('/painel/api/gerar-os', {
@@ -570,6 +669,7 @@ async function montarResumo() {
   } catch (err) {
     alert(err.message);
   } finally {
+    progresso('');
     btn.disabled = false; btn.textContent = 'Ver resumo →';
   }
 }
@@ -580,6 +680,7 @@ async function gerarOs() {
   const total = document.querySelectorAll('#resumoTbody tr').length;
   if (!confirm(`Confirma a geração de ${total} OS no Harmonit? Essa ação é real, não tem como desfazer em lote.`)) return;
   btn.disabled = true; btn.textContent = 'Gerando...';
+  progresso('Criando as OS no Harmonit e coletando a numeração...');
   try {
     const res = await fetch('/painel/api/gerar-os', {
       method: 'POST',
@@ -588,15 +689,38 @@ async function gerarOs() {
     });
     const data = await res.json();
     const div = document.getElementById('resultadoFinal');
-    div.innerHTML = data.resultados.map((r) =>
+    let html = data.resultados.map((r) =>
       r.ok
         ? `<div class="msg msg-ok">✓ ${escapeHtml(r.placa)} (cliente ${escapeHtml(r.cliente_id)}) → OS nº ${escapeHtml(r.numero_ordem)} (id ${escapeHtml(r.os_id)})</div>`
         : `<div class="msg msg-erro">✗ ${escapeHtml(r.placa)} → ${escapeHtml(r.erro)}</div>`
     ).join('');
+
+    // 🚨 O RESULTADO DA LIBERAÇÃO FICA NA TELA, NÃO EM CAIXA QUE SOME
+    // (pedido do usuário, 14/08). Quando dá errado, os números `veiculo_id` e
+    // `rastreador_id` são exatamente o que uma pessoa precisa para resolver na
+    // mão na WESO -- se somem da tela, some a informação junto.
+    html += (data.liberacoes || []).map((l) => {
+      if (l.ok) {
+        return `<div class="msg msg-ok">✓ ${escapeHtml(l.placa)} — equipamento liberado: `
+             + `${(l.passos || []).map(escapeHtml).join('; ')}</div>`;
+      }
+      const d = l.dados_para_correcao || {};
+      const numeros = Object.entries(d)
+        .filter(([, v]) => v !== null && v !== undefined && v !== '')
+        .map(([k, v]) => `${escapeHtml(k)}: <code>${escapeHtml(v)}</code>`)
+        .join(' · ');
+      return `<div class="msg msg-erro"><strong>✗ ${escapeHtml(l.placa)} — ${escapeHtml(l.erro)}</strong>`
+           + ((l.passos || []).length ? `<div style="margin-top:6px;font-size:.78rem">O que chegou a acontecer: ${(l.passos || []).map(escapeHtml).join('; ')}</div>` : '')
+           + (numeros ? `<div style="margin-top:6px;font-size:.78rem">Para corrigir na WESO — ${numeros}</div>` : '')
+           + `</div>`;
+    }).join('');
+
+    div.innerHTML = html;
     btn.style.display = 'none';
   } catch (err) {
     document.getElementById('resultadoFinal').innerHTML = `<div class="msg msg-erro">${escapeHtml(err.message)}</div>`;
   } finally {
+    progresso('');
     btn.disabled = false; btn.textContent = 'Gerar OS';
   }
 }

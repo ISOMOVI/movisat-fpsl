@@ -33,11 +33,18 @@ import logging
 import sys
 import re
 
-from fpsl_weso.client import weso_get
+from fpsl_weso.client import weso_get, weso_post
 
 log = logging.getLogger(__name__)
 
 MARCADOR_NAO_LOCALIZADO = "série não localizada"
+
+# 🚨 DOIS MARCADORES, DOIS SENTIDOS DIFERENTES (decisao do usuario, 14/08).
+# `série não localizada` e o SAIRA: nao sei o que esta no veiculo, e ninguem
+# vai preencher depois. `NUMERO DE SERIE` e o ENTRARA: o equipamento ainda nao
+# foi vinculado, e o tecnico escreve a serie na hora da instalacao. E o mesmo
+# texto literal que os templates de contrato ja usavam desde o inicio.
+MARCADOR_SERIE_A_PREENCHER = "NUMERO DE SERIE"
 
 
 def _chave(placa: str) -> str:
@@ -205,6 +212,138 @@ def placa_teste(placa: str, sufixo: str) -> str:
     return f"{base}{sufixo}" if base else ""
 
 
+# 🚨 O ESPACO PODE APARECER EM QUALQUER LUGAR, MESMO PADRONIZADO. Quem cria o
+# recipiente digita a mao, e `GJN8689 - MANUT`, `GJN 8689-MANUT` e
+# ` GJN8689-MANUT` (esta ultima ja existe na WESO) sao a mesma coisa. Por isso
+# a comparacao normaliza OS DOIS LADOS, tirando TODO espaco.
+#
+# ⚠️ A TRAVA E A PLACA ORIGINAL, nao o texto todo (ideia do usuario, 14/08):
+# como a chave e montada com a placa normalizada inteira mais o sufixo, um
+# recipiente com a placa truncada (`GJN868-MANUT`) simplesmente nao casa. Nao
+# ha margem para "parecido o bastante".
+
+def chave_recipiente(placa: str, sufixo: str) -> str:
+    """Chave normalizada do recipiente: `GJN 8689` + `-MANUT` -> `GJN8689-MANUT`."""
+    base = _chave(placa)
+    return f"{base}{_chave(sufixo)}" if base else ""
+
+
+async def dados_das_placas(placas: list[str]) -> dict[str, dict]:
+    """{chave_normalizada: dados} lido AO VIVO da WESO, sem passar pelo cache.
+
+    🚨 AO VIVO E REQUISITO, NAO LUXO, nos perfis de manutencao: o recipiente
+    e criado pelo setor de configuracao minutos antes da OS, e o cache local
+    so atualiza as 04:15. Ler do cache devolveria "modelo nao localizado" para
+    um equipamento que existe -- e OS sem a linha do equipamento e exatamente
+    o defeito que o usuario achou auditando o termo 8820.
+
+    Custo medido em 29/07 e reconferido em 14/08: a base inteira de veiculos
+    custa 2,3s, e filtrar UMA placa custa ~6s (a API e mais lenta com filtro
+    que sem). Por isso aqui e sempre UMA chamada para a base toda, qualquer
+    que seja o numero de placas.
+
+    Devolve, por placa: veiculo_id, placa como esta gravada, descricao,
+    rastreador_id, serie e modelo. Nunca levanta -- placa que nao resolveu
+    simplesmente nao entra no dict.
+    """
+    alvo = {_chave(p) for p in placas if str(p or "").strip()}
+    if not alvo:
+        return {}
+    try:
+        r = await weso_get("/Veiculos/Consultar", {})
+    except Exception as exc:
+        log.warning("equipamentos: base de veiculos indisponivel ao vivo: %s", exc)
+        return {}
+    base = (r.get("veiculos") if isinstance(r, dict) else r) or []
+
+    # Junta TODOS os casos por chave antes de decidir: duas placas diferentes
+    # que normalizam igual sao ambiguidade, e ambiguidade nao se resolve por
+    # "pega o primeiro" -- e assim que se grava a serie do equipamento errado.
+    por_chave: dict[str, list[dict]] = {}
+    for v in base:
+        k = _chave(v.get("placa"))
+        if k in alvo:
+            por_chave.setdefault(k, []).append(v)
+
+    dados: dict[str, dict] = {}
+    for chave, achados in por_chave.items():
+        if len(achados) > 1:
+            log.warning("equipamentos: %s casos para a chave %r na WESO -- ambiguo",
+                        len(achados), chave)
+            dados[chave] = {"ambiguo": [a.get("placa") for a in achados]}
+            continue
+        v = achados[0]
+        dados[chave] = {
+            "veiculo_id": v.get("id"),
+            "placa": v.get("placa"),
+            "descricao": v.get("descricao"),
+            "rastreador_id": v.get("rastreador_id"),
+            "serie": None,
+            "modelo": None,
+        }
+
+    ids = [d["rastreador_id"] for d in dados.values()
+           if not d.get("ambiguo") and d.get("rastreador_id")]
+    if ids:
+        por_id = await _rastreadores_por_id(ids)
+        for d in dados.values():
+            r_ = por_id.get(d.get("rastreador_id"))
+            if r_:
+                d["serie"] = r_.get("numeroSerie")
+                d["modelo"] = r_.get("modelo")
+    return dados
+
+
+async def _rastreadores_por_id(ids: list[int]) -> dict[int, dict]:
+    """{id: registro} -- em lote acima do limiar, um a um abaixo dele.
+
+    Mesmo criterio ja usado em `buscar_seriais`: 1 rastreador por id custa
+    0,16s, e a lista inteira custa 11,6s. Abaixo de 4 ids, N chamadas ganham.
+    """
+    unicos = sorted({i for i in ids if i})
+    if not unicos:
+        return {}
+    achados: dict[int, dict] = {}
+    if len(unicos) >= LIMIAR_LOTE:
+        try:
+            r = await weso_get("/Rastreadores/Consultar", {"numeroSerie": ""})
+            todos = (r.get("rastreadores") if isinstance(r, dict) else r) or []
+            alvo = set(unicos)
+            for t in todos:
+                if t.get("id") in alvo:
+                    achados[t["id"]] = t
+            return achados
+        except Exception as exc:
+            log.warning("equipamentos: lote de rastreadores falhou (%s), indo por id", exc)
+    for rid in unicos:
+        if rid in achados:
+            continue
+        try:
+            r = await weso_get("/Rastreadores/Consultar", {"id": rid})
+            lst = (r.get("rastreadores") if isinstance(r, dict) else r) or []
+            if lst:
+                achados[rid] = lst[0]
+        except Exception as exc:
+            log.warning("equipamentos: rastreador %s falhou: %s", rid, exc)
+    return achados
+
+
+async def buscar_recipientes(placas: list[str], sufixo: str) -> dict[str, dict]:
+    """{chave_da_placa_ORIGINAL: dados_do_recipiente} -- ao vivo.
+
+    A chave e a placa original normalizada (`GJN8689`), nao a do recipiente:
+    quem consulta depois tem a placa do veiculo em maos, nao a derivada.
+    """
+    if not sufixo:
+        return {}
+    mapa = {chave_recipiente(p, sufixo): _chave(p) for p in placas if str(p or "").strip()}
+    mapa.pop("", None)
+    if not mapa:
+        return {}
+    achados = await dados_das_placas(list(mapa))
+    return {mapa[k]: v for k, v in achados.items() if k in mapa}
+
+
 def descricao_da_placa(placa: str) -> str | None:
     """Descricao do veiculo na WESO, ou None se nao deu para saber.
 
@@ -294,3 +433,120 @@ def modelo_efetivo(modelo: str | None, tem_rfid: bool = False) -> str:
         if alvo:
             return alvo
     return modelo
+
+
+# ── Liberar a serie depois da OS ─────────────────────────────────────────────
+# 🚨 EXCLUIR O VEICULO NAO LIBERA O RASTREADOR. Medido na Pastelaria Velasco em
+# 14/08: criei `OVG7C78-MANUT` com o rastreador 50171 (que estava em Estoque),
+# ele virou Instalado, apaguei o veiculo com `/Veiculos/Excluir` -- e o
+# rastreador CONTINUOU Instalado, agora sem veiculo nenhum. Sao duas chamadas,
+# nao uma. Quem devolve ao estoque e `/Rastreadores/Atualizar`.
+#
+# 🚨 `situacao` E OBJETO, NAO TEXTO. `{"situacao": "Estoque"}` devolve
+# "JSON invalido"; o formato certo e `{"situacao": {"descricao": "Estoque"}}`.
+#
+# 🚨 A ORDEM E LIBERAR PRIMEIRO, APAGAR DEPOIS. Se a segunda falhar sobra um
+# recipiente vazio -- visivel e inofensivo. Na ordem contraria sobraria serie
+# presa sem dono, que e invisivel e e justamente o que estamos consertando.
+#
+# ⚠️ A WESO MENTE NO CODIGO DE RETORNO NOS DOIS SENTIDOS. No mesmo teste, o
+# cadastro do recipiente devolveu erro HTML e GRAVOU o registro. Por isso cada
+# passo aqui e conferido RELENDO O ESTADO, nunca pelo status da resposta.
+
+SITUACAO_LIVRE = "Estoque"
+SITUACAO_PRESA = "Instalado"
+
+
+async def _situacao_do_rastreador(rastreador_id: int) -> str | None:
+    try:
+        r = await weso_get("/Rastreadores/Consultar", {"id": rastreador_id})
+    except Exception as exc:
+        log.warning("equipamentos: situacao do rastreador %s indisponivel: %s",
+                    rastreador_id, exc)
+        return None
+    lst = (r.get("rastreadores") if isinstance(r, dict) else r) or []
+    return (lst[0].get("situacao") if lst else None)
+
+
+async def _veiculo_existe(veiculo_id: int) -> bool | None:
+    """True/False, ou None quando nao deu para saber (que nao autoriza nada)."""
+    try:
+        r = await weso_get("/Veiculos/Consultar", {"veiculo_id": veiculo_id})
+    except Exception as exc:
+        log.warning("equipamentos: veiculo %s indisponivel: %s", veiculo_id, exc)
+        return None
+    return bool((r.get("veiculos") if isinstance(r, dict) else r) or [])
+
+
+async def _mudar_situacao(rastreador_id: int, situacao: str) -> bool:
+    try:
+        await weso_post("/Rastreadores/Atualizar",
+                        {"id": rastreador_id, "situacao": {"descricao": situacao}})
+    except Exception as exc:
+        log.warning("equipamentos: mudar situacao de %s para %r falhou: %s",
+                    rastreador_id, situacao, exc)
+    # Confirma RELENDO -- o retorno da WESO nao e prova de nada.
+    return (await _situacao_do_rastreador(rastreador_id)) == situacao
+
+
+async def liberar_recipiente(veiculo_id: int, rastreador_id: int | None) -> dict:
+    """Devolve a serie ao estoque e apaga o recipiente. Nunca levanta.
+
+    Devolve sempre um dicionario com `ok`, `passos` (o que aconteceu em cada
+    etapa) e, quando deu errado, `erro` e `dados_para_correcao` -- os numeros
+    que uma pessoa precisa para resolver na mao.
+    """
+    passos: list[str] = []
+
+    if not veiculo_id:
+        return {"ok": False, "erro": "recipiente sem veiculo_id -- nada a liberar",
+                "passos": passos, "dados_para_correcao": {}}
+
+    liberou = False
+    if rastreador_id:
+        liberou = await _mudar_situacao(rastreador_id, SITUACAO_LIVRE)
+        if not liberou:
+            situacao = await _situacao_do_rastreador(rastreador_id)
+            return {
+                "ok": False,
+                "erro": (f"nao consegui devolver o equipamento ao estoque "
+                         f"(esta como {situacao!r}). NADA foi alterado: o "
+                         f"recipiente continua na WESO."),
+                "passos": passos,
+                "dados_para_correcao": {"veiculo_id": veiculo_id,
+                                        "rastreador_id": rastreador_id,
+                                        "situacao_atual": situacao},
+            }
+        passos.append(f"equipamento {rastreador_id} devolvido ao estoque")
+
+    try:
+        await weso_post("/Veiculos/Excluir", {"veiculo_id": veiculo_id})
+    except Exception as exc:
+        log.warning("equipamentos: exclusao do recipiente %s falhou: %s", veiculo_id, exc)
+
+    ainda_existe = await _veiculo_existe(veiculo_id)
+    if ainda_existe is False:
+        passos.append(f"recipiente {veiculo_id} excluido")
+        return {"ok": True, "passos": passos, "dados_para_correcao": {}}
+
+    # 🚨 DESFAZER: o recipiente continua de pe (ou nao deu para conferir) e o
+    # equipamento ja saiu do Instalado. Deixar assim seria pior que nao ter
+    # mexido -- um recipiente vivo apontando para equipamento "em estoque".
+    desfez = False
+    if liberou and rastreador_id:
+        desfez = await _mudar_situacao(rastreador_id, SITUACAO_PRESA)
+        passos.append("desfeito: equipamento voltou para Instalado" if desfez
+                      else "DESFAZER TAMBEM FALHOU")
+    motivo = ("nao consegui excluir o recipiente" if ainda_existe
+              else "nao consegui confirmar se o recipiente foi excluido")
+    return {
+        "ok": False,
+        "erro": (f"{motivo}. "
+                 + ("O equipamento foi devolvido ao estado anterior."
+                    if desfez else
+                    "ATENCAO: o equipamento NAO voltou ao estado anterior.")),
+        "passos": passos,
+        "dados_para_correcao": {"veiculo_id": veiculo_id,
+                                "rastreador_id": rastreador_id,
+                                "desfeito": desfez},
+    }
