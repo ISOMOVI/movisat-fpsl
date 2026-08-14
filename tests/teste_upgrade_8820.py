@@ -168,9 +168,52 @@ checar("None e diferente de nao confere", True,
 
 checar("_norm_desc tolera espaco e caixa", "TERMO 8820", os_router._norm_desc("  termo   8820 "))
 
+# ── 8. a WESO SUBSTITUI o item do vinculo (14/08) ───────────────────────────
+# 🚨 MUDANCA DE MAIOR ALCANCE ATE AQUI: vale para os 9 perfis. Ate 14/08, se o
+# termo ja tivesse listado um rastreador, o material da WESO era DESCARTADO
+# para nao duplicar -- e a OS saia com o que o vendedor escreveu no contrato.
+# O vinculo distingue DOIS modelos ("RASTREADOR" -> ST310U, "RASTREADOR 4G" ->
+# XT40); a WESO tem 20+ em uso. Decisao do usuario: a WESO manda, porque o
+# veiculo ja existe la quando a OS e gerada -- inclusive em Cliente novo.
+print("\n[8] a WESO substitui o item do vinculo")
+
+_do_vinculo = {"descricao": "EQUIPAMENTO RASTREADOR TELEMETRIA AVANCADA 4G",
+               "harmonit_id": 338502, "quantidade": 1, "valor_unitario": 1100.0,
+               "comodato": True, "cobrar": False}
+_acessorio = {"descricao": "BLOQUEIO VEICULAR", "harmonit_id": 45689,
+              "quantidade": 1, "valor_unitario": 50.0,
+              "comodato": True, "cobrar": False}
+_da_weso = {"descricao": "ST310U", "harmonit_id": 20314, "quantidade": 1,
+            "valor_unitario": 0.0, "comodato": True, "cobrar": False}
+
+_saida = os_router._substituir_rastreador([_do_vinculo, _acessorio], _da_weso)
+checar("o rastreador do vinculo sai", False,
+       any("TELEMETRIA" in m["descricao"] for m in _saida))
+checar("o da WESO entra", True, any(m["descricao"] == "ST310U" for m in _saida))
+checar("o acessorio NAO e tocado", True,
+       any(m["descricao"] == "BLOQUEIO VEICULAR" for m in _saida))
+checar("nao duplica: 2 itens entram, 2 saem", 2, len(_saida))
+
+# ⚠️ SEM EQUIPAMENTO RESOLVIDO NAO MEXE. Apagar o item do contrato e nao pôr
+# nada no lugar seria pior que a imprecisao que estamos corrigindo.
+_intacto = os_router._substituir_rastreador([_do_vinculo, _acessorio], None)
+checar("sem equipamento da WESO, a lista fica como estava", 2, len(_intacto))
+checar("e o item do contrato continua la", True,
+       any("TELEMETRIA" in m["descricao"] for m in _intacto))
+
+checar("acessorio nao e confundido com rastreador", False,
+       os_router._eh_rastreador(_acessorio))
+checar("o equipamento e reconhecido", True, os_router._eh_rastreador(_do_vinculo))
+
+# Os 9 perfis leem a WESO -- nenhum ficou de fora da decisao.
+_sem_origem = [k for k, p in templates_config.PERFIS.items()
+               if not p.get("modelo_origem")]
+checar("todos os perfis leem a WESO para o modelo", [], _sem_origem)
+
 print()
 print(f"{ok} verificações OK, {len(falhas)} falha(s)")
 if falhas:
     for f in falhas:
         print("  FALHOU:", f)
     sys.exit(1)
+

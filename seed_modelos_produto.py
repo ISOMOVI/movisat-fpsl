@@ -37,14 +37,43 @@ MAPA = [
     ("Suntech ST350 LC4",   7001, "RASTREADOR ST350 LC4 4 FIOS",                 None),
     ("RST-Mini",           27296, "RST-MINI",                                    None),
     ("J16",               191322, "RASTREADOR 4G J16",                           None),
+    # ── Confirmados pelo usuario em 2026-08-14 ──
+    # ST940 -> RASTREADOR MOVEL, e nao "BASE IMANTADA ST940" (6987), que e o
+    # acessorio. O que sustenta: os 5 ST940 instalados estao todos em placas
+    # chamadas `Movel 1`, `MOVEL 2`, `MOVEL 3`, `MOVEL 4`, e o catalogo tem a
+    # familia toda nesse padrao (RASTREADOR SEMI-MOVEL ST310U / ST340).
+    ("Suntech ST940",       7007, "RASTREADOR MÓVEL",                            None),
+    # ⚠️ APROXIMACOES, escolhidas pelo usuario por falta de produto exato:
+    # ST8310 nao existe no catalogo -- vai no vizinho de cima (o UM).
+    ("Suntech ST8310",    320056, "ST8310UM",                                    V4G),
+    # ST340UR nao existe -- vai no RB, que e a variante com leitor.
+    ("Suntech ST340UR",    27241, "ST340RB",                                     None),
+    # Estes dois ja existiam no catalogo e so faltava a linha aqui. O TK-100
+    # esta gravado `TK 100`, com espaco -- foi por isso que a busca por
+    # "TK-100" nao achou nada e eu cheguei a dizer que nao existia.
+    ("TK-100",             13644, "TK 100",                                      None),
+    ("Concox CRX1",         6995, "RASTREADOR CRX1",                             None),
 ]
 
-# ⚠️ DE PROPOSITO SEM PRODUTO -- o usuario nao confirmou e eu nao invento:
-#   Suntech ST940   (16) -- so acha "BASE IMANTADA ST940", que e acessorio
-#   Suntech ST8310   (1) -- cairia em ST8310UM, que e outro modelo
-#   TK-100 (85) · Suntech ST500 (69) · NT2x (11) · Concox CRX1 (7)
-#   Suntech ST4945S (2) · Suntech ST340UR (1) · NT11 (1) · Concox GT06 (1)
+# ⚠️ DE PROPOSITO SEM PRODUTO -- nao existe equivalente no catalogo do Harmonit
+# (conferido em 2026-08-14 com busca solta, nao so pelo nome exato):
+#   NT2x (11 na base, 10 INSTALADOS) · Suntech ST500 (69, 3 instalados)
+#   Suntech ST4945S (2, 0) · NT11 (1, 0) · Concox GT06 (1, 0)
 # Sem produto a OS sai com o equipamento so na descricao -- nunca bloqueia.
+#
+# 🚨 COMO ACRESCENTAR UM MODELO AQUI (o caminho todo):
+#   1. o produto precisa existir no Harmonit. Cadastrar la e pratica de
+#      rotina, fora deste projeto (decisao do usuario, 14/08).
+#   2. achar o id: `/Produto/ObterProdutos?search=<termo>` -- BUSQUE SOLTO.
+#      O catalogo grava `TK 100`, `RASTREADOR MÓVEL`, `ST8310UM`; procurar
+#      pelo nome que a WESO usa devolve zero e leva a concluir errado.
+#   3. o nome da esquerda e o modelo COMO A WESO ESCREVE, exato -- e por ele
+#      que `produto_do_modelo` casa. Conferir em:
+#      sqlite3 ~/weso_cache/weso.db "SELECT DISTINCT modelo FROM rastreadores"
+#   4. `valor_patrimonial` so nos 4G (V4G). Nos 2G fica None e a OS herda o
+#      valor do item do contrato que esta sendo substituido.
+#   5. rodar este script (e idempotente, faz UPSERT) e conferir a listagem
+#      que ele imprime no fim.
 
 con = sqlite3.connect(BANCO)
 con.execute("""

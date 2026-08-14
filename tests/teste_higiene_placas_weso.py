@@ -45,6 +45,44 @@ def checar(nome, esperado, obtido):
 COLISOES_ACEITAS = {"MVEL1"}
 
 
+# 🚨 A REGRA DE MINUSCULA SO VALE PARA OS NOSSOS PADROES (decisao do usuario,
+# 2026-08-14). A base tem identificadores que nao sao placa e nunca vao ser --
+# `Movel 1`, `TAG identificacao` -- e cobrar caixa alta neles e cobrar uma
+# regra que nao existe. Reprovar por causa deles treinava a ignorar a suite.
+#
+# ⚠️ O ESPACO CONTINUA VALENDO PARA TODOS. Espaco e sempre defeito: foi ele que
+# tornou `' TTX 0H91'` invisivel para `/Veiculos/Consultar?placa=` no termo
+# 8788, que e o motivo desta suite existir (doc 21, 29/07). Minuscula e
+# convencao; espaco e falha silenciosa.
+# 🚨 A REGRA DE PLACA MORA EM `fpsl_weso/placas.py`, E SO LA. `eh_convencional`
+# ja trata o marcador `(RD)` em qualquer posicao e ja sabe que `RDM`/`RDQ`/`RDS`
+# sao prefixos legitimos, nao redundancia. Escrever um regex proprio aqui
+# criaria uma segunda definicao de "o que e placa" -- e as duas divergiriam.
+# Medido em 14/08: um regex proprio deixava 47 placas `(RD) EDF 5724` fora do
+# escopo, ou seja, sem a protecao que esta suite existe para dar.
+PADROES_EXTRAS = (
+    re.compile(r"^CHASSI:\s*[A-Z0-9]{17}$", re.I),           # chassi rotulado
+    re.compile(r"^.+\s*-\s*(UPGRADE|MANUT)$", re.I),         # recipiente
+)
+
+
+def e_padrao_nosso(placa: str) -> bool:
+    """A grafia deste registro e cobrada pela nossa regra?
+
+    Sao tres padroes: placa convencional (com ou sem `(RD)`), chassi rotulado e
+    placa-recipiente. Identificador que nao e nenhum dos tres -- `Movel 1`,
+    `TAG identificacao`, `OBD 4G - 17`, `ISCA DE CARGA` -- nao e placa e nunca
+    vai ser: cobrar caixa alta neles seria cobrar regra que nao existe
+    (decisao do usuario, 2026-08-14).
+    """
+    p = " ".join(str(placa or "").split())
+    if not p:
+        return False
+    if placas.eh_convencional(p):
+        return True
+    return any(rx.match(p) for rx in PADROES_EXTRAS)
+
+
 async def main():
     await start_client()
     try:
@@ -53,26 +91,49 @@ async def main():
         print(f"[1] base da WESO: {len(base)} veiculos")
         checar("base nao veio vazia", True, len(base) > 100)
 
-        def sujas(teste):
+        def sujas(teste, so_padroes_nossos=False):
             fora = []
             for v in base:
                 p = str(v.get("placa") or "")
-                if p and teste(p) and placas.normalizar(p) not in COLISOES_ACEITAS:
-                    fora.append((v.get("id"), p))
+                if not p or not teste(p):
+                    continue
+                if placas.normalizar(p) in COLISOES_ACEITAS:
+                    continue
+                if so_padroes_nossos and not e_padrao_nosso(p):
+                    continue
+                fora.append((v.get("id"), p))
             return fora
 
         print("\n[2] higiene da grafia")
-        for rotulo, teste in (
-            ("espaco a esquerda", lambda p: p != p.lstrip()),
-            ("espaco a direita",  lambda p: p != p.rstrip()),
-            ("espaco duplo",      lambda p: "  " in p),
-            ("letra minuscula",   lambda p: p != p.upper()),
+        for rotulo, teste, so_nossos in (
+            ("espaco a esquerda", lambda p: p != p.lstrip(), False),
+            ("espaco a direita",  lambda p: p != p.rstrip(), False),
+            ("espaco duplo",      lambda p: "  " in p,       False),
+            # minuscula so nos nossos padroes -- ver PADROES_NOSSOS acima
+            ("letra minuscula",   lambda p: p != p.upper(),  True),
         ):
-            fora = sujas(teste)
+            fora = sujas(teste, so_nossos)
             checar(rotulo, 0, len(fora))
             if fora:
                 for vid, p in fora[:8]:
                     print(f"       id={vid} {p!r}")
+
+        fora_do_escopo = [v.get("placa") for v in base
+                          if v.get("placa") and not e_padrao_nosso(str(v["placa"]))]
+        print(f"       ({len(fora_do_escopo)} identificadores fora dos nossos "
+              f"padroes, nao cobrados aqui)")
+
+        print("\n[2b] o filtro de padrao reconhece o que tem de reconhecer")
+        for p, esperado in (("ABC 1234", True), ("ABC1D23", True),
+                            ("abc 1234", True),
+                            # 🚨 redundancia: continua sendo placa nossa
+                            ("(RD) EDF 5724", True), ("EDF 5724 (RD)", True),
+                            ("CHASSI: HCCZTL80HNCJ51769", True),
+                            ("GJN8689-MANUT", True), ("OOM4131-UPGRADE", True),
+                            ("Movel 1", False), ("TAG identificacao", False),
+                            ("OBD 4G - 17", False), ("ISCA DE CARGA", False),
+                            ("COD: 04-01", False), ("", False)):
+            checar(f"padrao nosso? {p!r}", esperado, e_padrao_nosso(p))
 
         print("\n[3] colisao nova (placa normalizada repetida)")
         grupos = defaultdict(list)

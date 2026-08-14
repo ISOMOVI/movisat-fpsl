@@ -450,11 +450,11 @@ def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict
     operacoes = []
     for idx, p in enumerate(body.placas):
         materiais_placa = alocacao[idx]
-        # O equipamento que a WESO diz estar/entrar nesta placa vira material.
+        # O equipamento que a WESO diz estar/entrar nesta placa SUBSTITUI o
+        # rastreador que o vínculo trouxe do texto do contrato.
         equip = _material_do_equipamento(perfil, p.placa, materiais_placa,
                                          recipientes, dados)
-        if equip:
-            materiais_placa = list(materiais_placa) + [equip]
+        materiais_placa = _substituir_rastreador(materiais_placa, equip)
 
         if perfil["os_por_placa"] == 1:
             # O que SAI: sempre a propria placa. Ao vivo quando ha leitura ao
@@ -493,7 +493,11 @@ def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict
                 "placa": p.placa, "veiculo": p.veiculo,
                 "tipo_id": perfil["tipo_id_retirada"],
                 "problema_id": perfil.get("problema_id_retirada", perfil.get("problema_id")),
-                "descricao": perfil["descricao_template_retirada"].format(placa=p.placa, veiculo=p.veiculo, termo=body.termo, serie=serie_de(seriais, p.placa)),
+                "descricao": perfil["descricao_template_retirada"].format(
+                    placa=p.placa, veiculo=p.veiculo, termo=body.termo,
+                    serie=serie_de(seriais, p.placa),
+                    modelo=_modelo_da_operacao(perfil, p.placa, materiais_placa,
+                                               recipientes, dados)),
                 "rotulo": "Retirada",
                 # Decisão do usuário 2026-07-23: a retirada também lista o equipamento
                 # (o que é REMOVIDO do veículo antigo), com os mesmos itens da instalação.
@@ -507,7 +511,17 @@ def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict
                 "placa": p.placa_entrada, "veiculo": p.veiculo_entrada,
                 "tipo_id": perfil["tipo_id_instalacao"],
                 "problema_id": perfil.get("problema_id_instalacao", perfil.get("problema_id")),
-                "descricao": perfil["descricao_template_instalacao"].format(placa=p.placa_entrada, veiculo=p.veiculo_entrada, termo=body.termo, serie=serie_de(seriais, p.placa_entrada)),
+                # 🚨 SÉRIE E MODELO DA MESMA PLACA. Esta linha descreve o
+                # veículo que RECEBE, então lê dele -- misturar a série de um
+                # com o modelo de outro produz `007933914 (modelo nao
+                # localizado)`, que parece defeito e não é.
+                # ⚠️ O MATERIAL continua vindo da placa que SAI: na
+                # Substituição o equipamento é o MESMO e muda de veículo.
+                "descricao": perfil["descricao_template_instalacao"].format(
+                    placa=p.placa_entrada, veiculo=p.veiculo_entrada, termo=body.termo,
+                    serie=serie_de(seriais, p.placa_entrada),
+                    modelo=_modelo_da_operacao(perfil, p.placa_entrada, materiais_placa,
+                                               recipientes, dados)),
                 "rotulo": "Instalação",
                 "materiais": materiais_placa,
             })
@@ -562,11 +576,29 @@ def _materiais_operacional(alocados: list[dict], body: "GerarOsInput") -> list[d
     return [servico] + list(alocados) + [entrega]
 
 
+def _equipamentos_agregados(body: "GerarOsInput", perfil: dict,
+                            itens: list[dict]) -> list[dict]:
+    """Na OS agregada (titularidade), UMA linha de equipamento por placa.
+
+    🚨 O vínculo trazia um único item de rastreador com a quantidade do termo
+    (28 unidades de "RASTREADOR" para 28 veículos), e todas viravam o mesmo
+    ST310U. Agora cada veículo entra com o modelo que a WESO diz que ele tem.
+    """
+    equipamentos = [e for e in (_material_do_equipamento(perfil, p.placa, itens)
+                                for p in body.placas) if e]
+    if not equipamentos:
+        return list(itens)
+    return [m for m in itens if not _eh_rastreador(m)] + equipamentos
+
+
 def _descricao_titularidade(perfil: dict, body: "GerarOsInput") -> str:
     """Descrição das OS de titularidade -- aponta o termo do OUTRO lado (SPEC
     2026-07-24: novo titular cita o termo anterior; antigo, o posterior) e lista
-    as placas envolvidas."""
-    placas_txt = ", ".join(p.placa for p in body.placas)
+    as placas envolvidas, cada uma com o modelo real lido da WESO."""
+    placas_txt = ", ".join(
+        f"{p.placa} ({modelo_efetivo(modelo_da_placa(p.placa))})"
+        if modelo_da_placa(p.placa) else p.placa
+        for p in body.placas)
     rel = f" | termo relacionado {body.termo_relacionado}" if body.termo_relacionado else ""
     return f"{perfil['descricao_prefixo']}: TERMO {body.termo}{rel} | placas: {placas_txt}"
 
@@ -821,7 +853,8 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
     recipientes: dict = {}   # só o caminho padrão preenche; titularidade não usa
     titularidade = perfil.get("titularidade")
     if titularidade == "novo":
-        operacoes = _montar_novo_titular(body, perfil, itens_resolvidos)
+        operacoes = _montar_novo_titular(
+            body, perfil, _equipamentos_agregados(body, perfil, itens_resolvidos))
     elif titularidade == "antigo":
         # Antigo titular (decisao do usuario, 2026-07-29): gera tudo numa OS
         # so, com TODOS os itens do termo, e SEM flegar financeiro nem
@@ -829,7 +862,7 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         # assume comodato e cobranca e o novo titular, na OS dele. Antes daqui
         # o codigo filtrava so os itens de comodato e mantinha os flags.
         itens_sem_flag = [{**i, "cobrar": False, "comodato": False}
-                          for i in itens_resolvidos]
+                          for i in _equipamentos_agregados(body, perfil, itens_resolvidos)]
         operacoes = _montar_antigo_titular(body, perfil, itens_sem_flag)
     else:
         # E2: split -- operacional = não-cobrança (comodato + sem-flag); cobrança
@@ -1155,13 +1188,32 @@ def _modelo_da_operacao(perfil: dict, placa: str, materiais: list[dict],
 _MARCA_RASTREADOR = ("RASTREADOR", "EQUIPAMENTO RASTREADOR")
 
 
+def _eh_rastreador(material: dict) -> bool:
+    """Este material e o equipamento (e nao acessorio, servico ou taxa)?"""
+    d = str(material.get("descricao") or "").upper()
+    return any(marca in d for marca in _MARCA_RASTREADOR)
+
+
 def _ja_tem_rastreador(materiais: list[dict]) -> bool:
     """O termo ja trouxe um item de rastreador (via vinculo)?"""
-    for m in materiais or []:
-        d = str(m.get("descricao") or "").upper()
-        if any(marca in d for marca in _MARCA_RASTREADOR):
-            return True
-    return False
+    return any(_eh_rastreador(m) for m in materiais or [])
+
+
+def _substituir_rastreador(materiais: list[dict], equip: dict | None) -> list[dict]:
+    """Troca o rastreador que veio do VINCULO pelo que a WESO diz estar no veiculo.
+
+    🚨 O VINCULO DIZ O QUE O VENDEDOR ESCREVEU, A WESO DIZ O QUE ESTA LA. O
+    vinculo mapeia TEXTO do termo para produto fixo: "RASTREADOR" cai sempre em
+    ST310U, "RASTREADOR 4G" sempre em XT40 -- dois modelos para os 20+ que a
+    WESO tem em uso. Um veiculo com ST340 gerava OS dizendo ST310U.
+
+    ⚠️ Sem equipamento resolvido, NAO mexe: devolve a lista como estava. Apagar
+    o item do contrato e nao pôr nada no lugar seria pior que a imprecisao.
+    """
+    if not equip:
+        return list(materiais or [])
+    restantes = [m for m in materiais or [] if not _eh_rastreador(m)]
+    return restantes + [equip]
 
 
 def _material_do_equipamento(perfil: dict, placa: str, materiais: list[dict],
@@ -1179,16 +1231,18 @@ def _material_do_equipamento(perfil: dict, placa: str, materiais: list[dict],
     aparece para o tecnico saber com o que vai lidar e qual pegar. Flegar
     comodato numa manutencao emitiria patrimonio que ja esta com o cliente.
 
-    ⚠️ NAO DUPLICA. Se o termo ja listou um rastreador, este material NAO e
-    acrescentado -- sairiam dois equipamentos na mesma OS. Substituir o do
-    vinculo pelo real ainda NAO foi decidido pelo usuario, e sobrescrever o que
-    o contrato escreveu sem ordem seria pior que a lacuna. (Na manutencao nao
-    ha termo e portanto nao ha vinculo, entao esta trava nunca dispara ali.)
+    🚨 SUBSTITUI O ITEM DO VINCULO (decisao do usuario, 14/08). Ate aqui, se o
+    termo ja tivesse listado um rastreador, este material era descartado para
+    nao duplicar -- e a OS saia com o que o VENDEDOR escreveu no contrato
+    ("RASTREADOR" cai sempre em ST310U) em vez do que esta no veiculo. Agora a
+    WESO manda: o item do vinculo sai e este entra. Vale para os 9 perfis.
+
+    ⚠️ O VEICULO JA EXISTE NA WESO quando a OS e gerada -- inclusive em Cliente
+    novo e Aditivo (confirmado pelo usuario): "se chegou para fazer OS e porque
+    o equipamento ja esta na WESO". Se ainda assim nao houver modelo, nada e
+    substituido e o item do vinculo fica -- lacuna e melhor que apagar.
     """
     if not perfil.get("modelo_origem"):
-        return None
-    if _ja_tem_rastreador(materiais):
-        logger.info("equipamento: %s ja tem item de rastreador no termo -- nao acrescento", placa)
         return None
     modelo = _modelo_da_operacao(perfil, placa, materiais, recipientes, dados)
     prod = storage.produto_do_modelo(modelo)
@@ -1196,8 +1250,15 @@ def _material_do_equipamento(perfil: dict, placa: str, materiais: list[dict],
         logger.info("equipamento: modelo %r sem produto no de-para -- fica so na descricao", modelo)
         return None
     sem_flags = bool(perfil.get("sem_flags"))
+    # ⚠️ O de-para so tem valor patrimonial nos modelos 4G; nos 2G e None. Ao
+    # substituir, herda o valor do item do contrato que esta saindo -- senao a
+    # OS trocaria um valor patrimonial real por vazio.
+    substituidos = [m for m in materiais or [] if _eh_rastreador(m)]
+    herdado = next((m.get("valor_unitario") for m in substituidos
+                    if m.get("valor_unitario")), 0.0)
+    valor = prod["valor"] if prod["valor"] is not None else herdado
     return {"harmonit_id": prod["harmonit_id"], "quantidade": 1,
-            "valor_unitario": 0.0 if sem_flags else prod["valor"],
+            "valor_unitario": 0.0 if sem_flags else (valor or 0.0),
             "comodato": not sem_flags, "cobrar": False,
             "descricao": prod["descricao"],
             # Marca interna: e por ela que a liberacao da serie confirma que o

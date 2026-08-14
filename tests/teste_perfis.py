@@ -4,15 +4,25 @@ Gera o token internamente (nunca passa senha por linha de comando) e exercita:
 owner enxerga tudo, operador só as abas marcadas, aba não marcada dá 403,
 e a conta owner é intocável pela rota de gestão.
 
-Roda na VPS: venv/bin/python teste_perfis.py
+Roda na VPS: venv/bin/python tests/teste_perfis.py
 Remove o usuário de teste ao final.
+
+⚠️ Mudou de lugar em 2026-08-14: estava solto na raiz, junto com dois
+exploratórios que escreviam na WESO (esses foram apagados). Este ficou porque
+a trava que ele exercita -- acesso por aba -- está em uso real nos 9
+roteadores. Ao mudar de pasta precisou do sys.path, como os outros de tests/.
 """
 import asyncio
+import pathlib
 import sqlite3
+import sys
+
 import httpx
 
-from fpsl_weso.painel.auth import criar_token
-from fpsl_weso import storage
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from fpsl_weso.painel.auth import criar_token  # noqa: E402
+from fpsl_weso import storage  # noqa: E402
 
 BASE = "http://127.0.0.1:8004"
 LOGIN_TESTE = "zz_teste_perfil"

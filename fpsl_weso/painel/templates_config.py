@@ -54,14 +54,16 @@ PERFIS = {
         "tipo_id": 76,       # "Instalação rastreador" -- inferido
         "problema_id": 7457,  # "CONTRATO NOVO" -- confirmado (nome bate exato)
         "os_por_placa": 1,
-        "descricao_template": "Instalação: {placa} | {veiculo} | {serie} | TERMO {termo}",
+        "modelo_origem": "placa",
+        "descricao_template": "Instalação: {placa} | {veiculo} | {serie} ({modelo}) | TERMO {termo}",
     },
     "aditivo": {
         "label": "Aditivo",
         "tipo_id": 76,       # "Instalação rastreador" -- inferido
         "problema_id": 7372,  # "ADITIVO" -- confirmado (nome bate exato)
         "os_por_placa": 1,
-        "descricao_template": "Instalação: {placa} | {veiculo} | {serie} | TERMO {termo}",
+        "modelo_origem": "placa",
+        "descricao_template": "Instalação: {placa} | {veiculo} | {serie} ({modelo}) | TERMO {termo}",
     },
     "rescisao": {
         "label": "Rescisão",
@@ -74,7 +76,8 @@ PERFIS = {
         # assim": a cobranca fica amarrada ao veiculo que a gerou, em vez de
         # num agregado que pode ser fechado sem conferir placa a placa.
         "financeira_embutida": True,
-        "descricao_template": "Retirada: {placa} | {veiculo} | {serie} | TERMO {termo}",
+        "modelo_origem": "placa",
+        "descricao_template": "Retirada: {placa} | {veiculo} | {serie} ({modelo}) | TERMO {termo}",
     },
     "substituicao": {
         "label": "Substituição (troca de equipamento)",
@@ -83,8 +86,11 @@ PERFIS = {
         "problema_id_retirada": 7471,    # "SUBSTITUIÇÃO/RETIRADA"
         "problema_id_instalacao": 7472,  # "SUBSTITUIÇÃO/INSTALAÇÃO"
         "os_por_placa": 2,
-        "descricao_template_retirada": "SUBSTITUIÇÃO RETIRADA: {placa} | {veiculo} | {serie} | TERMO {termo}",
-        "descricao_template_instalacao": "SUBSTITUIÇÃO INSTALAÇÃO: {placa} | {veiculo} | {serie} | TERMO {termo}",
+        # O equipamento e o MESMO nos dois lados -- ele muda de veiculo. Por isso
+        # o modelo se le da placa que SAI, tambem na OS de instalacao.
+        "modelo_origem": "placa",
+        "descricao_template_retirada": "SUBSTITUIÇÃO RETIRADA: {placa} | {veiculo} | {serie} ({modelo}) | TERMO {termo}",
+        "descricao_template_instalacao": "SUBSTITUIÇÃO INSTALAÇÃO: {placa} | {veiculo} | {serie} ({modelo}) | TERMO {termo}",
     },
     # Transferência de titularidade (E5, SPEC 2026-07-24): são 2 DOCUMENTOS
     # separados (o antigo titular = formato Rescisão; o novo = formato Cliente
@@ -99,6 +105,7 @@ PERFIS = {
         "titularidade": "novo",                   # 1 OS híbrida: financeiro + comodato JUNTOS, sem split
         "situacao_id": SITUACAO_FINANCEIRO_ID,    # a OS híbrida entra como Financeiro
         "tecnico_id": FINANCEIRO_TECNICO_ID,      # técnico Karla (anexado na E3)
+        "modelo_origem": "placa",
         "descricao_prefixo": "TRANSFERENCIA TITULARIDADE (NOVO TITULAR)",
     },
     "transferencia_antigo_titular": {
@@ -106,6 +113,7 @@ PERFIS = {
         "problema_id": 7474,
         "os_por_placa": 1,
         "titularidade": "antigo",                 # 1 OS, só comodato, SEM financeira e SEM técnico
+        "modelo_origem": "placa",
         "descricao_prefixo": "TRANSFERENCIA TITULARIDADE (ANTIGO TITULAR)",
     },
     "upgrade": {
