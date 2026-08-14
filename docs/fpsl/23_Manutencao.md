@@ -140,3 +140,35 @@ não escreve na WESO. Trava os dois perfis, a chave do recipiente, o acento, os
 quatro motivos de descarte, a cópia `nas_duas` e as três provas da liberação.
 `tests/teste_upgrade_8820.py` continua verde (44), agora incluindo a garantia de
 que sem recipiente o modelo é o marcador, não um modelo plausível.
+
+## O número da própria OS na descrição
+
+As 14 OS de manutenção abertas na mão terminam com `O.S: nnnnn`. O painel passou
+a fazer igual — **só nos perfis sem termo**. A decisão de 14/07 de não embutir o
+número continua valendo para os perfis de contrato, porque custa uma **segunda
+chamada**: criar, ler o `numeroOrdem`, regravar.
+
+⚠️ **Regravar com `id` ATUALIZA, não duplica.** Medido em 14/08 na OS de teste
+16755: voltou o mesmo id, a descrição trocada, e o número seguinte continuou
+livre. Mas é um save **completo** — o payload vai inteiro; mandar só a descrição
+limparia o resto do cabeçalho.
+
+⚠️ **`ObterOrdemServicoPorNumero` responde "não encontrada" como EXCEÇÃO**, não
+como lista vazia. Quem trata OS ausente precisa de `try`, não de `if not`.
+
+## Problema é campo da tela
+
+`/painel/api/problemas` alimenta um seletor na Etapa 2, **só nos perfis sem
+termo** — num contrato o problema é ditado pelo documento e oferecer escolha ali
+só convidaria erro. O padrão do perfil (`MANUTENÇÃO`) já vem selecionado, e a
+escolha da tela vence a resolução por nome: `SOCORRO TECNICO` (8616) e
+`REINSTALAÇÃO` (7678) também são manutenção na prática.
+
+O serviço do perfil também já vem preenchido, e continua trocável pelo Buscar.
+
+## Caixa de progresso
+
+Lista as etapas **nomeadas**, na ordem real do backend, com o spinner na
+corrente e ✓ nas passadas. Não é barra de porcentagem: porcentagem sobre chamada
+de rede é chute, e chute que parece medida é pior que nada. A marcação avança a
+cada 3s — etapa mais curta que isso ninguém vê; etapa travada fica visível.
