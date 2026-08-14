@@ -172,6 +172,12 @@
           <label for="veiculoManual" style="margin-top:10px;display:block">Veículo (descrição que vai na OS)</label>
           <input type="text" id="veiculoManual" placeholder="ex.: VW 24.280">
         </div>
+        <!-- Só nos perfis sem termo: num contrato o problema é ditado pelo
+             documento, e oferecer escolha ali só convidaria erro. -->
+        <div id="problemaWrap" style="display:none">
+          <label for="problemaCampo">Problema (o que motivou o chamado)</label>
+          <select id="problemaCampo" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:.86rem"></select>
+        </div>
         <div>
           <label for="servicoCampo">Serviço (produtoServicoId)</label>
           <div class="campo-com-botao">
@@ -323,21 +329,83 @@ function aplicarPerfil() {
   if (motivoWrap) motivoWrap.style.display = p.sem_financeira ? 'none' : '';
   const placaWrap = document.getElementById('placaManualWrap');
   if (placaWrap) placaWrap.style.display = semTermo ? '' : 'none';
+  document.getElementById('problemaWrap').style.display = semTermo ? '' : 'none';
+  if (semTermo) { carregarProblemas(p.problema_nome); preencherServicoPadrao(p.produto_servico_nome); }
+}
+
+// Lista de Problemas do Harmonit, com o padrão do perfil já selecionado.
+// Carregada uma vez e reaproveitada -- é a mesma lista para os dois perfis.
+let PROBLEMAS = null;
+async function carregarProblemas(nomePadrao) {
+  const sel = document.getElementById('problemaCampo');
+  if (!PROBLEMAS) {
+    try {
+      const r = await fetch('/painel/api/problemas', { headers: auth() });
+      if (!r.ok) throw new Error('lista indisponível');
+      PROBLEMAS = (await r.json()).problemas || [];
+    } catch (e) {
+      // Sem a lista o backend ainda resolve pelo nome do perfil -- então isto
+      // é degradação, não bloqueio.
+      sel.innerHTML = '<option value="">(lista indisponível — vai o padrão do perfil)</option>';
+      return;
+    }
+  }
+  const alvo = (nomePadrao || '').trim().toUpperCase();
+  sel.innerHTML = PROBLEMAS.map((p) =>
+    `<option value="${p.id}"${(p.descricao || '').trim().toUpperCase() === alvo ? ' selected' : ''}>${escapeHtml(p.descricao)}</option>`
+  ).join('');
+}
+
+// O serviço do perfil (MANUTENÇÃO) já vem preenchido -- o operador confirma em
+// vez de procurar. Continua trocável pelo botão Buscar.
+async function preencherServicoPadrao(nome) {
+  if (!nome || servicoSelecionado) return;
+  try {
+    const r = await fetch(`/painel/api/servicos/buscar?q=${encodeURIComponent(nome)}`, { headers: auth() });
+    if (!r.ok) return;
+    const d = await r.json();
+    const alvo = nome.trim().toUpperCase();
+    const achado = (d.resultados || []).find((s) => (s.descricao || '').trim().toUpperCase() === alvo);
+    if (achado) selecionarServico(achado);
+  } catch (e) { /* fica vazio, o operador busca na mão */ }
 }
 
 // ── Caixa de progresso ──────────────────────────────────────────────────────
 // A geração de manutenção vai à WESO ao vivo (~2,5s) e ao Harmonit para
 // resolver Tipo e Problema. Sem retorno visual, o operador clica de novo.
-function progresso(texto) {
+// Mostra as etapas NOMEADAS, na ordem em que o backend as executa, com o
+// spinner na etapa corrente. Não é barra de porcentagem: porcentagem sobre
+// chamada de rede é chute, e chute que parece medida é pior que nada.
+let _progressoTimer = null;
+function progresso(etapas) {
   let cx = document.getElementById('progressoCaixa');
-  if (!texto) { if (cx) cx.remove(); return; }
+  if (!etapas || !etapas.length) {
+    if (_progressoTimer) { clearInterval(_progressoTimer); _progressoTimer = null; }
+    if (cx) cx.remove();
+    return;
+  }
   if (!cx) {
     cx = document.createElement('div');
     cx.id = 'progressoCaixa';
     cx.className = 'aviso-info';
     document.querySelector('.panel.active').prepend(cx);
   }
-  cx.innerHTML = '<span class="spinner"></span> ' + escapeHtml(texto);
+  let atual = 0;
+  const desenhar = () => {
+    cx.innerHTML = etapas.map((e, i) => {
+      if (i < atual) return `<div>✓ ${escapeHtml(e)}</div>`;
+      if (i === atual) return `<div><span class="spinner"></span> ${escapeHtml(e)}</div>`;
+      return `<div style="opacity:.45">· ${escapeHtml(e)}</div>`;
+    }).join('');
+  };
+  desenhar();
+  // Avança a marcação a cada 3s -- é o limiar que o usuário pediu para o
+  // ícone de carregamento aparecer, e serve de régua honesta: se a etapa
+  // durar menos, ninguém a vê; se travar, fica visível onde travou.
+  if (_progressoTimer) clearInterval(_progressoTimer);
+  _progressoTimer = setInterval(() => {
+    if (atual < etapas.length - 1) { atual += 1; desenhar(); }
+  }, 3000);
 }
 
 document.getElementById('arquivo').addEventListener('change', (e) => {
@@ -487,7 +555,7 @@ async function extrair() {
   } catch (err) {
     document.getElementById('extraidoMsg').innerHTML = `<div class="msg msg-erro">${escapeHtml(err.message)}</div>`;
   } finally {
-    progresso('');
+    progresso(null);
     btn.disabled = false; btn.textContent = 'Gerar OS →';
   }
 }
@@ -611,6 +679,7 @@ function _montarPayloadBase(confirmar) {
     })),
     solucao_tecnica: document.getElementById('solucaoTecnica').value,
     observacao: document.getElementById('observacao').value,
+    problema_id: parseInt(document.getElementById('problemaCampo').value, 10) || null,
     prioridade_id: parseInt(document.getElementById('prioridadeCampo').value, 10) || 382,
     motivo_financeira_zero: document.getElementById('motivoFinanceira').value,
     confirmar,
@@ -627,8 +696,10 @@ async function montarResumo() {
   const btn = document.getElementById('btnMontar');
   btn.disabled = true; btn.textContent = 'Calculando...';
   progresso(perfilAtual().sem_termo
-    ? 'Consultando a placa na WESO e localizando o equipamento...'
-    : 'Resolvendo vínculos, alocando materiais e montando as OS...');
+    ? ['Consultando a placa na WESO', 'Lendo o equipamento vinculado',
+       'Montando a descrição e os itens']
+    : ['Resolvendo os vínculos dos itens', 'Alocando materiais por placa',
+       'Montando a descrição e os itens']);
   try {
     const payload = _montarPayloadBase(false);
     const res = await fetch('/painel/api/gerar-os', {
@@ -669,7 +740,7 @@ async function montarResumo() {
   } catch (err) {
     alert(err.message);
   } finally {
-    progresso('');
+    progresso(null);
     btn.disabled = false; btn.textContent = 'Ver resumo →';
   }
 }
@@ -680,7 +751,16 @@ async function gerarOs() {
   const total = document.querySelectorAll('#resumoTbody tr').length;
   if (!confirm(`Confirma a geração de ${total} OS no Harmonit? Essa ação é real, não tem como desfazer em lote.`)) return;
   btn.disabled = true; btn.textContent = 'Gerando...';
-  progresso('Criando as OS no Harmonit e coletando a numeração...');
+  {
+    const p = perfilAtual();
+    const etapas = ['Criando a OS no Harmonit'];
+    if (p.numero_na_descricao) {
+      etapas.push('Coletando a numeração da OS', 'Gravando o número na descrição');
+    }
+    etapas.push('Auditando o que foi anexado');
+    if (p.liberar_serie) etapas.push('Liberando a placa de manutenção');
+    progresso(etapas);
+  }
   try {
     const res = await fetch('/painel/api/gerar-os', {
       method: 'POST',
@@ -720,7 +800,7 @@ async function gerarOs() {
   } catch (err) {
     document.getElementById('resultadoFinal').innerHTML = `<div class="msg msg-erro">${escapeHtml(err.message)}</div>`;
   } finally {
-    progresso('');
+    progresso(null);
     btn.disabled = false; btn.textContent = 'Gerar OS';
   }
 }

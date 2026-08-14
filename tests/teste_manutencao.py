@@ -76,6 +76,13 @@ checar("no local le o modelo da propria placa", "placa", LOCAL["modelo_origem"])
 checar("com troca le o modelo do recipiente", "placa_teste", TROCA["modelo_origem"])
 checar("so a com troca libera serie", (None, True),
        (LOCAL.get("liberar_serie"), TROCA.get("liberar_serie")))
+# 🚨 As 14 OS de manutencao abertas na mao terminam com `O.S: nnnnn`. Custa uma
+# SEGUNDA chamada -- por isso NENHUM perfil de contrato faz, decisao de 14/07.
+checar("as duas gravam o numero na descricao", (True, True),
+       (LOCAL["numero_na_descricao"], TROCA["numero_na_descricao"]))
+checar("nenhum perfil de contrato grava o numero", [],
+       [k for k, p in templates_config.PERFIS.items()
+        if p.get("numero_na_descricao") and not p.get("sem_termo")])
 
 # ── 2. a chave do recipiente ─────────────────────────────────────────────────
 # 🚨 O ESPACO PODE ESTAR EM QUALQUER LUGAR, mesmo com o apelido padronizado.

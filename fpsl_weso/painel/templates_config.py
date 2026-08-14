@@ -162,6 +162,11 @@ PERFIS = {
         "sem_termo": True,
         "sem_flags": True,
         "sem_financeira": True,
+        # As 14 OS de manutencao abertas na mao terminam com `O.S: nnnnn`.
+        # Custa uma SEGUNDA chamada (criar, ler o numero, regravar) -- por isso
+        # os perfis de contrato nao fazem, decisao de 14/07. Aqui o usuario
+        # pediu igual a mao, aceitando a demora com a caixa de progresso.
+        "numero_na_descricao": True,
         # Sem recipiente: o equipamento que interessa e o que JA ESTA no
         # veiculo, entao o modelo se le da propria placa.
         "modelo_origem": "placa",
@@ -178,6 +183,11 @@ PERFIS = {
         "sem_termo": True,
         "sem_flags": True,
         "sem_financeira": True,
+        # As 14 OS de manutencao abertas na mao terminam com `O.S: nnnnn`.
+        # Custa uma SEGUNDA chamada (criar, ler o numero, regravar) -- por isso
+        # os perfis de contrato nao fazem, decisao de 14/07. Aqui o usuario
+        # pediu igual a mao, aceitando a demora com a caixa de progresso.
+        "numero_na_descricao": True,
         # Mesmo mecanismo do Upgrade, com outro sufixo: o setor de
         # configuracao cria `<PLACA>-MANUT` na WESO e vincula nela o
         # equipamento novo. Medido em 14/08: 5 recipientes existem, todos com

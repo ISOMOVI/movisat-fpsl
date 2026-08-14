@@ -43,9 +43,28 @@ async def listar_perfis(_=Depends(requer_aba("gerar_os", "vinculos"))):
                 # anexo: sem documento não há o que extrair.
                 "sem_termo": p.get("sem_termo", False),
                 "sem_financeira": p.get("sem_financeira", False),
-                "produto_servico_nome": p.get("produto_servico_nome")}
+                "produto_servico_nome": p.get("produto_servico_nome"),
+                "problema_nome": p.get("problema_nome"),
+                "numero_na_descricao": p.get("numero_na_descricao", False),
+                "liberar_serie": p.get("liberar_serie", False)}
         for chave, p in PERFIS.items()
     }
+
+
+@router.get("/problemas")
+async def listar_problemas(_=Depends(requer_aba("gerar_os"))):
+    """Problemas do Harmonit para o seletor da Etapa 2 (perfis sem termo).
+
+    Existe porque MANUTENÇÃO não é o único problema que cabe num chamado:
+    `SOCORRO TECNICO` e `REINSTALAÇÃO` também são manutenção na prática, e quem
+    sabe qual é quem abriu. Nos perfis de contrato o problema continua ditado
+    pelo perfil -- ali oferecer escolha só convidaria erro.
+    """
+    lista = await _lista_do_harmonit("/Problema/ObterProblemas")
+    if lista is None:
+        raise HTTPException(502, "A lista de Problemas do Harmonit não respondeu.")
+    return {"problemas": [{"id": p.get("id"), "descricao": p.get("descricao")}
+                          for p in lista if p.get("id")]}
 
 
 @router.get("/prioridades")
@@ -240,6 +259,10 @@ class GerarOsInput(BaseModel):
     # Campo livre do painel. Vai para a OBS da OS (solucaoTecnica), ABAIXO da
     # linha de criacao -- nao entra na descricao.
     observacao: str = ""
+    # Problema escolhido na tela (perfis sem termo). Vence a resolucao por nome
+    # do perfil -- e o operador quem sabe se aquele chamado e MANUTENCAO,
+    # SOCORRO TECNICO ou REINSTALACAO.
+    problema_id: int | None = None
     termo_relacionado: str = ""  # nº do contrato do OUTRO lado (titularidade) -- vai pra descrição
     produto_servico_id: int
     placas: list[PlacaInput]
@@ -599,7 +622,8 @@ def _montar_financeira(body: "GerarOsInput", itens_todos: list[dict], itens_fina
     }
 
 
-async def _criar_uma_os(op: dict, solucao_txt: str) -> tuple[dict, int | None]:
+async def _criar_uma_os(op: dict, solucao_txt: str,
+                        numero_na_descricao: bool = False) -> tuple[dict, int | None]:
     """Cria 1 OS no Harmonit: cabeçalho + materiais + técnico (se houver). Devolve
     (resultado, numeroOrdem). Não levanta -- erros viram campos do resultado, pra
     uma OS que falha não derrubar as outras."""
@@ -617,6 +641,26 @@ async def _criar_uma_os(op: dict, solucao_txt: str) -> tuple[dict, int | None]:
                 "ok": False, "erro": exc.detail}, None
     os_id = r.get("id")
     numero = r.get("numeroOrdem")
+
+    # 🚨 O NÚMERO DA PRÓPRIA OS NA DESCRIÇÃO custa uma SEGUNDA chamada -- por
+    # isso a decisão de 14/07 foi não fazer nos perfis de contrato. Na
+    # manutenção o usuário pediu igual à mão (as 14 OS abertas manualmente
+    # terminam com `O.S: nnnnn`), aceitando a demora com a caixa de progresso.
+    #
+    # ⚠️ Regravar com `id` ATUALIZA, não duplica -- medido em 14/08 na OS de
+    # teste 16755: mesmo id de volta, descrição trocada, e o número seguinte
+    # continuou livre. É um save COMPLETO, então o payload vai inteiro: mandar
+    # só a descrição limparia o resto.
+    if numero_na_descricao and os_id and numero:
+        nova = f"{op['descricao']} | O.S: {numero}"
+        try:
+            await harmonit_post("/OrdemServico/SalvarOrdemServico",
+                                {**payload, "id": os_id, "numeroOrdem": numero,
+                                 "descricaoDetalhada": nova})
+            op["descricao"] = nova
+        except HTTPException as exc:
+            logger.warning("os %s: nao consegui gravar o numero na descricao: %s",
+                           numero, exc.detail)
     materiais_ok, materiais_erro = [], []
     for mat in op["materiais"]:
         try:
@@ -880,6 +924,10 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
             op.get("tipo_id") if perfil.get("tipo_nome") else TIPO_CONTRATO_ID)
         if cabecalho.get("problema_id"):
             op["problema_id"] = cabecalho["problema_id"]
+        # A escolha da tela vence o padrão do perfil (só os perfis sem termo
+        # mostram o seletor -- num contrato o problema é ditado pelo documento).
+        if body.problema_id and perfil.get("sem_termo"):
+            op["problema_id"] = body.problema_id
         op.setdefault("situacao_id", SITUACAO_NOVA_ID)
         op.setdefault("produto_servico_id", body.produto_servico_id)
         op["prioridade_id"] = body.prioridade_id  # OPs usam a prioridade do painel (financeira já traz Normal)
@@ -903,7 +951,8 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
     criadas = []
     numeros_operacionais = []
     for op in operacoes:
-        resultado, numero = await _criar_uma_os(op, solucao_tecnica_txt)
+        resultado, numero = await _criar_uma_os(
+            op, solucao_tecnica_txt, bool(perfil.get("numero_na_descricao")))
         criadas.append(resultado)
         if numero:
             numeros_operacionais.append(str(numero))
