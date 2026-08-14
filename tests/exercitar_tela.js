@@ -68,7 +68,15 @@ const chamadas = [];
 global.fetch = async (url) => {
   chamadas.push(String(url));
   const u = String(url);
-  const ok = (corpo) => ({ ok: true, status: 200, json: async () => corpo });
+  // ⚠️ O MOCK PRECISA TER O QUE A RESPOSTA DE VERDADE TEM. Em 14/08 a página
+  // passou a ler `res.text()` (para sobreviver a resposta que não é JSON), e
+  // este mock só tinha `json()` -- o teste reprovou na hora, que é o certo:
+  // mock que não acompanha o contrato aprova código quebrado.
+  const ok = (corpo) => ({
+    ok: true, status: 200,
+    json: async () => corpo,
+    text: async () => JSON.stringify(corpo),
+  });
   if (u.includes("/painel/api/perfis")) {
     return ok({
       rescisao: { label: "Rescisão", os_por_placa: 1, agrupado: false,

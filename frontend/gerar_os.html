@@ -256,6 +256,32 @@ const token = localStorage.getItem('fpsl_painel_token');
 if (!token) window.location.href = '/painel';
 montarSidebar('gerar_os');
 function auth() { return { 'Authorization': 'Bearer ' + token }; }
+
+// 🚨 NEM TODA RESPOSTA É JSON. Quando o nginx corta por tempo (504) ou o
+// serviço cai (502), o corpo é uma PÁGINA HTML. Chamar `res.json()` nela
+// estoura "Unexpected token '<'" -- e foi isso que a Erika viu na tela: um
+// "erro json" que não diz nada sobre o que aconteceu de verdade (a consulta
+// à WESO passou do tempo).
+async function lerResposta(res) {
+  const bruto = await res.text();
+  let corpo = null;
+  try { corpo = JSON.parse(bruto); } catch (e) { corpo = null; }
+  return { ok: res.ok, status: res.status, corpo, bruto };
+}
+
+// Mensagem que diz o que fazer, não o que o parser achou do byte.
+function mensagemDeErro(r, oQue) {
+  const d = r.corpo && r.corpo.detail;
+  if (d && typeof d === 'object' && d.mensagem) return d.mensagem;
+  if (typeof d === 'string' && d) return d;
+  if (r.status === 504 || r.status === 502) {
+    return `${oQue}: o servidor passou do tempo. A consulta à WESO às vezes `
+         + `demora — espere alguns segundos e tente de novo. Nenhuma OS foi criada.`;
+  }
+  if (r.status === 401) return 'Sua sessão expirou. Entre de novo.';
+  if (r.status === 403) return 'Seu usuário não tem permissão para esta aba.';
+  return `${oQue}: erro ${r.status}.`;
+}
 function abrirModal(id) { document.getElementById(id).classList.add('open'); }
 function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
 
@@ -477,8 +503,9 @@ async function extrair() {
     progresso(['Lendo o documento', 'Extraindo placas e itens',
                'Conferindo os vínculos']);
     const res = await fetch(`/painel/api/extrair?perfil=${perfil}`, { method: 'POST', headers: auth(), body: fd });
-    if (!res.ok) throw new Error((await res.json()).detail || 'Falha na extração');
-    extraido = await res.json();
+    const r = await lerResposta(res);
+    if (!r.ok || !r.corpo) throw new Error(mensagemDeErro(r, 'Falha na extração'));
+    extraido = r.corpo;
 
     // Forma dos dados de veículo muda por perfil -- Substituição vem pareada
     // (pares[].placa_saida/placa_entrada), Rescisão/Transferência vem em
@@ -735,15 +762,16 @@ async function montarResumo() {
       headers: { ...auth(), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const erro = await res.json();
-      const detalhe = erro.detail;
+    const r = await lerResposta(res);
+    if (!r.ok) {
+      const detalhe = r.corpo && r.corpo.detail;
       if (detalhe && detalhe.tipo === 'vinculos_pendentes') {
         throw new Error(`Itens sem vínculo Harmonit: ${detalhe.itens.join(', ')}. Cadastre o vínculo antes de gerar.`);
       }
-      throw new Error((detalhe && detalhe.mensagem) || detalhe || 'Falha ao montar resumo');
+      throw new Error(mensagemDeErro(r, 'Falha ao montar resumo'));
     }
-    const data = await res.json();
+    if (!r.corpo) throw new Error(mensagemDeErro(r, 'Falha ao montar resumo'));
+    const data = r.corpo;
     payloadResumo = payload; // reaproveitado em gerarOs(), com confirmar:true
 
     const tbody = document.getElementById('resumoTbody');
@@ -795,7 +823,12 @@ async function gerarOs() {
       headers: { ...auth(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...payloadResumo, confirmar: true }),
     });
-    const data = await res.json();
+    // ⚠️ ESTA ROTA NÃO CONFERIA `res.ok`. Numa resposta de erro o `res.json()`
+    // estourava e o operador ficava sem saber SE alguma OS foi criada -- que é
+    // a pergunta mais cara desta tela.
+    const r = await lerResposta(res);
+    if (!r.ok || !r.corpo) throw new Error(mensagemDeErro(r, 'Falha ao gerar'));
+    const data = r.corpo;
     const div = document.getElementById('resultadoFinal');
     let html = data.resultados.map((r) =>
       r.ok
