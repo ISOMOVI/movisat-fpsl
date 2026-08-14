@@ -67,8 +67,9 @@ para comparar antes de decidir.
 
 ## `tests/teste_perfis.py` — perfis de acesso do painel
 
-**22 asserções** (2026-07-29: entrou a aba `placas`, e o número de abas é
-travado de propósito — aba nova sem pensar em permissão faz o teste falhar).
+**22 asserções**. O número de abas é travado de propósito — aba nova sem
+pensar em permissão faz o teste falhar. (A aba `placas`, que entrou em
+29/07, foi removida em 14/08 junto com a tela e o router.)
 Owner enxerga tudo; operador só as abas marcadas; aba não concedida
 dá 403; aba removida vira 403 na hora; owner não pode ser desativado. Gera o token
 internamente — **nunca passa senha por linha de comando**. Cria um operador de teste e
@@ -142,18 +143,35 @@ percebe, porque a rota simplesmente funciona — para todo mundo. O teste afirma
 rota por rota: sem token → **401**; token sem a aba → **403**; token do owner →
 nem um nem outro.
 
-⚠️ **NÃO EXERCITA ROTA DE ESCRITA.** `clientes/criar`, `placas/criar` e
+⚠️ **NÃO EXERCITA ROTA DE ESCRITA.** `clientes/criar` e
 `oficina/resync` gravam na WESO; `os-scan/varrer` varre o Harmonit inteiro.
 Dessas só se testa a tranca — abrir a porta para ver se abre estragaria dado
 real. As de leitura são chamadas de verdade e têm o formato conferido.
 
-🚨 **ACHADO: a aba `placas` não é exigida por rota nenhuma.** Ela existe no
-catálogo, aparece na barra lateral e pode ser concedida — mas o `placas_router`
-pede `gerar_os`. Na prática: quem recebe só "Placas" vê a aba e **não consegue
-usar**; e quem tem "Gerar OS" **cria placa na WESO sem ter recebido "Placas"**.
-Não foi corrigido por conta própria — mudar quem pode o quê é decisão do
-usuário. Está travado no teste como órfã conhecida, e o teste reprova se
-aparecer outra órfã **ou** se esta for resolvida.
+✅ **A ÓRFÃ `placas` FOI RESOLVIDA EM 14/08 — e por remoção, não por conserto.**
+A aba existia no catálogo e na barra lateral, mas rota nenhuma a exigia: o
+`placas_router` sempre pediu `gerar_os`. Quem recebia só "Placas" via a aba e
+**não conseguia usar**; quem tinha "Gerar OS" **criava placa na WESO sem ter
+recebido "Placas"**. A aba saiu primeiro; depois, com nova autorização ("se
+não usa pode tirar"), saíram também `frontend/placas.html`, a rota
+`/painel/placas` e o `placas_router` inteiro — as 2 rotas de `api/placas`
+deixaram a lista, e por isso a suíte caiu de 80 para **75** verificações.
+
+🚨 **A MEDIÇÃO QUE AUTORIZOU APAGAR, para quem repetir isto:** o log do nginx
+**não é legível sem root**, e `wc -l` nele devolve **0** — que parece "ninguém
+usou" e não é. A prova veio do journal do próprio serviço
+(`journalctl --user -u fpsl-weso.service`), onde requisição vinda pelo nginx
+aparece com o **IP real** e chamada local aparece como **127.0.0.1**. De 08/08
+a 14/08: **1** abertura da tela por usuário real, **zero** chamada real a
+`placas/status` ou `placas/criar` — todo o resto era a suíte. Os recipientes
+`-MANUT` e `-UPGRADE` nascem no sistema da WESO, não por aqui.
+
+⚠️ **O que NÃO saiu:** o módulo `fpsl_weso/placas.py` (regra de formatação de
+placa), usado por `routers/veiculos.py` e pelo onboarding, com seus 72 testes
+em `tests/teste_placas.py`. Nome parecido, coisa diferente.
+
+O conjunto de órfãs continua travado e **vazio**: se aparecer outra, é porque
+nasceu permissão que não protege nada.
 
 ⚠️ Registra também que o login devolve **`access_token`**, não `token`.
 

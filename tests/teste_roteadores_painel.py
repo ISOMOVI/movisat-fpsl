@@ -64,8 +64,6 @@ ROTAS = [
     ("GET",  "/painel/api/clientes/buscar?q=VELASCO", "gerar_os",     None, False),
     ("POST", "/painel/api/clientes/previa",     "gerar_os",           {"cnpj": "00000000000000"}, True),
     ("POST", "/painel/api/clientes/criar",      "gerar_os",           {}, True),
-    ("POST", "/painel/api/placas/status",       "gerar_os",           {"placas": ["GJN 8689"]}, False),
-    ("POST", "/painel/api/placas/criar",        "gerar_os",           {}, True),
     ("GET",  "/painel/api/harmonit/resumo",     "harmonit_historico", None, False),
     ("GET",  "/painel/api/harmonit/chamadas",   "harmonit_historico", None, False),
     ("GET",  "/painel/api/oficina/historico",   "oficinas",           None, False),
@@ -178,7 +176,9 @@ async def main():
             # placas_router sempre pediu "gerar_os". Quem recebia só "Placas"
             # via a aba e não conseguia usar; quem tinha "Gerar OS" criava
             # placa na WESO sem ter recebido "Placas". Foi REMOVIDA a pedido do
-            # usuário: "não tem motivo para existir, nunca pedi ela".
+            # usuário: "não tem motivo para existir, nunca pedi ela". Em 14/08, com nova
+            # autorização, a TELA e o `placas_router` também foram apagados --
+            # por isso não há mais rota de `placas` nesta lista.
             #
             # O conjunto abaixo ficou vazio de propósito: se voltar a ter
             # alguma coisa, é porque nasceu permissão que não protege nada.

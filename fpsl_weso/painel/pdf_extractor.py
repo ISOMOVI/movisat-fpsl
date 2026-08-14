@@ -365,7 +365,9 @@ def _identificador_nao_convencional(celula: str) -> tuple[str | None, str, list[
     Adivinhar qual rótulo manter erraria metade dos casos, e erra em silêncio:
     placa que não casa não dá erro, só deixa de achar o veículo. Então aqui se
     emite as duas formas, e quem decide é a consulta à WESO -- que devolve a
-    grafia oficial. Ver `placas_router.status_placas`.
+    grafia oficial. Quem confronta com a WESO hoje é
+    `painel.equipamentos._rastreador_id_por_placa` (o `placas_router`, que
+    fazia essa conferência na tela, foi removido em 14/08).
     """
     texto = " ".join(str(celula or "").split())
     m = _ROTULO_NAO_CONVENCIONAL.search(texto)

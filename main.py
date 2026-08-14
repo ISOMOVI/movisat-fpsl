@@ -7,7 +7,6 @@ from fpsl_weso.client import start_client, stop_client
 from fpsl_weso.harmonit_client import start_harmonit_client, stop_harmonit_client
 from fpsl_weso.routers import clientes, simcards, rastreadores, veiculos, os, admin
 from fpsl_weso.painel.routers import login_router, os_router as painel_os_router
-from fpsl_weso.painel.routers import placas_router as painel_placas_router
 from fpsl_weso.painel.routers import harmonit_hist_router as painel_harmonit_hist_router
 from fpsl_weso.painel.routers import clientes_router as painel_clientes_router
 from fpsl_weso.painel.routers import usuarios_router as painel_usuarios_router
@@ -55,7 +54,6 @@ app.include_router(onboarding.router)
 app.include_router(admin.router)
 app.include_router(login_router.router)
 app.include_router(painel_os_router.router)
-app.include_router(painel_placas_router.router)
 app.include_router(painel_harmonit_hist_router.router)
 app.include_router(painel_clientes_router.router)
 app.include_router(painel_usuarios_router.router)
@@ -79,11 +77,6 @@ async def painel_wizard_page():
 @app.get("/painel/usuarios")
 async def painel_usuarios_page():
     return FileResponse("frontend/usuarios.html")
-
-
-@app.get("/painel/placas")
-async def painel_placas_page():
-    return FileResponse("frontend/placas.html")
 
 
 @app.get("/painel/vinculos")

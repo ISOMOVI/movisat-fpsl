@@ -9,7 +9,7 @@
 | O quê | Estado |
 |---|---|
 | **Cache local da base WESO** (`/home/claude/weso_cache`) | prod — 1.964 veículos, 3.748 rastreadores, 4.070 chips, 298 clientes; cron 04:15 |
-| **Aba Placas** (`/painel/placas`) | prod — confere quais placas do termo existem e cria as que faltam |
+| ~~**Aba Placas** (`/painel/placas`)~~ | **REMOVIDA em 14/08** — aba, tela e `placas_router`. Ver `18_Testes.md` |
 | **Leitura tolerante a grafia** (`weso_lookup.py`) | prod — consulta direta e, se vazia, casa contra a base por chave normalizada |
 | **Nº de série real na descrição da OS** | prod — em TODOS os perfis (antes só o agrupado; os demais mandavam o literal) |
 | **Financeira embutida na rescisão** | prod — cobrança vai em cada OS de placa, sem OS agregada |

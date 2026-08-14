@@ -31,9 +31,16 @@ ABAS = [
     # conseguia usar; quem tinha "Gerar OS" criava placa na WESO sem ter
     # recebido "Placas". Aba que ninguém exige é permissão de mentira.
     #
-    # ⚠️ A TELA `/painel/placas` e o `placas_router` CONTINUAM DE PÉ, agora sem
-    # link na barra lateral. Quem tem `gerar_os` alcança pela URL. Não apaguei
-    # por conta própria -- apagar tela é outra decisão.
+    # ✅ A TELA `/painel/placas`, o `frontend/placas.html` e o `placas_router`
+    # FORAM REMOVIDOS EM 14/08, com autorização ("se não usa pode tirar").
+    # Medido no journal do serviço (08/08 a 14/08): 1 abertura da tela por
+    # usuário real e ZERO chamada real a `placas/status` ou `placas/criar` --
+    # todos os demais acertos vieram de 127.0.0.1, que é a suíte. Os
+    # recipientes `-MANUT` e `-UPGRADE` nascem no sistema da WESO, não aqui.
+    #
+    # ⚠️ O MÓDULO `fpsl_weso/placas.py` (regra de formatação de placa) FICA --
+    # é outra coisa, usada por `routers/veiculos.py` e pelo onboarding, e
+    # coberto por `tests/teste_placas.py`.
     {
         "id": "vinculos",
         "nome": "Vínculos",
