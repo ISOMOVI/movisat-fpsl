@@ -86,6 +86,26 @@ global.fetch = async (url) => {
     return ok({ problemas: [{ id: 7384, descricao: "MANUTENÇÃO" }] });
   }
   if (u.includes("/painel/api/extrair")) return ok(RESPOSTA);
+  if (u.includes("/servicos/buscar")) {
+    return ok({ resultados: [{ id: 6966, descricao: "MANUTENÇÃO" }] });
+  }
+  if (u.includes("/clientes/buscar")) {
+    return ok({ resultados: [{ id: 998063, nome: "PASTELARIA VELASCO LTDA" }] });
+  }
+  if (u.includes("/painel/api/gerar-os")) {
+    // resposta de dry-run como o backend devolve para manutenção
+    return ok({
+      simulado: true, total_os: 1, avisos: [],
+      solucao_tecnica_preview: "[14/08 10:00] Contexto\n-------------\n",
+      operacoes: [{
+        cliente_id: 998063, placa: "GJN 8689", veiculo: "TESTE",
+        rotulo: "Manutenção com troca",
+        descricao: "MANUTENÇÃO COM TROCA: GJN 8689 | TESTE | SAIRÁ: 007733214",
+        materiais: [{ descricao: "SERVIÇO DO CABEÇALHO (sem flag)" },
+                    { descricao: "ST310U" }, { descricao: "ENTREGA OS" }],
+      }],
+    });
+  }
   if (u.includes("/buscar")) return ok({ resultados: [] });
   return ok({});
 };
@@ -122,8 +142,24 @@ eval(src);
     resultado.botao_liberado = elemento("btnExtrair").disabled === false;
     resultado.chamou_extrair = chamadas.some((u) => u.includes("/extrair"));
     resultado.alertas = global.__alertas;
+
+    // ── Etapa 2 -> 3: o resumo. É onde a manutenção da Erika parou. ─────────
+    // 🚨 Só chegar na Etapa 2 não prova nada: o fluxo continua, e cada passo
+    // seguinte pode ter o mesmo tipo de defeito.
+    selecionarCliente({ id: 998063, nome: "PASTELARIA VELASCO LTDA" }, "origem");
+    selecionarServico({ id: 6966, descricao: "MANUTENÇÃO" });
+    if (elemento("placaManual")) elemento("placaManual").value = "GJN 8689";
+    if (elemento("veiculoManual")) elemento("veiculoManual").value = "TESTE";
+
+    await montarResumo();
+    resultado.resumo_montado =
+      (elemento("resumoTbody").innerHTML || "").includes("GJN 8689");
+    resultado.resumo_info = (elemento("resumoInfo").innerHTML || "").slice(0, 90);
+    resultado.botao_gerar_liberado = elemento("btnGerar").disabled === false;
+    resultado.chamou_dry_run = chamadas.some((u) => u.includes("/gerar-os"));
   } catch (e) {
     resultado.erros.push(e.message);
+    resultado.onde = e.stack ? e.stack.split("\n")[1] : "";
   }
   console.log(JSON.stringify(resultado, null, 2));
 })();

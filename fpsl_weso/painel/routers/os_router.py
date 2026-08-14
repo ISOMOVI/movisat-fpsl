@@ -22,7 +22,7 @@ from ..templates_config import (
 )
 from ..pdf_extractor import extrair_campos
 from ..equipamentos import (MARCADOR_NAO_LOCALIZADO, MARCADOR_SERIE_A_PREENCHER,
-                            buscar_recipientes, buscar_seriais, dados_das_placas,
+                            buscar_seriais, chave_recipiente, dados_das_placas,
                             descricao_da_placa, liberar_recipiente,
                             modelo_da_placa, modelo_efetivo, placa_teste,
                             serie_de, tem_leitor_rfid)
@@ -899,7 +899,12 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         # Upgrade: a serie do equipamento que ENTRA vive na placa-recipiente de
         # teste (`OOM4131-UPGRADE`). Ela entra aqui SO para a busca resolver --
         # nao vira veiculo de OS nenhuma.
-        if perfil.get("placa_teste_sufixo"):
+        # 🚨 NA MANUTENCAO O RECIPIENTE NAO ENTRA AQUI. A leitura ao vivo logo
+        # abaixo ja traz serie e modelo dele; pedir tambem ao `buscar_seriais`
+        # fazia uma SEGUNDA varredura da base inteira da WESO (16 a 30s), que
+        # somada as demais estourava o `proxy_read_timeout` de 35s do nginx.
+        # No upgrade continua entrando: la nao ha leitura ao vivo.
+        if perfil.get("placa_teste_sufixo") and not perfil.get("sem_termo"):
             todas += [placa_teste(p.placa, perfil["placa_teste_sufixo"]) for p in body.placas]
         seriais = await buscar_seriais(todas)
 
@@ -911,11 +916,25 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         dados_ao_vivo: dict = {}
         recipientes: dict = {}
         if perfil.get("sem_termo"):
-            dados_ao_vivo = await dados_das_placas([p.placa for p in body.placas])
+            # 🚨 UMA LEITURA SÓ, para a placa real E o recipiente juntos. Antes
+            # eram duas chamadas independentes, e cada uma que não achasse pela
+            # consulta exata caía na base inteira -- 16,65s cada. Uma geração de
+            # manutenção com recipiente ainda não criado levava 43s, perto do
+            # teto do nginx. Foi o erro que a Erika viu em 14/08.
+            sufixo = perfil.get("placa_teste_sufixo")
+            alvos = [p.placa for p in body.placas]
+            if sufixo:
+                alvos += [placa_teste(p.placa, sufixo) for p in body.placas]
+            lidos = await dados_das_placas(alvos)
+            for p in body.placas:
+                chave = _chave_placa(p.placa)
+                if lidos.get(chave):
+                    dados_ao_vivo[chave] = lidos[chave]
+                if sufixo and lidos.get(chave_recipiente(p.placa, sufixo)):
+                    recipientes[chave] = lidos[chave_recipiente(p.placa, sufixo)]
         if perfil.get("placa_teste_sufixo"):
             if perfil.get("sem_termo"):
-                recipientes = await buscar_recipientes(
-                    [p.placa for p in body.placas], perfil["placa_teste_sufixo"])
+                pass  # já resolvido acima, na leitura única
             else:
                 # Upgrade: o recipiente e criado junto com o termo, entao o
                 # cache basta -- monta o mesmo formato a partir dele.

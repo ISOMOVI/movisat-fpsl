@@ -30,6 +30,7 @@ DUAS decisoes de projeto aqui:
 """
 import asyncio
 import logging
+import time
 import sys
 import re
 
@@ -228,6 +229,141 @@ def chave_recipiente(placa: str, sufixo: str) -> str:
     return f"{base}{_chave(sufixo)}" if base else ""
 
 
+# 🚨 A MEDIÇÃO DE 29/07 ENVELHECEU E INVERTEU. Naquela data a base inteira
+# custava 2,3s e filtrar UMA placa custava ~6s -- por isso todo este módulo foi
+# escrito para puxar a base toda. Medido de novo em 14/08, depois de a geração
+# de manutenção passar de 40s e o usuário reportar erro:
+#
+#     base inteira ......... 16,65s  (1.964 registros)
+#     uma placa filtrada .... 0,67s
+#
+# A manutenção puxava a base DUAS vezes (uma para a placa real, outra para o
+# recipiente), o que dava ~35s só de WESO -- perto do teto do nginx.
+#
+# ⚠️ NÚMERO DE DESEMPENHO TEM VALIDADE. O comentário antigo não estava errado
+# quando foi escrito; ficou errado depois, e ninguém remede porque medição não
+# tem teste. Se voltar a inverter, é este limiar que muda.
+LIMIAR_PLACA_A_PLACA = 6
+
+# 🚨 TETO PARA A BUSCA DE ULTIMO RECURSO. A base inteira oscila muito -- medido
+# em 14/08 entre 7s e 33s no mesmo minuto -- e o nginx corta a requisicao em
+# 35s (`proxy_read_timeout`). Sem teto, "o recipiente ainda nao foi criado"
+# virava 504 na cara de quem esta usando, sem mensagem nenhuma. Foi o erro que
+# a Erika viu.
+#
+# ⚠️ ESTOURAR O TETO FALHA PARA O LADO SEGURO: o recipiente e dado como nao
+# encontrado, a OS sai com `NUMERO DE SERIE` e SEM equipamento, e o aviso
+# aparece na tela. Nunca sai equipamento errado -- so falta, e com recado.
+TETO_LEITURA_AO_VIVO = 18.0
+
+
+def _grafias(placa: str) -> tuple:
+    """As grafias que valem tentar antes de recorrer a base inteira.
+
+    A consulta e por igualdade EXATA. A WESO tem registro com espaco na frente
+    (` OOM3895-UPGRADE` e real) e o recipiente e digitado a mao pelo setor de
+    configuracao, entao a variacao mora no espaco. Cada tentativa custa 0,67s.
+    """
+    p = str(placa or "")
+    limpo = p.strip()
+    vistas, saida = set(), []
+    for g in (p, f" {p}", limpo, limpo.replace("-", " - "), limpo.replace(" ", "")):
+        if g and g not in vistas:
+            vistas.add(g)
+            saida.append(g)
+    return tuple(saida)
+
+
+async def _veiculos_ao_vivo(placas: list[str], alvo: set[str]) -> list | None:
+    """Registros de veículo da WESO para estas placas. `None` = não deu para ler.
+
+    Poucas placas: uma consulta por placa (0,67s cada). Muitas: a base inteira,
+    que a partir de ~25 placas volta a compensar.
+
+    ⚠️ `?placa=` compara por IGUALDADE EXATA e devolve VAZIO, não erro. Placa
+    gravada com grafia diferente some -- por isso o que não aparecer na consulta
+    individual é procurado na base inteira, que casa por chave normalizada.
+    """
+    if len(alvo) <= LIMIAR_PLACA_A_PLACA:
+        # 🚨 O ORCAMENTO E DO CONJUNTO, NAO DE CADA CHAMADA. Medido em 14/08: a
+        # WESO oscila muito, e quando esta carregada ate a consulta de UMA placa
+        # passa de 5s. Com teto so por chamada, 10 tentativas somavam 40s e o
+        # nginx cortava em 35s -- o usuario via a tela morrer sem mensagem.
+        inicio = time.monotonic()
+
+        def restante():
+            return TETO_LEITURA_AO_VIVO - (time.monotonic() - inicio)
+
+        achados, faltando = [], set(alvo)
+        for p in placas:
+            if not str(p or "").strip():
+                continue
+            # ⚠️ GRAFIAS CONHECIDAS ANTES DE DESISTIR. A consulta e por
+            # igualdade EXATA, e a WESO tem registro gravado com espaco na
+            # frente -- ` OOM3895-UPGRADE` e real.
+            for grafia in _grafias(p):
+                if _chave(p) not in faltando or restante() <= 1:
+                    break
+                try:
+                    r = await asyncio.wait_for(
+                        weso_get("/Veiculos/Consultar", {"placa": grafia}),
+                        min(6.0, restante()))
+                except asyncio.TimeoutError:
+                    log.warning("equipamentos: consulta de %r passou do tempo", grafia)
+                    continue
+                except Exception as exc:
+                    log.warning("equipamentos: consulta de %r falhou: %s", grafia, exc)
+                    continue
+                for v in (r.get("veiculos") if isinstance(r, dict) else r) or []:
+                    achados.append(v)
+                    faltando.discard(_chave(v.get("placa")))
+        if not faltando:
+            return achados
+        if restante() <= 3:
+            log.warning("equipamentos: sem tempo para a base inteira; %s placa(s) "
+                        "ficam como NAO ENCONTRADAS: %s",
+                        len(faltando), ", ".join(sorted(faltando))[:120])
+            return achados
+        log.info("equipamentos: %s placa(s) sem resposta exata -- indo a base "
+                 "inteira: %s", len(faltando), ", ".join(sorted(faltando))[:120])
+        base = await _base_inteira(restante())
+        if base is None:
+            return achados
+        # 🚨 DEDUPLICAR POR ID. O mesmo veículo volta nas duas consultas, e
+        # `dados_das_placas` trata chave repetida como AMBIGUIDADE -- ele
+        # descartaria o recipiente achado, dizendo que há dois. Falsa
+        # ambiguidade é pior que lentidão: some o equipamento da OS.
+        return _sem_repetido(achados + base)
+
+    return await _base_inteira()
+
+
+def _sem_repetido(veiculos: list) -> list:
+    vistos, saida = set(), []
+    for v in veiculos:
+        vid = v.get("id")
+        if vid in vistos:
+            continue
+        vistos.add(vid)
+        saida.append(v)
+    return saida
+
+
+async def _base_inteira(teto: float | None = None) -> list | None:
+    """A base toda. `teto` em segundos: estourou, devolve None (= nao sei)."""
+    try:
+        chamada = weso_get("/Veiculos/Consultar", {})
+        r = await (asyncio.wait_for(chamada, teto) if teto else chamada)
+    except asyncio.TimeoutError:
+        log.warning("equipamentos: base de veiculos passou de %ss -- desisti; "
+                    "o que faltava fica como NAO ENCONTRADO", teto)
+        return None
+    except Exception as exc:
+        log.warning("equipamentos: base de veiculos indisponivel ao vivo: %s", exc)
+        return None
+    return (r.get("veiculos") if isinstance(r, dict) else r) or []
+
+
 async def dados_das_placas(placas: list[str]) -> dict[str, dict]:
     """{chave_normalizada: dados} lido AO VIVO da WESO, sem passar pelo cache.
 
@@ -237,10 +373,9 @@ async def dados_das_placas(placas: list[str]) -> dict[str, dict]:
     um equipamento que existe -- e OS sem a linha do equipamento e exatamente
     o defeito que o usuario achou auditando o termo 8820.
 
-    Custo medido em 29/07 e reconferido em 14/08: a base inteira de veiculos
-    custa 2,3s, e filtrar UMA placa custa ~6s (a API e mais lenta com filtro
-    que sem). Por isso aqui e sempre UMA chamada para a base toda, qualquer
-    que seja o numero de placas.
+    O custo se inverteu entre julho e agosto -- ver `LIMIAR_PLACA_A_PLACA`
+    acima. Hoje: poucas placas vao uma a uma (0,67s cada), muitas vao pela
+    base inteira (16,65s).
 
     Devolve, por placa: veiculo_id, placa como esta gravada, descricao,
     rastreador_id, serie e modelo. Nunca levanta -- placa que nao resolveu
@@ -249,12 +384,9 @@ async def dados_das_placas(placas: list[str]) -> dict[str, dict]:
     alvo = {_chave(p) for p in placas if str(p or "").strip()}
     if not alvo:
         return {}
-    try:
-        r = await weso_get("/Veiculos/Consultar", {})
-    except Exception as exc:
-        log.warning("equipamentos: base de veiculos indisponivel ao vivo: %s", exc)
+    base = await _veiculos_ao_vivo(placas, alvo)
+    if base is None:
         return {}
-    base = (r.get("veiculos") if isinstance(r, dict) else r) or []
 
     # Junta TODOS os casos por chave antes de decidir: duas placas diferentes
     # que normalizam igual sao ambiguidade, e ambiguidade nao se resolve por
