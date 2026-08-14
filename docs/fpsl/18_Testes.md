@@ -231,34 +231,76 @@ mora em `fpsl_weso/placas.py` e só lá; duas definições da mesma coisa diverg
 
 ---
 
+## `tests/teste_tela_gerar_os.py` + `tests/exercitar_tela.js` — a tela rodando (14/08)
+
+**15 verificações.** Carrega o script da tela **inteiro** num DOM de mentira, em
+node, com o `fetch` devolvendo a **resposta real** da extração do termo 8842, e
+verifica o que o operador veria: campo do termo preenchido, contagem de veículos
+e itens, tabela montada, botão liberado, zero alerta. Vai até o resumo.
+
+⚠️ **`exercitar_tela.js` recebe argumentos** (`<gerar_os.html> <resposta.json>
+[perfil]`) e é dirigido pelo teste Python. Rodar solto estoura com
+`ERR_INVALID_ARG_TYPE` — **não é defeito**.
+
+🚨 **MOCK COMPLACENTE APROVA CÓDIGO QUEBRADO.** O primeiro simulador criava um
+elemento para qualquer id pedido, e por isso **aprovou a versão quebrada**: o
+defeito só aparece quando `getElementById('progressoCaixa')` devolve **null** —
+é o null que faz o código partir para criar a caixa. Agora só existe id que
+existe no HTML.
+
+🚨 **O teste precisa REPROVAR quando o defeito volta.** A seção [3] reinjeta o
+defeito no HTML e exige que o exercício acuse `etapas.map is not a function`.
+Sem isso sobra um teste que só sabe dizer "está tudo bem".
+
+⚠️ **Injeção de defeito tem de casar com o arquivo real:** o `gerar_os.html`
+está em **CRLF**, e um `replace` com `\n` não casa nada — normalizar antes. E
+injetar **dentro** do `try` não reproduz o original, que estourava **fora**.
+
+⚠️ **O mock do `fetch` faz parte do contrato.** Quando a tela passou a ler a
+resposta com `res.text()`, o mock que só tinha `json()` reprovou — corretamente.
+Mock que não acompanha o contrato volta a aprovar código quebrado.
+
+Isto **não substitui abrir no navegador**: não há layout, CSS nem clique.
+
+```bash
+cd /home/claude/fpsl_weso && venv/bin/python tests/teste_tela_gerar_os.py
+```
+
+---
+
 ## O que ainda NÃO tem teste
 
 - **Geração real de OS** (`confirmar:true`) — o dry-run está coberto ponta a
   ponta; a escrita real só foi validada à mão, com OS reais criadas e apagadas
-- **A tela num navegador** — há verificação de referência do JS, mas ninguém
-  clicou. Verificado ≠ exercitado
+- **A tela num navegador** — desde 14/08 o JS é exercitado em node com DOM de
+  mentira (15 verificações), mas **ninguém abriu no navegador**: sem layout,
+  sem CSS, sem clique. Exercitado ≠ usado
 - Varredura de OS (`os_scan_router`) — só a tranca de acesso
 - Escrita na WESO (`/weso/os/adicionar`) — a Fase 2 vai precisar de teste próprio
 - Os 12 testes de Oficina, que validavam o fluxo descartado e precisam ser reescritos
 
 ---
 
-## Contagem atual (2026-08-14)
+## Contagem atual (2026-08-14, 17h)
 
-**431 verificações em 10 arquivos**, todas verdes.
+**448 verificações em 11 arquivos**, todas verdes.
 
 | Arquivo | Verificações |
 |---|---|
-| `tests/teste_roteadores_painel.py` | 81 |
+| `tests/teste_roteadores_painel.py` | 75 |
 | `tests/teste_placas.py` | 72 |
-| `tests/teste_manutencao.py` | 65 |
+| `tests/teste_manutencao.py` | 68 |
+| `tests/teste_upgrade_8820.py` | 58 |
 | `tests/teste_regressao_extracao.py` | 57 |
-| `tests/teste_upgrade_8820.py` | 53 |
 | `tests/teste_demandas.py` | 43 |
 | `tests/teste_higiene_placas_weso.py` | 25 |
 | `tests/teste_perfis.py` | 22 |
+| `tests/teste_tela_gerar_os.py` | 15 |
 | `tests/teste_continuacao_pagina.py` | 11 |
 | `tests/teste_disjuntor_harmonit.py` | 2 |
+
+⚠️ **Os roteadores caíram de 81 para 75** porque as 2 rotas de `api/placas`
+saíram junto com o router. Número menor aqui não é regressão.
 
 🚨 **NÃO SÃO `assert`.** Os testes usam uma função `checar()` própria — um
 `grep assert` no projeto devolve **zero** e engana quem for medir cobertura.

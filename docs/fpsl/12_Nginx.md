@@ -1,108 +1,105 @@
-# 12 — Nginx — Instalação e Configuração
+# 12 — Nginx do FPSL — configuração real
+
+> ⚠️ **Reescrito em 2026-08-14.** A versão anterior descrevia a instalação de
+> junho: um server block só, na porta 8005, com HTTPS listado como "próximo
+> passo". Isso deixou de ser verdade há muito tempo, e o arquivo continuava
+> sendo lido como se fosse o estado. **O que vale é o que está em
+> `/etc/nginx/sites-available/fpsl.conf`.**
+
+---
 
 ## Papel do Nginx nesta arquitetura
 
 ```
-Harmonit → [internet] → VPS:8005 (Nginx/www-data) → 127.0.0.1:8004 (uvicorn/claude)
+navegador / Harmonit → [internet] → VPS:443 (nginx/www-data) → 127.0.0.1:8004 (uvicorn/claude)
 ```
 
-- Nginx serve como proxy reverso na porta pública 8005 (futura: 443 HTTPS)
-- FPSL escuta apenas em loopback `127.0.0.1:8004` — nunca exposto diretamente
-- Nginx roda como `www-data` via systemd root
-- FPSL roda como `claude` via systemd user — sem alteração
+- O FPSL escuta **apenas em loopback** `127.0.0.1:8004` — nunca exposto direto.
+- O nginx roda como `www-data` (systemd root); o FPSL roda como `claude`
+  (**systemd de usuário**, unidade `fpsl-weso`).
+- ⚠️ **Unidade de usuário não aparece em `systemctl list-units` sem `--user`**, e
+  o nome tem **hífen** (`fpsl-weso`), enquanto o diretório tem sublinhado
+  (`fpsl_weso`). "Serviço inativo" costuma ser nome errado — a conferência que
+  não mente é a porta escutando e o processo.
 
 ## Particularidades desta VPS
 
-- `/etc/nginx/nginx.conf` usa `include sites-enabled/*.conf` — **com extensão .conf obrigatória**
-- `conf.d/` **não** é incluído nesta VPS — log_format customizado não funciona via conf.d
-- Log formats disponíveis: `main` e `cloudflare` (definidos diretamente no nginx.conf)
-- O FPSL usa o formato `main` para access log
+- `/etc/nginx/nginx.conf` usa `include sites-enabled/*.conf` — **extensão .conf
+  obrigatória**; symlink sem extensão não carrega.
+- `conf.d/` **não** é incluído — `log_format` customizado por ali não funciona.
+- Formatos disponíveis: `main` e `cloudflare`, definidos no `nginx.conf`.
 
-## Arquivo de configuração instalado
+## Arquivo instalado
 
-**Fonte:** `/home/claude/fpsl_weso/nginx_fpsl.conf`
-**Instalado em:** `/etc/nginx/sites-available/fpsl`
-**Symlink:** `/etc/nginx/sites-enabled/fpsl.conf` → `sites-available/fpsl`
+**`/etc/nginx/sites-available/fpsl.conf`**, com **três** server blocks:
 
-```nginx
-# FPSL WESO — server block
-# Esta VPS usa include sites-enabled/*.conf (com extensão)
-# log_format 'main' já definido no nginx.conf principal
-server {
-    listen 8005;
-    server_name _;
-
-    client_max_body_size 1m;
-    access_log /var/log/nginx/fpsl_access.log main;
-    error_log  /var/log/nginx/fpsl_error.log warn;
-
-    location / {
-        proxy_pass         http://127.0.0.1:8004;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_read_timeout 35s;
-        proxy_connect_timeout 5s;
-        proxy_send_timeout 35s;
-    }
-}
-```
-
-## Comandos de instalação (executar como root)
-
-```bash
-# 1. Instalar Nginx se ausente
-apt install -y nginx
-
-# 2. Instalar server block em sites-available
-cp /home/claude/fpsl_weso/nginx_fpsl.conf /etc/nginx/sites-available/fpsl
-
-# 3. Criar symlink com extensão .conf (obrigatório nesta VPS)
-ln -sf /etc/nginx/sites-available/fpsl /etc/nginx/sites-enabled/fpsl.conf
-
-# 4. Testar sintaxe e recarregar
-nginx -t && systemctl reload nginx
-
-# 5. Verificar — deve retornar HTTP 422
-curl -s -o /dev/null -w HTTP %{http_code}n http://localhost:8005/weso/veiculos/local
-```
-
-## Notas históricas (bugs encontrados e corrigidos)
-
-- Versão inicial: `log_format` dentro do `server {}` — inválido, só funciona em `http {}`
-- Versão anterior: variáveis `$remote_addr` etc. expandidas pelo bash no heredoc — corrigido com single-quote
-- Instalação 2026-06-15: symlink criado sem extensão (`fpsl`) — não carregado pois VPS usa `*.conf`
-- Instalação 2026-06-15: log_format customizado via `conf.d/` falhou — `conf.d` não incluído nesta VPS
-
-## Interpretação dos códigos de verificação
-
-| Código | Significado |
+| Block | Para quê |
 |---|---|
-| `HTTP 422` | Nginx OK + uvicorn OK — falta só o header de auth (`X-FPSL-Key`) |
-| `HTTP 000` / `curl: (7)` | Nginx não iniciou ou não escuta na 8005 |
-| `HTTP 502` | Nginx ok mas uvicorn fora — verificar `systemctl --user status fpsl-weso` |
+| `listen 80` | redireciona para HTTPS e serve `/.well-known/acme-challenge/` |
+| `listen 443 ssl` — `fpsl.movisat.com.br` | o painel e a API |
+| `listen 8005` — `server_name _` | acesso interno por IP, mesmo proxy_pass |
 
-## Verificação do serviço FPSL (como usuário claude)
+Backups no mesmo diretório (`fpsl.conf.bak_*`). 🚨 Eles são servíveis se alguém
+errar o `location`: há regra `deny all` para `\.bak[0-9]*_[0-9-]+[a-z]?$` e para
+`.py`, `.db`, `.env` e afins — **não remover**.
+
+## Timeouts — e por que não são iguais
+
+| Rota | `proxy_read/send_timeout` | Motivo |
+|---|---|---|
+| `location /` | **180s** (desde 14/08) | a geração de OS depende da WESO, que oscila de 7s a 33s na mesma consulta |
+| `/weso/onboarding` | 120s | cadeia de cadastro, sempre foi longa |
+| `/painel/api/login` | **35s** | de propósito — login não fala com a WESO; teto curto ali é proteção |
+
+`proxy_connect_timeout` continua **5s** em todas: conectar no uvicorn local é
+instantâneo ou não vai acontecer.
+
+🚨 **O 35s do `location /` derrubou produção em 14/08.** A geração levava 43s, o
+nginx cortava, devolvia **página HTML de 504**, e a tela lia aquilo como JSON — o
+operador via "erro json" e nenhuma pista de que era tempo. A história inteira,
+com as medições, está em **`24_Desempenho_e_Timeout.md`**.
+
+⚠️ **Timeout maior não conserta lentidão**, só impede que ela vire erro mudo.
+
+## Mexer no arquivo (precisa de root)
 
 ```bash
+cp /etc/nginx/sites-available/fpsl.conf /etc/nginx/sites-available/fpsl.conf.bak_$(date +%F)
+# editar
+nginx -t && systemctl reload nginx
+```
+
+🚨 **`nginx -t` ANTES do reload, sempre.** Já quebrou config aqui por heredoc
+com crase e `$`. Conteúdo com aspas, crase ou `$` vai por **arquivo + scp**,
+nunca inline.
+
+## Verificar
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://fpsl.movisat.com.br/painel
 systemctl --user status fpsl-weso
 journalctl --user -u fpsl-weso -n 30
 ```
 
-## Próximo passo: HTTPS
+| Código | Significado |
+|---|---|
+| `200` em `/painel` | nginx e uvicorn de pé |
+| `502` | nginx de pé, uvicorn fora |
+| `504` | uvicorn vivo mas passou do timeout — ver doc 24 |
+| `000` / `curl: (7)` | nginx não escuta |
 
-Após DNS do domínio apontando para o IP da VPS:
-```bash
-# Como root:
-apt install -y certbot python3-certbot-nginx
-certbot --nginx -d seu.dominio.com
-```
+⚠️ **`/` na raiz responde 404, e isso é normal** — a aplicação começa em
+`/painel`.
 
-O certbot:
-1. Edita `sites-available/fpsl` automaticamente para porta 443
-2. Redireciona 80 → 443
-3. Cria cron job de renovação automática
+🚨 **Log de acesso do nginx não é legível sem root** (`www-data:adm`, 640):
+`grep` devolve **zero para tudo**, o que parece "ninguém usou". Para medir uso,
+o journal do próprio serviço — requisição vinda pelo nginx aparece com o **IP
+real**, chamada local aparece como **127.0.0.1**.
 
-Após HTTPS ativo, atualizar URL do webhook no painel Harmonit:
-- De: `http://IP:8005/weso/os/adicionar`
-- Para: `https://seu.dominio.com/weso/os/adicionar`
+## Notas históricas
+
+- 15/06: symlink criado sem extensão (`fpsl`) — não carregou, a VPS usa `*.conf`.
+- 15/06: `log_format` customizado via `conf.d/` falhou — `conf.d` não é incluído.
+- 15/06: `log_format` dentro do `server {}` — inválido, só existe em `http {}`.
+- Uma versão antiga teve `$remote_addr` expandido pelo bash dentro de heredoc.
+- 14/08: timeouts do `location /` de 35s para 180s, nos dois blocos.

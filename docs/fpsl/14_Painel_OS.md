@@ -347,3 +347,55 @@ E3 financeira + fase dupla + saldo 0/motivo; E4 encargos rescisão; E5 titularid
 **gerar o conjunto "1 por tipo" real** na Pastelaria Velasco (só o par cliente novo 16533/16534
 existe) e **E6 — Oficina→WESO** (com o rastreador `356354872124749` / linha
 `8955170220424545007F`). O branch `agrupado` órfão em `_montar_operacoes` fica pra limpeza.
+
+---
+
+## Atualização 2026-08-14 (tarde) — quatro defeitos que só o uso encontrou
+
+🚨 **Todos os quatro foram achados pelo usuário clicando, não por teste meu.**
+Três eram invisíveis: nenhum log, nenhuma mensagem, nenhum sinal.
+
+### 1. A extração morreu em todos os 7 perfis de contrato
+
+Ao trocar a caixa de progresso para receber uma **lista de etapas**, ficou uma
+chamada passando **texto**. String tem `.length` mas não tem `.map`, então
+estourava `TypeError` **antes do `fetch` e fora do `try`**: sem alerta, sem log,
+botão travado, tela parada. O termo 8842 (rescisão de **uma placa só**, caso que
+não existia entre os 9 exemplos) virou fixture do projeto.
+
+🚨 **Teste que confere se a função EXISTE não pega argumento do tipo errado.** A
+função existia; errado era o que se passava para ela. Ver `18_Testes.md`.
+
+### 2. "Manutenção dá erro" era o 504 do nginx
+
+Não era o fluxo, era tempo: 43s contra `proxy_read_timeout 35s`. História
+completa e medições em **`24_Desempenho_e_Timeout.md`**.
+
+### 3. "Erro json" era a página HTML do 504
+
+A tela chamava `res.json()` na página de erro do nginx. Agora a resposta é lida
+como **texto** e só então convertida, e cada código vira mensagem útil — com a
+frase que importa: **"Nenhuma OS foi criada"**.
+
+⚠️ `gerarOs()` não conferia `res.ok`. Num erro, o operador ficava sem saber se
+alguma OS tinha sido criada.
+
+### 4. Comodato saindo com valor patrimonial R$ 0,00
+
+`produto_do_modelo` devolve `row[2] or 0.0`, então de-para **sem valor** — que é
+o caso de **todos os modelos 2G** — chegava como `0.0` e não como `None`. A
+herança do valor do contrato testava `is not None` e nunca disparava.
+
+🚨 **Zero ali não é "vale nada", é "não sei"** — e esse número vai para a
+**DANFE de comodato**. Valia para Cliente novo, Aditivo, Rescisão e Substituição,
+não só para o perfil onde apareceu. Corrigido e travado por teste: o ST310U
+volta a sair com R$ 1.100,00 nas duas OS.
+
+### E a tela de placas saiu
+
+Aba, `frontend/placas.html`, rota `/painel/placas` e `placas_router` removidos
+(`cf16837`). Era permissão que não protegia nada — o router sempre pediu
+`gerar_os`. Medido antes de apagar: **1 abertura por usuário real e zero criação
+de placa em 6 dias**; os recipientes `-MANUT`/`-UPGRADE` nascem no sistema da
+WESO. Continua existindo `fpsl_weso/placas.py`, que é **regra de formatação de
+placa** — outra coisa, com 72 testes.
