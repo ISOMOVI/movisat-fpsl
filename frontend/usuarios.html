@@ -107,7 +107,7 @@
     </div>
     <div class="card">
       <table>
-        <thead><tr><th>Login</th><th>Perfil</th><th>Acesso</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Login</th><th>Perfil</th><th>Vínculo Google</th><th>Acesso</th><th>Status</th><th></th></tr></thead>
         <tbody id="tbody"><tr><td colspan="5" style="text-align:center;color:var(--text2);padding:24px">Carregando...</td></tr></tbody>
       </table>
     </div>
@@ -127,6 +127,23 @@
         <label for="novaSenha">Senha (mín. 8 caracteres)</label>
         <input type="password" id="novaSenha">
       </div>
+    </div>
+    <!--
+      E-MAIL DE VÍNCULO (17/08). FORA do `camposConta` de propósito: aquele
+      bloco some ao editar o perfil de alguém, e o e-mail precisa poder ser
+      definido depois, para conta que já existe.
+
+      Não é campo de contato: é o endereço pelo qual a conta Google casa com
+      esta conta do painel. Vazio = entra só por senha, que continua valendo.
+    -->
+    <div style="margin-bottom:12px">
+      <label for="novoEmail">E-mail de vínculo (entrada pelo Google)</label>
+      <input type="text" id="novoEmail" placeholder="nome@movisat.com.br">
+      <p style="font-size:.74rem;color:var(--text2);margin-top:5px;line-height:1.45">
+        Só <strong>@movisat.com.br</strong>. Vazio = a conta entra apenas por senha.
+        <br>Trocar o e-mail <strong>desliga a conta Google vinculada</strong> — é
+        assim que a conta passa de mão.
+      </p>
     </div>
     <div>
       <label style="margin-bottom:8px">Abas que este usuário enxerga</label>
@@ -187,16 +204,18 @@ function abrirModalNovo() {
   document.getElementById('btnSalvar').textContent = 'Criar';
   document.getElementById('novoLogin').value = '';
   document.getElementById('novaSenha').value = '';
+  document.getElementById('novoEmail').value = '';
   document.getElementById('erroNovo').style.display = 'none';
   desenharAbas([]);   // nasce sem nenhuma aba: falhar fechado
   document.getElementById('modalNovo').classList.add('open');
 }
 
-function abrirModalPerfil(id, login, abas) {
+function abrirModalPerfil(id, login, abas, email) {
   editandoId = id;
   document.getElementById('modalTitulo').textContent = 'Perfil de ' + login;
   document.getElementById('camposConta').style.display = 'none';
   document.getElementById('btnSalvar').textContent = 'Salvar perfil';
+  document.getElementById('novoEmail').value = email || '';
   document.getElementById('erroNovo').style.display = 'none';
   desenharAbas(abas);
   document.getElementById('modalNovo').classList.add('open');
@@ -231,13 +250,18 @@ async function carregar() {
       : (u.abas && u.abas.length
           ? u.abas.map((a) => `<span class="tag">${escapeHtml(nomeDaAba(a))}</span>`).join('')
           : '<span class="tag tag-vazio">Nenhuma aba</span>');
+    const vinculo = u.email
+      ? `<span class="mono" style="font-size:.8rem">${escapeHtml(u.email)}</span>`
+        + (u.google_ligado ? ' <span class="badge badge-green">ativo</span>' : '')
+      : '<span class="tag tag-vazio">só senha</span>';
     const acoes = u.owner ? '<span style="color:var(--text2);font-size:.78rem">—</span>' : `
-      <button class="btn btn-ghost btn-sm" onclick="abrirModalPerfil(${u.id}, '${escapeHtml(u.login)}', ${JSON.stringify(u.abas || []).replace(/"/g, '&quot;')})">Perfil</button>
+      <button class="btn btn-ghost btn-sm" onclick="abrirModalPerfil(${u.id}, '${escapeHtml(u.login)}', ${JSON.stringify(u.abas || []).replace(/"/g, '&quot;')}, '${escapeHtml(u.email || '')}')">Perfil</button>
       <button class="btn btn-ghost btn-sm" onclick="alternarAtivo(${u.id}, ${!u.ativo})">${u.ativo ? 'Desativar' : 'Reativar'}</button>`;
     return `
     <tr>
       <td><strong>${escapeHtml(u.login)}</strong></td>
       <td><span class="badge ${u.owner ? 'badge-blue' : 'badge-green'}">${u.owner ? 'Proprietário' : 'Operador'}</span></td>
+      <td>${vinculo}</td>
       <td><div class="aba-tags">${acesso}</div></td>
       <td><span class="badge ${u.ativo ? 'badge-green' : 'badge-red'}">${u.ativo ? 'Ativo' : 'Desativado'}</span></td>
       <td style="white-space:nowrap">${acoes}</td>

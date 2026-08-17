@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field
 from .. import abas as abas_painel
 from ... import ratelimit
 from ..auth import validar_login, criar_token, get_usuario_painel
+from .. import google_auth
+from fastapi.responses import RedirectResponse
+from urllib.parse import quote
 
 log = logging.getLogger(__name__)
 
@@ -62,3 +65,45 @@ async def login(body: LoginInput, request: Request):
 @router.get("/me")
 async def me(usuario: dict = Depends(get_usuario_painel)):
     return _perfil(usuario)
+
+
+# ── entrada pelo Google (17/08) ─────────────────────────────────────────────
+# 🚨 PORTA A MAIS, NAO TROCA. O login por senha acima continua valendo para
+# todo mundo -- decisao do usuario, para ninguem perder acesso no dia da
+# mudanca. Quem nao tem `email` preenchido simplesmente nao usa esta porta.
+
+
+@router.get("/auth/google/disponivel")
+def google_disponivel():
+    """A tela pergunta antes de desenhar o botao.
+
+    Botao que nao funciona e pior que botao ausente: rende chamado. Sem
+    credencial no .env, isto devolve False e o login fica so com senha.
+    """
+    return {"disponivel": google_auth.configurado()}
+
+
+@router.get("/auth/google/inicio")
+def google_inicio():
+    if not google_auth.configurado():
+        raise HTTPException(503, "Entrada pelo Google nao esta configurada.")
+    return RedirectResponse(google_auth.url_de_entrada(), status_code=302)
+
+
+@router.get("/auth/google/callback")
+async def google_callback(code: str = "", state: str = "", error: str = ""):
+    """Volta do Google e entrega a sessao a tela.
+
+    🚨 O TOKEN VAI NO FRAGMENTO DA URL (`#t=`), NAO NA QUERY. Fragmento nao e
+    enviado ao servidor nem entra no log de acesso do nginx; a tela le e limpa
+    a barra de enderecos em seguida. Na query, o token de sessao de todo mundo
+    ficaria gravado em disco no `access_log`.
+    """
+    destino = "/painel"
+    if error or not code:
+        return RedirectResponse(f"{destino}#erro=Entrada+cancelada", status_code=302)
+    try:
+        r = await google_auth.entrar(code, state)
+    except google_auth.GoogleRecusado as e:
+        return RedirectResponse(f"{destino}#erro={quote(str(e))}", status_code=302)
+    return RedirectResponse(f"{destino}#t={r['token']}", status_code=302)

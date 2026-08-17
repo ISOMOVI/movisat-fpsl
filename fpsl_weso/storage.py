@@ -129,6 +129,15 @@ def init_db():
             conn.execute("ALTER TABLE painel_usuarios ADD COLUMN abas TEXT NOT NULL DEFAULT '[]'")
         if "owner" not in _cols:
             conn.execute("ALTER TABLE painel_usuarios ADD COLUMN owner INTEGER NOT NULL DEFAULT 0")
+        # 17/08: entrada pelo Google. `email` e o vinculo com a conta Google;
+        # `google_sub` e a identidade permanente dela (e-mail muda, sub nao).
+        # 🚨 AS DUAS SAO ANULAVEIS DE PROPOSITO. Usuario que so entra por senha
+        # nao tem nem uma nem outra, e isso e estado valido -- exigir e-mail
+        # tiraria o acesso de quem ja usa o painel hoje.
+        if "email" not in _cols:
+            conn.execute("ALTER TABLE painel_usuarios ADD COLUMN email TEXT")
+        if "google_sub" not in _cols:
+            conn.execute("ALTER TABLE painel_usuarios ADD COLUMN google_sub TEXT")
             # o usuário original (menor id) vira o owner -- é a conta que já
             # existia antes de haver perfis, e não pode ficar órfã de dono.
             conn.execute(
@@ -594,7 +603,7 @@ async def buscar_usuario_painel(login: str) -> dict | None:
     def _run():
         with _connect() as conn:
             row = conn.execute(
-                "SELECT id, login, senha_hash, admin, ativo, abas, owner "
+                "SELECT id, login, senha_hash, admin, ativo, abas, owner, email, google_sub "
                 "FROM painel_usuarios WHERE lower(login) = lower(?)",
                 (login,),
             ).fetchone()
@@ -607,11 +616,79 @@ async def buscar_usuario_painel(login: str) -> dict | None:
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
+async def buscar_usuario_painel_por_google(sub: str | None, email: str) -> dict | None:
+    """Acha a conta pelo `google_sub` (quem ja entrou) ou pelo e-mail (1a vez).
+
+    🚨 NUNCA CRIA. Conta que nao existe e RECUSADA -- criar sozinho faria
+    qualquer pessoa do dominio virar usuario do painel sem ninguem decidir.
+    Cadastrar e ato de gestao e mora na tela de Usuarios.
+
+    ⚠️ O `sub` vem primeiro de proposito: se a pessoa trocou de e-mail no
+    Google, o `sub` continua igual e a conta e reencontrada. Casar so por
+    e-mail perderia o vinculo em silencio.
+    """
+    email = (email or "").strip().lower()
+
+    def _run():
+        with _connect() as conn:
+            row = None
+            if sub:
+                row = conn.execute(
+                    "SELECT id, login, senha_hash, admin, ativo, abas, owner, email, google_sub "
+                    "FROM painel_usuarios WHERE google_sub = ?", (sub,),
+                ).fetchone()
+            if row is None and email:
+                row = conn.execute(
+                    "SELECT id, login, senha_hash, admin, ativo, abas, owner, email, google_sub "
+                    "FROM painel_usuarios WHERE lower(email) = ?", (email,),
+                ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0], "login": row[1], "senha_hash": row[2], "admin": bool(row[3]),
+            "ativo": bool(row[4]), "abas": _abas_de(row[5]), "owner": bool(row[6]),
+            "email": row[7], "google_sub": row[8],
+        }
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def gravar_google_sub(usuario_id: int, sub: str) -> None:
+    """Carimba o `sub` na primeira entrada. Idempotente."""
+    def _run():
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE painel_usuarios SET google_sub = ? "
+                " WHERE id = ? AND (google_sub IS NULL OR google_sub <> ?)",
+                (sub, usuario_id, sub),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def definir_email_painel(usuario_id: int, email: str | None) -> None:
+    """Define o e-mail de vinculo.
+
+    🚨 TROCAR O E-MAIL ZERA O `google_sub`. Sem isso, a conta Google antiga
+    continuaria entrando na conta mesmo depois de o vinculo ter sido passado
+    para outra pessoa -- que e exatamente o buraco que o MoviZap fechou em
+    12/08 com a mesma regra.
+    """
+    email = (email or "").strip().lower() or None
+
+    def _run():
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE painel_usuarios SET email = ?, google_sub = NULL WHERE id = ?",
+                (email, usuario_id),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
 async def buscar_usuario_painel_por_id(usuario_id: int) -> dict | None:
     def _run():
         with _connect() as conn:
             row = conn.execute(
-                "SELECT id, login, admin, ativo, abas, owner FROM painel_usuarios WHERE id = ?",
+                "SELECT id, login, admin, ativo, abas, owner, email, google_sub "
+                "FROM painel_usuarios WHERE id = ?",
                 (usuario_id,),
             ).fetchone()
         if not row:
@@ -619,6 +696,10 @@ async def buscar_usuario_painel_por_id(usuario_id: int) -> dict | None:
         return {
             "id": row[0], "login": row[1], "admin": bool(row[2]),
             "ativo": bool(row[3]), "abas": _abas_de(row[4]), "owner": bool(row[5]),
+            # 17/08: faltavam aqui e o teste pegou. A busca por login ja
+            # devolvia os dois; esta nao, e quem lesse por id concluiria que a
+            # conta nao tem vinculo -- sem nada acusar.
+            "email": row[6], "google_sub": row[7],
         }
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
@@ -627,13 +708,15 @@ async def listar_usuarios_painel() -> list[dict]:
     def _run():
         with _connect() as conn:
             rows = conn.execute(
-                "SELECT id, login, admin, ativo, criado_em, abas, owner FROM painel_usuarios "
-                "ORDER BY owner DESC, login"
+                "SELECT id, login, admin, ativo, criado_em, abas, owner, email, google_sub "
+                "FROM painel_usuarios ORDER BY owner DESC, login"
             ).fetchall()
         return [
             {
                 "id": r[0], "login": r[1], "admin": bool(r[2]), "ativo": bool(r[3]),
                 "criado_em": r[4], "abas": _abas_de(r[5]), "owner": bool(r[6]),
+                "email": r[7],
+                "google_ligado": bool(r[8]),
             }
             for r in rows
         ]

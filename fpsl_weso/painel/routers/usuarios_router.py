@@ -22,6 +22,7 @@ class UsuarioCreate(BaseModel):
     senha: str
     admin: bool = False
     abas: list[str] = []
+    email: str | None = None
 
 
 class UsuarioUpdate(BaseModel):
@@ -29,6 +30,43 @@ class UsuarioUpdate(BaseModel):
     admin: bool | None = None
     senha: str | None = None
     abas: list[str] | None = None
+    # E-mail de vinculo com a conta Google. `None` = nao mexer; "" = limpar.
+    email: str | None = None
+
+
+DOMINIO_PERMITIDO = "movisat.com.br"
+
+
+def _validar_email(email: str) -> None:
+    """🚨 SO O DOMINIO DA CASA. A trava de dominio tambem existe no
+    `google_auth.entrar`, e nao e repeticao boba: la ela protege a ENTRADA
+    (quem chega), aqui protege o CADASTRO (o que se grava). Sem esta, alguem
+    cadastraria `fulano@gmail.com` como vinculo, o campo ficaria la parecendo
+    valido, e a pessoa nunca conseguiria entrar -- falha que so aparece no dia
+    em que ela tenta.
+    """
+    e = (email or "").strip().lower()
+    if not e.endswith("@" + DOMINIO_PERMITIDO) or e.count("@") != 1 or len(e) < 5:
+        raise HTTPException(
+            400, f"O e-mail de vínculo precisa ser @{DOMINIO_PERMITIDO}.")
+
+
+@router.patch("/meu-email")
+async def meu_email(body: UsuarioUpdate, owner=Depends(get_owner_painel)):
+    """O proprietario define o PROPRIO e-mail de vinculo.
+
+    ⚠️ EXISTE PORQUE O `PATCH /{id}` RECUSA MEXER NO OWNER, de proposito (a
+    conta proprietaria nao se altera pela tela de usuarios). Mas o owner e
+    justamente quem mais precisa da porta do Google. Esta rota faz UMA coisa
+    so -- o e-mail dele -- e nada mais.
+
+    🚨 TROCAR O E-MAIL ZERA O `google_sub`: e assim que a conta passa de mao.
+    Sem isso, a conta Google antiga continuaria entrando.
+    """
+    if body.email:
+        _validar_email(body.email)
+    await storage.definir_email_painel(owner["id"], body.email)
+    return {"ok": True, "email": (body.email or "").strip().lower() or None}
 
 
 @router.get("/abas")
@@ -51,12 +89,17 @@ async def criar(body: UsuarioCreate, _=Depends(get_owner_painel)):
         raise HTTPException(400, "Já existe um usuário com esse login")
     if len(body.senha) < 8:
         raise HTTPException(400, "Senha precisa ter ao menos 8 caracteres")
+    if body.email:
+        _validar_email(body.email)
     await storage.criar_usuario_painel(
         login,
         pwd_ctx.hash(body.senha),
         admin=body.admin,
         abas=abas_painel.normalizar(body.abas),
     )
+    if body.email:
+        novo = await storage.buscar_usuario_painel(login)
+        await storage.definir_email_painel(novo["id"], body.email)
     return {"ok": True}
 
 
@@ -70,6 +113,8 @@ async def atualizar(usuario_id: int, body: UsuarioUpdate, owner=Depends(get_owne
     if body.senha is not None and len(body.senha) < 8:
         raise HTTPException(400, "Senha precisa ter ao menos 8 caracteres")
     senha_hash = pwd_ctx.hash(body.senha) if body.senha else None
+    if body.email:
+        _validar_email(body.email)
     await storage.atualizar_usuario_painel(
         usuario_id,
         ativo=body.ativo,
@@ -77,4 +122,6 @@ async def atualizar(usuario_id: int, body: UsuarioUpdate, owner=Depends(get_owne
         senha_hash=senha_hash,
         abas=abas_painel.normalizar(body.abas) if body.abas is not None else None,
     )
+    if body.email is not None:
+        await storage.definir_email_painel(usuario_id, body.email)
     return {"ok": True}

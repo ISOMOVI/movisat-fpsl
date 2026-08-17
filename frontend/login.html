@@ -13,6 +13,27 @@
   proprio bloco <style> com os mesmos valores copiados dez vezes.
 -->
 <link rel="stylesheet" href="/painel/static/estilo.css">
+<style>
+  /* Espelha `.entrada__google-*` do Login.vue do MoviZap.
+     🚨 48px de altura e 16px de fonte: abaixo disso o iOS dá zoom sozinho ao
+     focar e o painel fica torto. Mesma régua dos campos (padrão de 05/08). */
+  .login-google { display:flex; align-items:center; justify-content:center; gap:8px;
+                  width:100%; min-height:48px; font-size:16px; font-weight:600;
+                  font-family:inherit; color:#0F172A; background:#FFFFFF;
+                  border:1.5px solid #CBD5E1; border-radius:8px; cursor:pointer;
+                  box-shadow:0 1px 2px rgba(15,23,42,.06);
+                  transition:background .15s, box-shadow .15s, border-color .15s; }
+  .login-google:hover { background:#F8FAFC; border-color:#93C5FD;
+                        box-shadow:0 2px 6px rgba(15,23,42,.08); }
+  .login-google:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.35); }
+  .login-google:active { background:#F1F5F9; box-shadow:none; }
+  .login-google-g { width:20px; height:20px; flex:none; }
+  .login-google-nota { margin:8px 0 0; text-align:center; font-size:.82rem; color:#64748B; }
+  /* Separador com a palavra no meio: duas linhas e um respiro, sem imagem. */
+  .login-ou { display:flex; align-items:center; gap:12px; margin-top:20px;
+              margin-bottom:20px; color:#64748B; font-size:.82rem; }
+  .login-ou::before, .login-ou::after { content:""; flex:1; height:1px; background:#E2E8F0; }
+</style>
 </head>
 <body>
 <div class="login-wrap">
@@ -21,6 +42,32 @@
     <div class="login-brand">
       <img src="/painel/static/movisat-logo.png" alt="Movisat">
       <p class="sub">Geração de OS por contrato · FPSL</p>
+    </div>
+
+    <!--
+      ENTRADA PELO GOOGLE (17/08) — espelha `movizap/frontend/src/telas/Login.vue`.
+
+      Fica ACIMA do cartão, fora dele, com a nota e o "ou" depois do botão —
+      exatamente a ordem do MoviZap. `hidden` só sai depois de
+      /auth/google/disponivel confirmar que há credencial: botão que não
+      funciona é pior que botão ausente, rende chamado.
+
+      Não substitui a senha. São duas portas para a mesma conta.
+    -->
+    <div id="blocoGoogle" hidden>
+      <button class="login-google" type="button" onclick="entrarComGoogle()">
+        <!-- G oficial do Google. Inline porque é a única cor da tela e não
+             pode depender de fonte de ícone carregar. -->
+        <svg class="login-google-g" viewBox="0 0 18 18" aria-hidden="true">
+          <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z"/>
+          <path fill="#FBBC05" d="M3.96 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.96a9 9 0 0 0 0 8.08l3-2.33z"/>
+          <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/>
+        </svg>
+        <span>Entrar com Google</span>
+      </button>
+      <p class="login-google-nota">Contas @movisat.com.br já cadastradas</p>
+      <div class="login-ou"><span>ou</span></div>
     </div>
 
     <div class="card login-card">
@@ -61,6 +108,55 @@
 
 <script>
 document.getElementById('login').focus();
+
+/* ── entrada pelo Google (17/08) ───────────────────────────────────────────
+   🚨 O RETORNO VEM NO FRAGMENTO (`#t=` ou `#erro=`), NAO NA QUERY. Fragmento
+   nao e enviado ao servidor nem entra no access_log do nginx -- na query, o
+   token de sessao de todo mundo ficaria gravado em disco. Depois de ler, a
+   barra de enderecos e limpa para o token nao ficar no historico. */
+(function lerRetornoDoGoogle() {
+  const frag = window.location.hash.slice(1);
+  if (!frag) return;
+  const p = new URLSearchParams(frag);
+  history.replaceState(null, '', window.location.pathname);
+
+  const msg = p.get('erro');
+  if (msg) {
+    const erro = document.getElementById('erro');
+    erro.textContent = msg;
+    erro.hidden = false;
+    return;
+  }
+  const t = p.get('t');
+  if (!t) return;
+  localStorage.setItem('fpsl_painel_token', t);
+  /* Mesma regra do login por senha: cada um vai para a PRIMEIRA ABA DO SEU
+     PERFIL. Mandar todo mundo para Gerar OS jogaria num 403 quem nao tem. */
+  fetch('/painel/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('sessao invalida')))
+    .then(eu => {
+      const primeira = (eu.abas || [])[0];
+      if (!primeira) throw new Error('Sua conta ainda não tem nenhuma aba liberada. Fale com o proprietário do painel.');
+      window.location.href = primeira.rota;
+    })
+    .catch(err => {
+      localStorage.removeItem('fpsl_painel_token');
+      const erro = document.getElementById('erro');
+      erro.textContent = err.message;
+      erro.hidden = false;
+    });
+})();
+
+fetch('/painel/api/auth/google/disponivel')
+  .then(r => r.json())
+  .then(d => { if (d.disponivel) document.getElementById('blocoGoogle').hidden = false; })
+  .catch(() => { /* sem botao, o login por senha continua inteiro */ });
+
+function entrarComGoogle() {
+  /* Navegacao de pagina inteira, nao fetch: o Google recusa ser carregado por
+     XHR e a tela de consentimento precisa da barra de enderecos dele. */
+  window.location.href = '/painel/api/auth/google/inicio';
+}
 
 document.getElementById('form').addEventListener('submit', async (e) => {
   e.preventDefault();

@@ -15,6 +15,18 @@ class Settings(BaseSettings):
     painel_admin_senha: str = ""
     painel_jwt_secret:  str = ""
 
+    # Entrada pelo Google (17/08). SO LOGIN -- escopo `openid email profile`,
+    # nada de Gmail nem Calendar.
+    # 🚨 PROJETO/CLIENTE PROPRIO, nao o do MoviZap: compartilhar o client
+    # secret entre dois sistemas significa que rotacionar um derruba o outro,
+    # e a tela de consentimento mostraria o nome do outro aplicativo.
+    # Sem credencial, `google_auth.configurado()` devolve False e a tela nem
+    # mostra o botao -- o painel segue 100% funcional por senha.
+    google_client_id:     str = ""
+    google_client_secret: str = ""
+    google_redirect:      str = "https://fpsl.movisat.com.br/painel/api/auth/google/callback"
+    google_dominio:       str = "movisat.com.br"
+
     class Config:
         env_file = ".env"
 
