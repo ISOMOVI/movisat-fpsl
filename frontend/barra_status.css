@@ -1,0 +1,48 @@
+/* Barra de status do rodapé — o estilo, ligado no <head> de cada página.
+ *
+ * 🚨 ESTE ARQUIVO EXISTE PORQUE CSS DE LAYOUT NÃO PODE VIR POR JAVASCRIPT.
+ * Na primeira versão (18/08 de manhã) o `barra_status.js` injetava um <style>
+ * no `DOMContentLoaded`. Como três destas regras mexem em LAYOUT -- o padding
+ * do body e a altura da sidebar --, a página pintava inteira e só então
+ * encolhia 30px: um salto visível a cada troca de aba. O navegador pinta com o
+ * CSS que ele tem NA HORA; regra que chega depois não corrige, remonta.
+ *
+ * Regra que fica: o que muda geometria vem em <link> no <head>. O que só muda
+ * texto pode vir por JS.
+ */
+
+/* ── o espaço da barra, reservado ANTES da primeira pintura ─────────────────
+   A sidebar tem `height:100vh` e o botão Sair mora no fim dela: sem devolver
+   os 30px, a barra fixa fica por cima do botão nas 9 telas. */
+body { padding-bottom: 30px; }
+.layout { min-height: calc(100vh - 30px); }
+.sidebar { height: calc(100vh - 30px); }
+
+.barra-status {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 30px;
+  display: flex; align-items: center; gap: 8px; padding: 0 14px;
+  background: #FFFFFF; border-top: 1px solid #E2E8F0; color: #64748B;
+  font-size: .74rem; font-family: inherit;
+  white-space: nowrap; overflow: hidden; z-index: 40;
+}
+.barra-status .bi { font-size: .8rem; }
+.barra-status__item { display: inline-flex; align-items: center; gap: 5px; }
+.barra-status__codigo { color: #2563EB; font-weight: 600; }
+.barra-status__sep { opacity: .45; }
+.barra-status__espaco { flex: 1; }
+.barra-status__mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.barra-status__owner {
+  background: #EFF6FF; color: #2563EB; border-radius: 4px;
+  padding: 1px 6px; font-size: .68rem; font-weight: 600;
+}
+.barra-status__girando {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid #CBD5E1; border-top-color: #2563EB;
+  animation: barra-girar .7s linear infinite;
+}
+@keyframes barra-girar { to { transform: rotate(360deg); } }
+
+/* Em tela estreita a barra guarda o essencial: código, req e hora. */
+@media (max-width: 720px) {
+  .barra-status__opcional, .barra-status__sep { display: none; }
+}

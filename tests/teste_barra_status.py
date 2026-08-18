@@ -141,14 +141,39 @@ async def main():
            exercicio.returncode == 0,
            saida.decode("utf-8", "replace").strip()[:400])
 
-    print("\n[8] a barra nao cobre o botao Sair")
-    css = (RAIZ / "frontend" / "barra_status.js").read_text(encoding="utf-8")
+    print("\n[8] a barra nao cobre o botao Sair, e nao empurra a pagina")
+    css = (RAIZ / "frontend" / "barra_status.css").read_text(encoding="utf-8")
+    checar("existe um CSS proprio, em arquivo", len(css) > 200)
     checar("devolve altura para a sidebar",
            "calc(100vh - 30px)" in css and ".sidebar {" in css,
            "sem isso a barra fixa fica por cima do botao Sair")
     uma = (RAIZ / "frontend" / "os_historico.html").read_text(encoding="utf-8")
     checar("a pagina realmente usa sidebar de 100vh (a razao do ajuste)",
            "height:100vh" in uma.replace(" ", ""))
+
+    # 🚨 A REGRA QUE NASCEU DO SEGUNDO PISCA-PISCA (18/08). O CSS da barra era
+    # injetado por JS no DOMContentLoaded; como ele mexe em LAYOUT, a pagina
+    # pintava inteira e so entao encolhia 30px -- um salto a cada troca de aba.
+    # Geometria vem em <link> no <head>, nunca por script.
+    js = (RAIZ / "frontend" / "barra_status.js").read_text(encoding="utf-8")
+    checar("o JS NAO injeta <style>", "createElement('style')" not in js,
+           "CSS de layout por JS = reflow visivel a cada troca de aba")
+    for chave in ["padding-bottom", "100vh", "position: fixed"]:
+        checar(f"o JS nao carrega `{chave}`", chave not in js)
+
+    print("\n[9] toda pagina do painel liga o CSS, e antes do proprio <style>")
+    for arq in sorted(glob.glob(str(RAIZ / "frontend" / "*.html"))):
+        html = pathlib.Path(arq).read_text(encoding="utf-8")
+        if "sidebar.js" not in html:
+            continue
+        nome = os.path.basename(arq)
+        tem = "barra_status.css" in html
+        checar(f"{nome} liga o CSS da barra", tem)
+        if tem:
+            est = html.find("<style")
+            checar(f"{nome}: CSS da barra antes do <style> da pagina",
+                   est < 0 or html.index("barra_status.css") < est,
+                   "senao a barra passa por cima do desenho da tela")
 
     print(f"\n{'='*46}\n{ok_total} passaram, {len(falhas)} falharam")
     for f in falhas:

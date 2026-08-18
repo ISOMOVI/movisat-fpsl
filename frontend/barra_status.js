@@ -75,41 +75,12 @@
   }
 
   /* ── 3. o desenho ─────────────────────────────────────────────────────── */
-  const CSS = [
-    /* 🚨 A SIDEBAR TEM `height:100vh` E O BOTAO SAIR MORA NO FIM DELA. Uma
-       barra fixa de 30px cobriria o botao em todas as 9 telas. Estes tres
-       ajustes devolvem a altura; como este <style> entra no <head> DEPOIS do
-       estilo da pagina, ganha o empate de especificidade sem `!important`. */
-    'body { padding-bottom: 30px; }',
-    '.layout { min-height: calc(100vh - 30px); }',
-    '.sidebar { height: calc(100vh - 30px); }',
-    '.barra-status {',
-    '  position: fixed; left: 0; right: 0; bottom: 0; height: 30px;',
-    '  display: flex; align-items: center; gap: 8px; padding: 0 14px;',
-    '  background: #FFFFFF; border-top: 1px solid #E2E8F0; color: #64748B;',
-    '  font-size: .74rem; font-family: inherit;',
-    '  white-space: nowrap; overflow: hidden; z-index: 40;',
-    '}',
-    '.barra-status .bi { font-size: .8rem; }',
-    '.barra-status__item { display: inline-flex; align-items: center; gap: 5px; }',
-    '.barra-status__codigo { color: #2563EB; font-weight: 600; }',
-    '.barra-status__sep { opacity: .45; }',
-    '.barra-status__espaco { flex: 1; }',
-    '.barra-status__mono { font-family: ui-monospace, Menlo, Consolas, monospace; }',
-    '.barra-status__owner {',
-    '  background: #EFF6FF; color: #2563EB; border-radius: 4px;',
-    '  padding: 1px 6px; font-size: .68rem; font-weight: 600;',
-    '}',
-    '.barra-status__girando {',
-    '  width: 10px; height: 10px; border-radius: 50%;',
-    '  border: 2px solid #CBD5E1; border-top-color: #2563EB;',
-    '  animation: barra-girar .7s linear infinite;',
-    '}',
-    '@keyframes barra-girar { to { transform: rotate(360deg); } }',
-    '@media (max-width: 720px) {',
-    '  .barra-status__opcional, .barra-status__sep { display: none; }',
-    '}',
-  ].join('\n');
+  /* 🚨 O CSS NÃO MORA MAIS AQUI. Ele está em `barra_status.css`, ligado no
+     <head> de cada página. A primeira versão injetava um <style> no
+     `DOMContentLoaded`, e como três regras mexem em layout (padding do body e
+     altura da sidebar), a página pintava inteira e só então encolhia 30px --
+     um salto visível a cada troca de aba. O navegador pinta com o CSS que tem
+     na hora; regra que chega depois não corrige, remonta. */
 
   /* Mesma função das telas: a barra escreve login e título vindos do servidor,
      e o painel inteiro escapa desde 15/07. Não é porque é rodapé que muda. */
@@ -161,12 +132,12 @@
   }
 
   function criar() {
-    const estilo = document.createElement('style');
-    estilo.textContent = CSS;
-    document.head.appendChild(estilo);
     elemento = document.createElement('footer');
     elemento.className = 'barra-status';
     document.body.appendChild(elemento);
+    /* Já nasce escrita. O espaço dela é reservado pelo CSS antes da primeira
+       pintura, então isto preenche uma faixa que já existe -- não empurra
+       nada. */
     pintar();
     setInterval(pintar, 1000);
   }
