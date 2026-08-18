@@ -246,6 +246,15 @@ def do_usuario(usuario: dict) -> list[dict]:
             "titulo": t["titulo"],
             "rota": t["rota"],
             "icone": t["icone"],
+            # 🚨 `id` E `nome` NAO SAO DUPLICATA -- SAO O CONTRATO DO sidebar.js.
+            # Ele compara `a.id` com a PERMISSAO que a pagina passa em
+            # `montarSidebar('cadastro_placas')` e escreve `a.nome` no link.
+            # Em 17/08 este dicionario passou a sair so com `codigo`/`titulo`:
+            # `a.id` virou undefined, nenhuma pagina se reconheceu e o painel
+            # entrou em loop de redirecionamento. Nao remover sem trocar as 9
+            # paginas -- `tests/teste_contrato_sidebar.py` reprova se sumir.
+            "id": t["permissao"],
+            "nome": t["titulo"],
         }
         for t in ativas()
         if not t.get("no_menu") and t["permissao"] is not None

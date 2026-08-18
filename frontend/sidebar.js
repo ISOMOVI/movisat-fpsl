@@ -8,6 +8,14 @@
  * página fora do perfil é redirecionado.
  *
  * Uso: <nav class="sidebar-nav" id="sidebarNav"></nav> + montarSidebar('id_da_aba').
+ *
+ * 🚨 O `id` DE CADA ABA É A PERMISSÃO, NÃO O CÓDIGO DA TELA. As 9 páginas
+ * passam permissão (`'cadastro_placas'`, `'config'`), e é o que `/painel/api/me`
+ * tem de devolver em `id`. Em 17/08 `do_usuario` passou a devolver só
+ * `codigo`/`titulo`: `a.id` virou `undefined`, `temAba` virou `false` em TODA
+ * página e o painel entrou em loop de redirecionamento -- piscando na tela do
+ * usuário, sem erro nenhum no servidor (786 chamadas, todas 200). O teste
+ * `teste_contrato_sidebar.py` agora lê ESTE arquivo e prende os campos.
  */
 async function montarSidebar(abaAtual) {
   const token = localStorage.getItem('fpsl_painel_token');
@@ -24,21 +32,48 @@ async function montarSidebar(abaAtual) {
     return null;
   }
 
+  const abasDoPerfil = perfil.abas || [];
+
+  /* Quem fica em negrito é a ROTA, não a permissão. `config` cobre duas telas
+     (Configurações e Registro de Telas) e comparar por permissão acenderia as
+     duas ao mesmo tempo. Exato ganha de prefixo, para o Registro de Telas não
+     acender junto com Configurações; o prefixo existe para a página filha sem
+     link próprio (o Histórico de Cadastros) acender a mãe dela. */
+  const caminho = window.location.pathname.replace(/\/+$/, '') || '/';
+  let ativo = abasDoPerfil.findIndex((a) => a.rota === caminho);
+  if (ativo < 0) {
+    let melhor = 0;
+    abasDoPerfil.forEach((a, i) => {
+      if (caminho.startsWith(a.rota + '/') && a.rota.length > melhor) {
+        melhor = a.rota.length; ativo = i;
+      }
+    });
+  }
+
   const nav = document.getElementById('sidebarNav');
   if (nav) {
-    nav.innerHTML = (perfil.abas || []).map((a) => (
-      `<a href="${a.rota}"${a.id === abaAtual ? ' class="active"' : ''}>` +
+    nav.innerHTML = abasDoPerfil.map((a, i) => (
+      `<a href="${a.rota}"${i === ativo ? ' class="active"' : ''}>` +
       `<i class="bi ${a.icone}"></i> ${a.nome}</a>`
     )).join('');
   }
 
-  const temAba = (perfil.abas || []).some((a) => a.id === abaAtual);
+  const temAba = abasDoPerfil.some((a) => a.id === abaAtual);
   if (!temAba) {
     // sem acesso a esta aba: manda pra primeira que ele tem, ou pro login se
     // o perfil estiver vazio (usuário criado sem nenhuma aba marcada).
-    const destino = (perfil.abas || [])[0];
-    window.location.href = destino ? destino.rota : '/painel?sem_acesso=1';
-    return null;
+    const destino = abasDoPerfil[0];
+    /* 🚨 NUNCA REDIRECIONAR PARA A PÁGINA EM QUE JÁ SE ESTÁ. Era o que fechava
+       o loop de 17/08: o destino era a própria URL, o navegador recarregava do
+       cache e nada aparecia no log do servidor. Se o destino é aqui, o dado
+       está errado -- para, e deixa a página aberta em vez de piscar. */
+    if (destino && destino.rota.replace(/\/+$/, '') !== caminho) {
+      window.location.href = destino.rota;
+      return null;
+    }
+    if (!destino) { window.location.href = '/painel?sem_acesso=1'; return null; }
+    console.error('sidebar: aba "' + abaAtual + '" nao veio em /painel/api/me', abasDoPerfil);
+    return perfil;
   }
   return perfil;
 }
