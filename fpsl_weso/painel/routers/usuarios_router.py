@@ -11,6 +11,7 @@ from passlib.context import CryptContext
 
 from ... import storage
 from .. import abas as abas_painel
+from .. import telas
 from ..auth import get_owner_painel
 
 router = APIRouter(prefix="/painel/api/usuarios", tags=["painel-usuarios"])
@@ -67,6 +68,28 @@ async def meu_email(body: UsuarioUpdate, owner=Depends(get_owner_painel)):
         _validar_email(body.email)
     await storage.definir_email_painel(owner["id"], body.email)
     return {"ok": True, "email": (body.email or "").strip().lower() or None}
+
+
+@router.get("/telas")
+# ⚠️ `get_owner_painel`, não `requer_aba("config")`: este router inteiro é do
+# owner, e a permissão `config` já é só-owner no registro. Duas travas para a
+# mesma coisa é uma delas mentindo em algum momento.
+async def registro_de_telas(_=Depends(get_owner_painel)):
+    """CFG_9.1 — o registro se mostrando, para conferência e auditoria.
+
+    🚨 DEVOLVE O REGISTRO INTEIRO, inclusive as reservadas e os aposentados.
+    Mostrar só o que está no ar esconderia justamente o que a tela existe para
+    proteger: o código já ocupado, que ninguém pode reaproveitar.
+    """
+    return {
+        "fase_atual": telas.FASE_ATUAL,
+        "ativas": len(telas.ativas()),
+        "reservadas": len([x for x in telas.TELAS if x["fase"] > telas.FASE_ATUAL]),
+        "telas": telas.TELAS,
+        "aposentados": sorted(telas.CODIGOS_APOSENTADOS),
+        "permissoes_concediveis": sorted(telas.PERMISSOES_CONCEDIVEIS),
+        "permissoes_so_owner": sorted(telas.PERMISSOES_SO_OWNER),
+    }
 
 
 @router.get("/abas")

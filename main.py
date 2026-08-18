@@ -5,13 +5,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fpsl_weso.client import start_client, stop_client
 from fpsl_weso.harmonit_client import start_harmonit_client, stop_harmonit_client
-from fpsl_weso.routers import clientes, simcards, rastreadores, veiculos, os, admin
+from fpsl_weso.routers import clientes, simcards, rastreadores, veiculos, admin
 from fpsl_weso.painel.routers import login_router, os_router as painel_os_router
 from fpsl_weso.painel.routers import harmonit_hist_router as painel_harmonit_hist_router
 from fpsl_weso.painel.routers import clientes_router as painel_clientes_router
 from fpsl_weso.painel.routers import usuarios_router as painel_usuarios_router
-from fpsl_weso.painel.routers import oficina_router as painel_oficina_router
 from fpsl_weso.painel.routers import os_scan_router as painel_os_scan_router
+from fpsl_weso.painel.routers import placas_router as painel_placas_router
 # 🚨 PÚBLICO por link, fora do /painel: o quadro de demandas não exige conta.
 from fpsl_weso.painel.routers import demandas_router
 from fpsl_weso import demandas as quadro_demandas
@@ -49,7 +49,6 @@ app.include_router(clientes.router)
 app.include_router(simcards.router)
 app.include_router(rastreadores.router)
 app.include_router(veiculos.router)
-app.include_router(os.router)
 app.include_router(onboarding.router)
 app.include_router(admin.router)
 app.include_router(login_router.router)
@@ -57,8 +56,8 @@ app.include_router(painel_os_router.router)
 app.include_router(painel_harmonit_hist_router.router)
 app.include_router(painel_clientes_router.router)
 app.include_router(painel_usuarios_router.router)
-app.include_router(painel_oficina_router.router)
 app.include_router(painel_os_scan_router.router)
+app.include_router(painel_placas_router.router)
 app.include_router(demandas_router.router)
 
 app.mount("/painel/static", StaticFiles(directory="frontend"), name="painel_static")
@@ -84,9 +83,17 @@ async def painel_vinculos_page():
     return FileResponse("frontend/vinculos.html")
 
 
-@app.get("/painel/oficinas")
-async def painel_oficinas_page():
-    return FileResponse("frontend/oficinas.html")
+@app.get("/painel/cadastro-placas")
+async def painel_cadastro_placas_page():
+    return FileResponse("frontend/cadastro_placas.html")
+
+
+# ⚠️ MESMA ABA da tela principal, de propósito. Não é aba nova: quem cadastra
+# placa precisa ver o que cadastrou, e uma permissão separada para "ver o que eu
+# mesmo fiz" seria burocracia sem dono. Fica fora da sidebar, alcançada por link.
+@app.get("/painel/cadastro-placas/historico")
+async def painel_cadastro_placas_historico_page():
+    return FileResponse("frontend/cadastro_placas_historico.html")
 
 
 @app.get("/painel/harmonit-historico")
@@ -97,6 +104,11 @@ async def painel_harmonit_hist_page():
 @app.get("/painel/os-historico")
 async def painel_os_historico_page():
     return FileResponse("frontend/os_historico.html")
+
+
+@app.get("/painel/config/telas")
+async def painel_registro_telas_page():
+    return FileResponse("frontend/registro_telas.html")
 
 
 @app.get("/painel/config")

@@ -2,6 +2,7 @@ import sqlite3
 import asyncio
 import json
 import unicodedata
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -72,8 +73,14 @@ def init_db():
             )
         """)
         # Histórico de OS varridas do Harmonit (scan sequencial por número) --
-        # base do painel "Histórico de OS" e do gatilho de oficina->WESO (Fase 1
-        # só leitura). `oficinas_json` guarda o array de eventos embutido na OS.
+        # base do painel "Histórico de OS". `oficinas_json` guarda o array de
+        # eventos de oficina embutido em cada OS do Harmonit.
+        #
+        # ⚠️ NÃO CONFUNDIR COM O FLUXO DE OFICINA, que saiu em 17/08. Isto aqui
+        # é LEITURA do documento da OS e continua vivo (323 registros); aquilo
+        # era a sincronização que gravava vínculo na WESO. Nomes parecidos,
+        # coisas diferentes -- foi por isso que a auditoria da remoção precisou
+        # separar linha por linha.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS os_historico (
                 numero_os     INTEGER PRIMARY KEY,
@@ -291,158 +298,6 @@ async def listar_rastreadores_serials() -> list[dict]:
                 "SELECT serial, weso_id, criado_em FROM rastreadores_serials ORDER BY criado_em"
             ).fetchall()
         return [{"serial": r[0], "weso_id": r[1], "criado_em": r[2]} for r in rows]
-    return await asyncio.get_running_loop().run_in_executor(None, _run)
-
-
-# ── espelho harmonit_rastreadores (busca por serial, tolerante a espaco) ──────
-
-async def buscar_harmonit_rastreador_por_serial(serial: str) -> dict | None:
-    """Busca no espelho local harmonit_rastreadores (populado por import_harmonit_ativos.py).
-    Comparacao com TRIM dos dois lados -- achado 2026-07-16: varios registros no
-    Harmonit tem espaco/tab grudado no campo equipamento (ex: "007575408 "),
-    igualdade exata perde esses casos."""
-    def _run():
-        with _connect() as conn:
-            row = conn.execute(
-                """SELECT id, equipamento, modelo_equipamento_id, modelo_equipamento,
-                          veiculo_id, veiculo, placa, simcard_id, numero_chip
-                   FROM harmonit_rastreadores WHERE TRIM(equipamento) = TRIM(?)""",
-                (serial,),
-            ).fetchone()
-        if not row:
-            return None
-        return {
-            "harmonit_id": row[0], "equipamento": row[1],
-            "modelo_equipamento_id": row[2], "modelo_equipamento": row[3],
-            "veiculo_id": row[4], "veiculo": row[5], "placa": row[6],
-            "simcard_id": row[7], "numero_chip": row[8],
-        }
-    return await asyncio.get_running_loop().run_in_executor(None, _run)
-
-
-# ── oficinas_processadas (histórico + dedup do sync manual Harmonit -> WESO) ──
-# Reformulado 2026-07-16: antes só gravava sucesso (1 linha por evento_id,
-# INSERT OR REPLACE). Agora grava toda tentativa (sucesso e falha), pra virar
-# histórico auditável na aba "Oficinas" -- dedup continua funcionando (só
-# ignora evento com tentativa de SUCESSO já registrada; falha nunca bloqueia
-# reclique/retry).
-
-def _init_oficinas_processadas():
-    with _connect() as conn:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(oficinas_processadas)").fetchall()]
-        if cols and "sucesso" not in cols:
-            conn.execute("DROP TABLE oficinas_processadas")  # schema antigo, tabela sempre vazia em produção
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS oficinas_processadas (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                evento_id       INTEGER NOT NULL,
-                numero_os       INTEGER NOT NULL,
-                status          INTEGER NOT NULL,
-                sucesso         INTEGER NOT NULL,
-                verificado_weso INTEGER NOT NULL DEFAULT 0,
-                resultado       TEXT NOT NULL,
-                processado_em   TEXT NOT NULL
-            )
-        """)
-        # 2026-07-22: placa e serial existiam só dentro do texto de `resultado`,
-        # o que impedia usá-los como coluna do histórico. ALTER (não DROP) porque
-        # a partir de agora a tabela guarda dado de produção que não pode sumir.
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(oficinas_processadas)").fetchall()]
-        for coluna, tipo in (("placa", "TEXT"), ("equipamento_id", "TEXT"),
-                             ("veiculo_nome", "TEXT"), ("origem", "TEXT")):
-            if coluna not in cols:
-                conn.execute(f"ALTER TABLE oficinas_processadas ADD COLUMN {coluna} {tipo}")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_oficinas_evento ON oficinas_processadas(evento_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_oficinas_numero_os ON oficinas_processadas(numero_os)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_oficinas_placa ON oficinas_processadas(placa)")
-
-
-async def oficina_ja_processada(evento_id: int) -> dict | None:
-    def _run():
-        _init_oficinas_processadas()
-        with _connect() as conn:
-            row = conn.execute(
-                "SELECT evento_id, numero_os, status, resultado, verificado_weso, processado_em "
-                "FROM oficinas_processadas WHERE evento_id = ? AND sucesso = 1 "
-                "ORDER BY processado_em DESC LIMIT 1",
-                (evento_id,),
-            ).fetchone()
-        if not row:
-            return None
-        return {"evento_id": row[0], "numero_os": row[1], "status": row[2], "resultado": row[3],
-                "verificado_weso": bool(row[4]), "processado_em": row[5]}
-    return await asyncio.get_running_loop().run_in_executor(None, _run)
-
-
-async def marcar_oficina_processada(
-    evento_id: int, numero_os: int, status: int, resultado: str, sucesso: bool, verificado_weso: bool = False,
-    placa: str | None = None, equipamento_id: str | None = None, veiculo_nome: str | None = None,
-    origem: str = "painel",
-) -> int:
-    """Grava uma tentativa (sucesso ou falha) e devolve o id da linha -- o id é o
-    que o botão Resync usa pra reprocessar exatamente aquela tentativa."""
-    def _run():
-        _init_oficinas_processadas()
-        processado_em = datetime.now(timezone.utc).isoformat()
-        with _connect() as conn:
-            cur = conn.execute(
-                "INSERT INTO oficinas_processadas (evento_id, numero_os, status, sucesso, verificado_weso, "
-                "resultado, processado_em, placa, equipamento_id, veiculo_nome, origem) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (evento_id, numero_os, status, int(sucesso), int(verificado_weso), resultado, processado_em,
-                 placa, equipamento_id, veiculo_nome, origem),
-            )
-            return cur.lastrowid
-    return await asyncio.get_running_loop().run_in_executor(None, _run)
-
-
-async def buscar_oficina_historico(registro_id: int) -> dict | None:
-    """Uma linha do histórico pelo id -- usado pelo Resync."""
-    def _run():
-        _init_oficinas_processadas()
-        with _connect() as conn:
-            row = conn.execute(
-                "SELECT id, evento_id, numero_os, status, sucesso, verificado_weso, resultado, "
-                "processado_em, placa, equipamento_id, veiculo_nome, origem "
-                "FROM oficinas_processadas WHERE id = ?", (registro_id,),
-            ).fetchone()
-        if not row:
-            return None
-        return {"id": row[0], "evento_id": row[1], "numero_os": row[2], "status": row[3],
-                "sucesso": bool(row[4]), "verificado_weso": bool(row[5]), "resultado": row[6],
-                "processado_em": row[7], "placa": row[8], "equipamento_id": row[9],
-                "veiculo_nome": row[10], "origem": row[11]}
-    return await asyncio.get_running_loop().run_in_executor(None, _run)
-
-
-async def listar_oficinas_processadas(numero_os: int) -> list[dict]:
-    def _run():
-        _init_oficinas_processadas()
-        with _connect() as conn:
-            rows = conn.execute(
-                "SELECT evento_id, numero_os, status, sucesso, verificado_weso, resultado, processado_em "
-                "FROM oficinas_processadas WHERE numero_os = ? ORDER BY processado_em DESC",
-                (numero_os,),
-            ).fetchall()
-        return [{"evento_id": r[0], "numero_os": r[1], "status": r[2], "sucesso": bool(r[3]),
-                 "verificado_weso": bool(r[4]), "resultado": r[5], "processado_em": r[6]} for r in rows]
-    return await asyncio.get_running_loop().run_in_executor(None, _run)
-
-
-async def listar_historico_oficinas(limit: int = 200) -> list[dict]:
-    """Histórico geral (todas as OS), mais recente primeiro -- fonte da aba de auditoria."""
-    def _run():
-        _init_oficinas_processadas()
-        with _connect() as conn:
-            rows = conn.execute(
-                "SELECT id, evento_id, numero_os, status, sucesso, verificado_weso, resultado, processado_em, "
-                "placa, equipamento_id, veiculo_nome, origem "
-                "FROM oficinas_processadas ORDER BY processado_em DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return [{"id": r[0], "evento_id": r[1], "numero_os": r[2], "status": r[3], "sucesso": bool(r[4]),
-                 "verificado_weso": bool(r[5]), "resultado": r[6], "processado_em": r[7],
-                 "placa": r[8], "equipamento_id": r[9], "veiculo_nome": r[10], "origem": r[11]} for r in rows]
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
@@ -918,3 +773,165 @@ def produto_do_modelo(modelo: str) -> dict | None:
     if not row or not row[0]:
         return None
     return {"harmonit_id": row[0], "descricao": row[1], "valor": row[2] or 0.0}
+
+
+# ── cadastro_placas_log (registro do cadastro por termo) ─────────────────────
+#
+# 🚨 POR QUE ISTO EXISTE, E POR QUE VEIO ANTES DA ESCRITA. O cadastro grava em
+# DOIS sistemas externos e o resultado é INVISÍVEL: OS errada alguém abre e vê;
+# veículo criado errado some no meio de 9.107 no Harmonit e 1.962 na WESO. Sem
+# registro, auditar exigiria comparar as bases inteiras.
+#
+# Foi construído ANTES do código que escreve, de propósito -- é com ele que a
+# própria escrita é verificada durante o desenvolvimento. Mesmo raciocínio do
+# expurgo da oficina, onde os testes vieram antes da remoção para acusar erro.
+#
+# UMA LINHA POR (PLACA, SISTEMA), não por placa. A mesma placa produz DUAS
+# tentativas -- Harmonit e WESO -- e elas podem terminar diferente: criada no
+# primeiro e recusada no segundo é o caso que mais importa registrar, porque é
+# o que deixa os dois sistemas fora de sincronia.
+#
+# `lote` amarra a rodada: um termo subido = um lote. Sem ele o histórico é uma
+# lista solta e não dá para ver "o termo 8800 gerou estas 11, e 2 falharam".
+#
+# ⚠️ SIMULAÇÃO TAMBÉM É REGISTRADA (`acao = 'simulado'`). Custa nada e responde
+# "por que o operador achou que ia funcionar?". O histórico filtra por padrão.
+
+def _init_cadastro_placas_log():
+    with _connect() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS cadastro_placas_log (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                lote                TEXT NOT NULL,
+                criado_em           TEXT NOT NULL,
+                usuario             TEXT,
+                termo               TEXT,
+                perfil              TEXT,
+                cnpjcpf             TEXT,
+                cliente_weso_id     INTEGER,
+                cliente_harmonit_id INTEGER,
+                placa_digitada      TEXT,
+                placa_gravada       TEXT,
+                descricao           TEXT,
+                recipiente          INTEGER NOT NULL DEFAULT 0,
+                sistema             TEXT NOT NULL,
+                acao                TEXT NOT NULL,
+                id_externo          INTEGER,
+                erro                TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cpl_lote ON cadastro_placas_log(lote)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cpl_placa ON cadastro_placas_log(placa_gravada)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cpl_termo ON cadastro_placas_log(termo)")
+
+
+# Valores aceitos em `acao`. CHECK não entra na tabela de propósito: registro
+# que se recusa a gravar perde justamente o caso que interessa -- o inesperado.
+# A conferência é aqui, e um valor desconhecido vira `desconhecido` com o
+# original preservado no erro.
+ACOES_CADASTRO = ("criado", "ja_existia", "falhou", "simulado", "ignorado")
+
+
+async def registrar_cadastro_placa(
+    lote: str, sistema: str, acao: str, *,
+    usuario: str | None = None, termo: str | None = None,
+    perfil: str | None = None, cnpjcpf: str | None = None,
+    cliente_weso_id: int | None = None, cliente_harmonit_id: int | None = None,
+    placa_digitada: str | None = None, placa_gravada: str | None = None,
+    descricao: str | None = None, recipiente: bool = False,
+    id_externo: int | None = None, erro: str | None = None,
+) -> int:
+    """Grava UMA tentativa. Devolve o id da linha."""
+    if acao not in ACOES_CADASTRO:
+        erro = f"[acao desconhecida: {acao!r}] {erro or ''}".strip()
+        acao = "desconhecido"
+
+    def _run():
+        _init_cadastro_placas_log()
+        with _connect() as conn:
+            cur = conn.execute(
+                """INSERT INTO cadastro_placas_log
+                   (lote, criado_em, usuario, termo, perfil, cnpjcpf,
+                    cliente_weso_id, cliente_harmonit_id, placa_digitada,
+                    placa_gravada, descricao, recipiente, sistema, acao,
+                    id_externo, erro)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (lote, datetime.now(timezone.utc).isoformat(), usuario, termo,
+                 perfil, cnpjcpf, cliente_weso_id, cliente_harmonit_id,
+                 placa_digitada, placa_gravada, descricao, int(bool(recipiente)),
+                 sistema, acao, id_externo, erro),
+            )
+            return cur.lastrowid
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+def _linha_cadastro(r) -> dict:
+    return {"id": r[0], "lote": r[1], "criado_em": r[2], "usuario": r[3],
+            "termo": r[4], "perfil": r[5], "cnpjcpf": r[6],
+            "cliente_weso_id": r[7], "cliente_harmonit_id": r[8],
+            "placa_digitada": r[9], "placa_gravada": r[10], "descricao": r[11],
+            "recipiente": bool(r[12]), "sistema": r[13], "acao": r[14],
+            "id_externo": r[15], "erro": r[16]}
+
+
+_COLUNAS_CADASTRO = (
+    "id, lote, criado_em, usuario, termo, perfil, cnpjcpf, cliente_weso_id, "
+    "cliente_harmonit_id, placa_digitada, placa_gravada, descricao, "
+    "recipiente, sistema, acao, id_externo, erro")
+
+
+async def listar_cadastro_placas(limite: int = 500, lote: str | None = None,
+                                 incluir_simulado: bool = False) -> list[dict]:
+    def _run():
+        _init_cadastro_placas_log()
+        sql = f"SELECT {_COLUNAS_CADASTRO} FROM cadastro_placas_log"
+        cond, args = [], []
+        if lote:
+            cond.append("lote = ?")
+            args.append(lote)
+        if not incluir_simulado:
+            cond.append("acao <> 'simulado'")
+        if cond:
+            sql += " WHERE " + " AND ".join(cond)
+        # 🚨 DESC, nao ASC. Corte sem paginacao tem de cortar pelo lado certo:
+        # `ORDER BY id ASC LIMIT n` devolve as MAIS ANTIGAS, e ninguem percebe
+        # enquanto a tabela e pequena.
+        sql += " ORDER BY id DESC LIMIT ?"
+        args.append(limite)
+        with _connect() as conn:
+            return [_linha_cadastro(r) for r in conn.execute(sql, args).fetchall()]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_lotes_cadastro(limite: int = 100,
+                                incluir_simulado: bool = False) -> list[dict]:
+    """Um resumo por rodada -- e o que a tela de historico mostra primeiro."""
+    def _run():
+        _init_cadastro_placas_log()
+        filtro = "" if incluir_simulado else " WHERE acao <> 'simulado'"
+        with _connect() as conn:
+            rows = conn.execute(f"""
+                SELECT lote,
+                       MIN(criado_em)                                  AS quando,
+                       MAX(usuario)                                    AS usuario,
+                       MAX(termo)                                      AS termo,
+                       MAX(perfil)                                     AS perfil,
+                       MAX(cnpjcpf)                                    AS cnpjcpf,
+                       COUNT(DISTINCT placa_gravada)                   AS placas,
+                       SUM(CASE WHEN acao = 'criado'     THEN 1 ELSE 0 END) AS criados,
+                       SUM(CASE WHEN acao = 'ja_existia' THEN 1 ELSE 0 END) AS ja_existiam,
+                       SUM(CASE WHEN acao = 'falhou'     THEN 1 ELSE 0 END) AS falhas
+                  FROM cadastro_placas_log{filtro}
+                 GROUP BY lote
+                 ORDER BY MIN(id) DESC
+                 LIMIT ?""", (limite,)).fetchall()
+        return [{"lote": r[0], "quando": r[1], "usuario": r[2], "termo": r[3],
+                 "perfil": r[4], "cnpjcpf": r[5], "placas": r[6],
+                 "criados": r[7], "ja_existiam": r[8], "falhas": r[9]}
+                for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+def novo_lote() -> str:
+    """Identificador da rodada. Curto o bastante para caber na tela."""
+    return uuid.uuid4().hex[:12]

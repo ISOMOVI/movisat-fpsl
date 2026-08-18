@@ -139,6 +139,14 @@ PERFIS = {
         # 🚨 No upgrade o modelo que interessa e o que ENTRA -- por isso o
         # `modelo_origem` aponta para o recipiente de teste, nao para a placa.
         "modelo_origem": "placa_teste",
+        # 🚨 ENTROU EM 17/08. O upgrade usava recipiente desde 13/08 e NUNCA o
+        # devolvia: a serie ficava `Instalado` numa placa `-UPGRADE` que nao e
+        # veiculo nenhum -- fora do estoque e fora de campo ao mesmo tempo. So
+        # a `manutencao_troca` liberava, e a diferenca entre as duas era esta
+        # linha. Os recipientes do TERMO 8820 (OOM3895 e OOM4131) sao dessa
+        # epoca. Mecanismo identico, ja coberto pelas 3 provas de
+        # `_liberar_series`: OS criada, serie na descricao, material aceito.
+        "liberar_serie": True,
         "descricao_template": "Upgrade: {placa} | {veiculo} | SAIRÁ: {serie} ({modelo_saida}) | ENTRARÁ: {serie_entrada} ({modelo}) | TERMO {termo}",
     },
 

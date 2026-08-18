@@ -10,10 +10,13 @@ O que este teste garante, rota por rota:
   2. token sem a aba    -> 403
   3. token do owner     -> nem 401 nem 403
 
-⚠️ NÃO EXERCITA ROTA DE ESCRITA. `clientes/criar`, `placas/criar` e
-`oficina/resync` gravam na WESO; `os-scan/varrer` varre o Harmonit inteiro.
-Dessas só se testa a tranca — abrir a porta para ver se abre estragaria dado
-real. As de leitura são chamadas de verdade e têm o formato conferido.
+⚠️ NÃO EXERCITA ROTA DE ESCRITA. `clientes/criar` grava na WESO; `os-scan/varrer`
+varre o Harmonit inteiro. Dessas só se testa a tranca — abrir a porta para ver
+se abre estragaria dado real. As de leitura são chamadas de verdade e têm o
+formato conferido.
+
+(`placas/criar` saiu em 14/08 com a tela de placas; `oficina/resync` em 17/08
+com o fluxo de oficina.)
 
 Roda na VPS: venv/bin/python tests/teste_roteadores_painel.py
 Cria um usuário de teste com abas restritas e o apaga no fim.
@@ -66,10 +69,19 @@ ROTAS = [
     ("POST", "/painel/api/clientes/criar",      "gerar_os",           {}, True),
     ("GET",  "/painel/api/harmonit/resumo",     "harmonit_historico", None, False),
     ("GET",  "/painel/api/harmonit/chamadas",   "harmonit_historico", None, False),
-    ("GET",  "/painel/api/oficina/historico",   "oficinas",           None, False),
-    ("POST", "/painel/api/oficina/resync/1",    "oficinas",           None, True),
-    ("GET",  "/painel/api/oficina/config/ativo", "config",            None, False),
-    ("PUT",  "/painel/api/oficina/config/ativo", "config",            {"ativo": True}, True),
+    # Cadastro de Placas (17/08). ⚠️ `previa` NÃO escreve -- entra no laço [3]
+    # como leitura, e sem corpo válido ela para no 422 antes de tocar a WESO,
+    # que é o que se quer aqui: o assunto desta tabela é a TRANCA, não o fluxo.
+    # O fluxo tem teste próprio em `teste_cadastro_placas.py`.
+    ("POST", "/painel/api/placas/previa",       "cadastro_placas",    None, False),
+    ("POST", "/painel/api/placas/criar",        "cadastro_placas",    None, True),
+    ("GET",  "/painel/api/placas/config/ativo", "config",             None, False),
+    ("PUT",  "/painel/api/placas/config/ativo", "config",             {"ativo": False}, True),
+    # As 4 rotas de `/painel/api/oficina/*` sairam em 17/08, junto com o fluxo
+    # de sincronizacao de oficina: tabela `oficinas_processadas` com ZERO linhas
+    # em toda a vida, ZERO chamadas no journal e o interruptor
+    # `oficina_registro_ativo` em `false` desde 16/07. O Historico de OS
+    # (`/painel/api/os-scan/*`, logo abaixo) NAO tem relacao e fica.
     ("GET",  "/painel/api/os-scan/historico",   "os_historico",       None, False),
     ("GET",  "/painel/api/os-scan/checkpoint",  "os_historico",       None, False),
     ("POST", "/painel/api/os-scan/varrer",      "os_historico",       None, True),
@@ -138,8 +150,7 @@ async def main():
                        for p in r.json().get("problemas", [])))
             r = await c.get("/painel/api/os-scan/checkpoint", headers=h_owner)
             checar("checkpoint devolve dict", True, isinstance(r.json(), dict))
-            r = await c.get("/painel/api/oficina/config/ativo", headers=h_owner)
-            checar("toggle da oficina devolve dict", True, isinstance(r.json(), dict))
+            # o toggle `oficina/config/ativo` saiu em 17/08 com o fluxo de oficina
 
             print("\n[5] login")
             r = await c.post("/painel/api/login",
@@ -166,7 +177,15 @@ async def main():
             checar("usuário sem aba enxerga zero abas", 0, len(r.json().get("abas") or []))
             checar("e não é owner", False, r.json().get("owner") is True)
             r = await c.get("/painel/api/me", headers=h_owner)
-            checar("owner enxerga todas as abas", len(ABAS), len(r.json().get("abas") or []))
+            # ⚠️ NÃO SE COMPARA MAIS COM `len(ABAS)`. Desde 17/08 o menu devolve
+            # TELAS (códigos) e `ABAS` são PERMISSÕES -- são unidades diferentes,
+            # e uma permissão pode ter mais de uma tela. Comparar as duas passou
+            # a ser comparar laranja com maçã.
+            from fpsl_weso.painel import telas as _telas
+            _no_menu = [t for t in _telas.ativas()
+                        if not t.get("no_menu") and t["permissao"] is not None]
+            checar("owner enxerga todas as telas do menu", len(_no_menu),
+                   len(r.json().get("abas") or []))
 
             print("\n[7] toda aba concedível é exigida por alguma rota")
             # 🚨 ABA QUE NINGUÉM EXIGE É PERMISSÃO QUE NÃO PROTEGE NADA.

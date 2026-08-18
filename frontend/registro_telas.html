@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Registro de telas — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --blue: #2563EB; --blue-dim: #EFF6FF; --blue-mid: #93C5FD;
+    --green: #16a34a; --green-dim: #F0FDF4;
+    --red: #DC2626; --red-dim: #FEF2F2;
+    --amber: #D97706; --amber-dim: #FFFBEB;
+    --bg: #F8FAFC; --bg2: #F1F5F9; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --card: #FFFFFF;
+    --sidebar-bg: #0F172A; --sidebar-tx: #94A3B8; --sidebar-w: 230px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex;
+             flex-direction:column; padding:20px 0; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                           background:transparent; color:var(--sidebar-tx); font-size:.82rem;
+                           font-family:inherit; cursor:pointer; }
+  .sidebar-bottom button:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .main { flex:1; padding:32px; max-width:1000px; }
+  h1 { font-size:1.3rem; font-weight:700; margin-bottom:6px; }
+  .sub { color:var(--text2); font-size:.86rem; line-height:1.55; margin-bottom:20px; max-width:70ch; }
+  .contadores { display:flex; gap:10px; margin-bottom:26px; flex-wrap:wrap; }
+  .kpi { background:var(--card); border:1px solid var(--border); border-radius:10px;
+         padding:12px 16px; min-width:104px; }
+  .kpi b { display:block; font-size:1.5rem; font-weight:800; line-height:1.1; }
+  .kpi span { font-size:.74rem; color:var(--text2); text-transform:uppercase; letter-spacing:.03em; }
+  .grupo { margin-bottom:26px; }
+  .grupo h2 { font-size:.76rem; font-weight:800; letter-spacing:.08em; color:var(--text2);
+              text-transform:uppercase; margin-bottom:8px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .linha { display:grid; grid-template-columns:96px 1fr auto; gap:14px; align-items:start;
+           padding:13px 16px; border-bottom:1px solid var(--border); }
+  .linha:last-child { border-bottom:none; }
+  .linha.reservada { background:var(--bg2); }
+  .cod { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem;
+         font-weight:700; color:var(--blue); }
+  .tit { font-weight:600; font-size:.9rem; }
+  .des { font-size:.79rem; color:var(--text2); margin-top:2px; line-height:1.45; }
+  .rota { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.74rem;
+          color:var(--text2); margin-top:3px; }
+  .dir { text-align:right; display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
+  .badge { font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .badge-blue { background:var(--blue-dim); color:var(--blue); }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-amber { background:var(--amber-dim); color:var(--amber); }
+  .badge-cinza { background:var(--bg2); color:var(--text2); }
+  .aviso { background:var(--amber-dim); color:var(--amber); border-radius:10px; padding:14px 16px;
+           font-size:.82rem; line-height:1.55; }
+  .aviso code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:700; }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-bottom:12px;
+         background:var(--red-dim); color:var(--red); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()">Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <h1>Registro de telas</h1>
+    <p class="sub">
+      Fonte única de navegação, permissão e auditoria.
+      <strong>O código é imutável e nunca é reaproveitado</strong> — reusar faria
+      log antigo mentir.
+    </p>
+
+    <div class="msg" id="msgErro"></div>
+    <div class="contadores" id="contadores"></div>
+    <div id="grupos"></div>
+
+    <div class="grupo">
+      <h2>Códigos aposentados</h2>
+      <div class="aviso" id="aposentados"></div>
+    </div>
+  </main>
+</div>
+
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('config');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function logout() { localStorage.removeItem('fpsl_painel_token'); window.location.href = '/painel'; }
+
+function escapeHtml(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+}
+
+/* O grupo é o prefixo do código, e não um campo à parte: o código É a
+   identidade, e derivar dele garante que o agrupamento nunca discorde dele. */
+function modulo(codigo) { return String(codigo).split('_')[0]; }
+
+const NOME_MODULO = {
+  CAD: 'CAD — cadastro de placas',
+  OSG: 'OSG — geração de OS',
+  HST: 'HST — históricos e auditoria',
+  CFG: 'CFG — configuração',
+  DMD: 'DMD — painel rápido (público, por link)',
+  REL: 'REL — relatórios',
+};
+
+async function carregar() {
+  let d = null;
+  try {
+    const res = await fetch('/painel/api/usuarios/telas', { headers: auth() });
+    const bruto = await res.text();
+    try { d = JSON.parse(bruto); } catch (e) { /* não era JSON */ }
+    if (!res.ok) {
+      const el = document.getElementById('msgErro');
+      el.textContent = (d && d.detail) || `Falha ao carregar (HTTP ${res.status}).`;
+      el.style.display = 'block';
+      return;
+    }
+  } catch (e) {
+    const el = document.getElementById('msgErro');
+    el.textContent = 'Falha ao carregar: ' + e.message;
+    el.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('contadores').innerHTML = `
+    <div class="kpi"><b>${d.ativas}</b><span>ativas</span></div>
+    <div class="kpi"><b>${d.reservadas}</b><span>reservadas</span></div>
+    <div class="kpi"><b>${d.fase_atual}</b><span>fase</span></div>`;
+
+  const ordem = [];
+  const porModulo = {};
+  d.telas.forEach(t => {
+    const m = modulo(t.codigo);
+    if (!porModulo[m]) { porModulo[m] = []; ordem.push(m); }
+    porModulo[m].push(t);
+  });
+
+  document.getElementById('grupos').innerHTML = ordem.map(m => `
+    <div class="grupo">
+      <h2>${escapeHtml(NOME_MODULO[m] || m)}</h2>
+      <div class="card">
+        ${porModulo[m].map(t => linha(t, d)).join('')}
+      </div>
+    </div>`).join('');
+
+  document.getElementById('aposentados').innerHTML =
+    `<code>${d.aposentados.map(escapeHtml).join('</code> · <code>')}</code>`
+    + '<br>Estes códigos já foram ocupados e <strong>não voltam</strong>. '
+    + 'A lista existe para ninguém “redescobrir” um número livre daqui a três meses.';
+}
+
+function linha(t, d) {
+  const reservada = t.fase > d.fase_atual;
+  const marcas = [];
+  if (reservada) marcas.push(`<span class="badge badge-amber">fase ${t.fase}</span>`);
+  if (t.permissao === null) marcas.push('<span class="badge badge-green">público</span>');
+  else if (d.permissoes_so_owner.includes(t.permissao))
+    marcas.push('<span class="badge badge-blue">só owner</span>');
+  else marcas.push(`<span class="badge badge-cinza">${escapeHtml(t.permissao)}</span>`);
+  if (t.no_menu) marcas.push('<span class="badge badge-cinza">fora do menu</span>');
+
+  return `<div class="linha ${reservada ? 'reservada' : ''}">
+    <div class="cod">${escapeHtml(t.codigo)}</div>
+    <div>
+      <div class="tit">${escapeHtml(t.titulo)}</div>
+      <div class="des">${escapeHtml(t.descricao)}</div>
+      <div class="rota">${escapeHtml(t.rota)}</div>
+    </div>
+    <div class="dir">${marcas.join('')}</div>
+  </div>`;
+}
+
+carregar();
+</script>
+</body>
+</html>

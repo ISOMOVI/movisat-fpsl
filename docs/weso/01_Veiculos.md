@@ -115,6 +115,33 @@ Cadastra um veículo com estrutura completa. Suporta **criação automática** d
 - Se `rastreador.numeroSerie` for informado sem ID, o rastreador é criado com os dados fornecidos.
 - O mesmo comportamento se aplica ao `simCard` e ao `complemento`.
 
+### ✅ Veículo SEM rastreador é aceito — medido em 2026-08-17
+
+`rastreador` é opcional de verdade. Cadastro só com `placa` + `cliente.cnpjcpf`
+devolve o registro com `rastreador_id: null`, e a releitura confirma.
+
+É isso que permite a placa nascer do termo **antes** de existir equipamento: na
+leitura do documento ninguém sabe ainda qual aparelho físico vai naquela placa,
+e o recipiente (`<PLACA>-MANUT`, `<PLACA>-UPGRADE`) é justamente uma bancada
+esperando o setor de configuração vincular o rastreador depois.
+
+⚠️ **O 404 de "rastreador não registrado" é guarda do FPSL, não da WESO** —
+vem de `routers/veiculos.py`, que exige o rastreador cadastrado antes. A WESO
+não pede nada disso.
+
+Sugestão medida: `complemento.tipoEqp = 11` (**Bancada**) no recipiente, que é
+literalmente o que ele é.
+
+### 🚨 `objetos_processados` MENTE — medido em 2026-08-17
+
+O cadastro devolveu `"cliente": "Criado"` em duas chamadas seguidas para um
+cliente que **já existia** (Pastelaria Velasco, id 13562, cadastrada em 27/07).
+Conferido depois: continua existindo **uma só**. O comportamento está certo — o
+cliente foi reusado —, mas o rótulo não descreve o que aconteceu.
+
+**Não usar esse campo para decidir nada.** Para saber se algo foi criado ou
+reaproveitado, reler o estado.
+
 ### `tipoEqp` — Tipos de Equipamento
 
 | Código | Descrição                        |
@@ -173,7 +200,11 @@ Cadastra um veículo com estrutura completa. Suporta **criação automática** d
 
 **GET** `/Veiculos/Consultar?key=SUA_CHAVE_API`
 
-> ⚠️ **Endpoint com falha confirmada em teste real.** Retorna HTTP 500 (HTML) com qualquer parâmetro — sem filtros, com `placa`, com `veiculo_id` de registros reais. Para verificar existência de uma placa, use `POST /Veiculos/Cadastro` e interprete o erro 409 como "já cadastrada".
+> ✅ **VOLTOU A FUNCIONAR — medido em 2026-08-17.** O aviso anterior dizia que o
+> endpoint retornava HTTP 500 (HTML) com qualquer parâmetro, e mandava usar o
+> 409 do `Cadastro` para descobrir se a placa existia. **Não é mais verdade:**
+> respondeu 200 sem filtro e com `placa`. Dá para consultar ANTES de gravar, em
+> vez de gravar para descobrir — o que muda decisão de projeto.
 
 Retorna veículos com filtros opcionais. Sem filtros, retorna todos os veículos da empresa.
 
@@ -183,6 +214,20 @@ Retorna veículos com filtros opcionais. Sem filtros, retorna todos os veículos
 |--------------|--------|-------------|------------------------------|
 | `placa`      | string | ❌          | Filtrar por placa específica |
 | `veiculo_id` | int    | ❌          | Filtrar por ID específico    |
+
+> 🚨 **NÃO EXISTE FILTRO POR CLIENTE, E O PARÂMETRO ERRADO NÃO DÁ ERRO.** Medido
+> em 17/08: `?cliente_id=13562` devolveu **1958 veículos** — a base inteira —
+> com `total` e `filtros` preenchidos, com toda a cara de resposta válida. Não
+> há como pedir "os veículos deste cliente" a este endpoint; ou se consulta
+> placa a placa, ou se lê o cache local (`weso_cache/weso.db`), que tem
+> `veiculos.cliente_id`.
+
+> 🚨 **A CONSULTA POR PLACA É IGUALDADE EXATA.** `placas.formatar` grava a placa
+> convencional COM ESPAÇO (`TST0A11` → `TST 0A11`), e consultar sem o espaço
+> devolve zero resultados — que se lê como "não existe". Placa não-convencional
+> (recipiente `-MANUT`/`-UPGRADE`, chassi, nº de série) fica intacta. Ou seja:
+> **a placa real e o recipiente dela têm grafias diferentes na base.** Comparar
+> sempre por `_chave_placa`, nunca pelo texto cru.
 
 ### Exemplos de URL
 
@@ -259,6 +304,20 @@ Atualiza dados de um veículo existente. Apenas os campos enviados serão altera
   "ano_mod": 2022
 }
 ```
+
+### `status_veiculo` grava — mas o significado é desconhecido (17/08)
+
+Medido: `status_veiculo` 1 e 2 foram aceitos e **persistiram na releitura**. Os
+1958 veículos lidos no mesmo dia estão todos em `0`.
+
+⚠️ **O que cada valor significa não está documentado e não foi perguntado à
+WESO.** Por isso o FPSL **não usa** este campo para tirar recipiente de
+circulação: quem faz isso é `/Veiculos/Excluir`, que já está implementado e
+testado em `liberar_recipiente`. Decisão do usuário em 17/08 — o critério dele
+é funcional ("a placa some e o rastreador volta ao estoque"), e excluir atende.
+
+Reavaliar se aparecer necessidade de manter histórico do recipiente; aí o
+primeiro passo é perguntar ao suporte da WESO o que 1 e 2 querem dizer.
 
 ### Resposta de Sucesso (200)
 

@@ -52,38 +52,58 @@ async def main():
         # 🚨 NUMERO TRAVADO DE PROPOSITO: aba nova sem pensar em permissao faz
         # o teste avisar. Eram 8 ate 14/08, quando a aba "placas" saiu -- ela
         # nao era exigida por rota nenhuma, entao nao protegia nada.
-        checar("owner enxerga as 7 abas", len(me.get("abas", [])) == 7, str(len(me.get("abas", []))))
+        # 🚨 A UNIDADE MUDOU EM 17/08: eram ABAS (permissões), agora são TELAS
+        # (códigos do registro). Uma permissão pode ter mais de uma tela --
+        # `cadastro_placas` tem CAD_1.1 e CAD_1.2 --, e o menu mostra tela.
+        #
+        # 8 = as 7 de antes + CFG_9.1, o registro se mostrando. A CAD_1.2 não
+        # entra: é `no_menu`, alcançada por link.
+        checar("owner enxerga as 8 telas", len(me.get("abas", [])) == 8, str(len(me.get("abas", []))))
 
         r = await c.get("/painel/api/usuarios/abas", headers=h_owner)
         catalogo = r.json()
         ids = [a["id"] for a in catalogo]
         checar("catalogo tem 5 abas concediveis", len(catalogo) == 5, str(ids))
+        checar("cadastro_placas e concedivel", "cadastro_placas" in ids, str(ids))
         # a aba `placas` saiu do catalogo em 14/08 -- ver abas.py
         checar("placas NAO e mais concedivel", "placas" not in ids, str(ids))
+        # e `oficinas` em 17/08, com o fluxo inteiro
+        checar("oficinas NAO e mais concedivel", "oficinas" not in ids, str(ids))
         checar("usuarios NAO e concedivel", "usuarios" not in ids)
         checar("config NAO e concedivel (so owner)", "config" not in ids, str(ids))
 
-        print("\n[2] cria operador so com 'oficinas'")
+        # ⚠️ A COBAIA E `vinculos`, E ISSO NAO E DETALHE. Ate 17/08 este teste
+        # usava a aba `oficinas` -- o assunto dele sempre foi PERMISSAO, e a
+        # oficina era so o exemplo que estava a mao. Com o fluxo de oficina
+        # saindo do painel, um teste sobre permissao morreria junto com ele.
+        # Trocada por `vinculos`, que e concedivel e tem rota propria.
+        print("\n[2] cria operador so com 'vinculos'")
         await c.request("DELETE", "/painel/api/usuarios/0", headers=h_owner)  # no-op, so aquece
         r = await c.post("/painel/api/usuarios", headers=h_owner,
                          json={"login": LOGIN_TESTE, "senha": "senha-de-teste-123",
-                               "abas": ["oficinas", "usuarios", "config"]})
+                               "abas": ["vinculos", "usuarios", "config"]})
         checar("criou operador", r.status_code == 200, r.text[:120])
 
         op = await storage.buscar_usuario_painel(LOGIN_TESTE)
         checar("'usuarios' e 'config' descartados no cadastro",
-               op["abas"] == ["oficinas"], str(op["abas"]))
+               op["abas"] == ["vinculos"], str(op["abas"]))
         h_op = {"Authorization": "Bearer " + criar_token(LOGIN_TESTE)}
 
         print("\n[3] operador: so a aba dele")
         r = await c.get("/painel/api/me", headers=h_op)
         checar("sidebar do operador tem 1 aba", len(r.json().get("abas", [])) == 1)
 
-        r = await c.get("/painel/api/oficina/historico", headers=h_op)
+        r = await c.get("/painel/api/vinculos", headers=h_op)
         checar("aba concedida responde 200", r.status_code == 200, str(r.status_code))
 
-        for rota in ["/painel/api/vinculos", "/painel/api/prioridades",
-                     "/painel/api/os-scan/checkpoint", "/painel/api/oficina/config/ativo"]:
+        # 🚨 NENHUMA DESTAS PODE ACEITAR `vinculos`. `/painel/api/perfis` parece
+        # candidata e NAO SERVE: ela e `requer_aba("gerar_os", "vinculos")` --
+        # basta UMA das duas, entao responderia 200 e o teste passaria a provar
+        # o contrario do que diz. As quatro abaixo exigem aba unica e diferente:
+        # prioridades e problemas -> gerar_os, checkpoint -> os_historico,
+        # harmonit/resumo -> harmonit_historico.
+        for rota in ["/painel/api/prioridades", "/painel/api/problemas",
+                     "/painel/api/os-scan/checkpoint", "/painel/api/harmonit/resumo"]:
             r = await c.get(rota, headers=h_op)
             checar(f"403 em {rota}", r.status_code == 403, str(r.status_code))
 
@@ -94,12 +114,16 @@ async def main():
         checar("operador nao cria usuario (403)", r.status_code == 403, str(r.status_code))
 
         print("\n[4] owner mexe no perfil do operador")
+        # ⚠️ O perfil novo TEM DE TIRAR `vinculos`, senao o 403 seguinte nao
+        # prova nada -- era o que aconteceria trocando por ["gerar_os",
+        # "vinculos"], que foi o que este teste fazia enquanto a cobaia era
+        # outra aba.
         r = await c.patch(f"/painel/api/usuarios/{op['id']}", headers=h_owner,
-                          json={"abas": ["gerar_os", "vinculos"]})
+                          json={"abas": ["gerar_os"]})
         checar("owner troca o perfil", r.status_code == 200, r.text[:120])
         op2 = await storage.buscar_usuario_painel(LOGIN_TESTE)
-        checar("perfil novo gravado", op2["abas"] == ["gerar_os", "vinculos"], str(op2["abas"]))
-        r = await c.get("/painel/api/oficina/historico", headers=h_op)
+        checar("perfil novo gravado", op2["abas"] == ["gerar_os"], str(op2["abas"]))
+        r = await c.get("/painel/api/vinculos", headers=h_op)
         checar("aba removida virou 403", r.status_code == 403, str(r.status_code))
 
         print("\n[5] owner e intocavel")

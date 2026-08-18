@@ -70,21 +70,19 @@
   <main class="main">
     <div class="top"><h1>Configurações</h1></div>
 
+    <!--
+      O único interruptor desta tela era `oficina_registro_ativo`, que ligava a
+      escrita real na WESO ao sincronizar oficina. Ele saiu em 2026-08-17 junto
+      com o fluxo inteiro (tabela com zero linhas, zero chamadas em 30 dias,
+      desligado desde 16/07).
+
+      A tela ficou sem conteúdo de propósito, em vez de sumir: a aba é
+      `somente_owner` e é onde os próximos interruptores nascem. Se seguir vazia,
+      a pergunta certa é se ela deve existir -- e essa decisão é do usuário.
+    -->
     <section>
-      <h2>Sincronização Oficina → WESO</h2>
-      <p class="sub">Controla se a sincronização Oficina → WESO grava de verdade, ou só simula.</p>
       <div class="card card-pad">
-        <div class="alerta">⚠️ Estamos em produção. Mantenha desligado até validar o fluxo com dados reais.</div>
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <h3>Disparar integração WESO ao sincronizar Oficina</h3>
-            <p>Desligado: a tela de Oficina só simula o que faria. Ligado: grava de verdade na WESO.</p>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="toggleAtivo" onchange="alterarToggle()">
-            <span class="slider"></span>
-          </label>
-        </div>
+        <p class="sub">Nenhum interruptor configurável no momento.</p>
       </div>
     </section>
 
@@ -100,34 +98,21 @@ if (!token) window.location.href = '/painel';
 montarSidebar('config');
 function auth() { return { 'Authorization': 'Bearer ' + token }; }
 
-async function carregarToggle() {
+/* ⚠️ A CHECAGEM DE 403 MORAVA NO `carregarToggle`, que saiu com o interruptor.
+   Sem ela, quem não é owner veria a tela montada e vazia em vez de "acesso
+   restrito" -- parecido demais com o estado normal de hoje. `/painel/api/me`
+   serve para o mesmo fim e não depende de nenhum interruptor existir. */
+async function conferirAcesso() {
   try {
-    const res = await fetch('/painel/api/oficina/config/ativo', { headers: auth() });
-    if (res.status === 403) {
-      document.querySelector('.main').innerHTML = '<h1>Acesso restrito a administradores.</h1>';
-      return;
+    const res = await fetch('/painel/api/me', { headers: auth() });
+    if (!res.ok) throw new Error('sessão inválida');
+    const eu = await res.json();
+    if (!eu.owner) {
+      document.querySelector('.main').innerHTML =
+        '<h1>Acesso restrito ao proprietário do painel.</h1>';
     }
-    const data = await res.json();
-    document.getElementById('toggleAtivo').checked = data.ativo;
   } catch (err) {
-    mostrarErro('Falha ao carregar configuração: ' + err.message);
-  }
-}
-
-async function alterarToggle() {
-  const ativo = document.getElementById('toggleAtivo').checked;
-  limparMsgs();
-  try {
-    const res = await fetch('/painel/api/oficina/config/ativo', {
-      method: 'PUT',
-      headers: { ...auth(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ativo }),
-    });
-    if (!res.ok) throw new Error('Falha ao salvar');
-    mostrarOk(ativo ? 'Integração WESO ativada.' : 'Integração WESO desativada (modo simulação).');
-  } catch (err) {
-    document.getElementById('toggleAtivo').checked = !ativo;
-    mostrarErro('Falha ao salvar: ' + err.message);
+    mostrarErro('Falha ao conferir acesso: ' + err.message);
   }
 }
 
@@ -146,7 +131,7 @@ function limparMsgs() {
   document.getElementById('msgOk').style.display = 'none';
 }
 
-carregarToggle();
+conferirAcesso();
 </script>
 </body>
 </html>

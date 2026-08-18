@@ -35,7 +35,13 @@ router = APIRouter(prefix="/painel/api", tags=["painel"])
 
 
 @router.get("/perfis")
-async def listar_perfis(_=Depends(requer_aba("gerar_os", "vinculos"))):
+# ⚠️ `cadastro_placas` entrou em 17/08. `/perfis` e lookup COMPARTILHADO -- ja
+# servia Gerar OS e Vinculos, e agora serve a tela que cria as placas do termo,
+# que precisa saber quais perfis nascem de documento e qual traz recipiente.
+# Somar aba aqui NAO e o mesmo que somar no `/extrair`: aquele extrai PDF no
+# fluxo de geracao de OS; este devolve metadado de configuracao, sem dado de
+# cliente nenhum.
+async def listar_perfis(_=Depends(requer_aba("gerar_os", "vinculos", "cadastro_placas"))):
     return {
         chave: {"label": p["label"], "os_por_placa": p["os_por_placa"],
                 "agrupado": p.get("agrupado", False),

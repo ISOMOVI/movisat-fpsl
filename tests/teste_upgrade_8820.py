@@ -237,6 +237,61 @@ if _sem_termo_algum:
     checar("sem nada para herdar, o valor e 0", 0.0,
            _sem_termo_algum["valor_unitario"])
 
+# ── 10. o upgrade DEVOLVE o recipiente (17/08) ───────────────────────────────
+# 🚨 O QUE FALTAVA. O upgrade usava recipiente desde 13/08 e nunca o devolvia:
+# a serie ficava `Instalado` numa placa `-UPGRADE`, que nao e veiculo -- fora do
+# estoque e fora de campo ao mesmo tempo. A `manutencao_troca` liberava; o
+# upgrade nao, e a unica diferenca entre os dois perfis era a flag.
+#
+# As tres provas sao as MESMAS de `manutencao_troca` (o mecanismo e um so), e e
+# por isso que este bloco as repete: flag nova sem teste proprio e flag que
+# alguem apaga sem ninguem notar.
+print("\n[10] o upgrade devolve o recipiente ao estoque")
+
+UP = templates_config.PERFIS["upgrade"]
+checar("o upgrade libera a serie", True, UP.get("liberar_serie"))
+checar("e continua usando recipiente", "-UPGRADE", UP.get("placa_teste_sufixo"))
+checar("os dois perfis com recipiente liberam", ["upgrade", "manutencao_troca"],
+       [k for k, p in templates_config.PERFIS.items() if p.get("liberar_serie")])
+
+# Recipiente do 8820, com os numeros reais do cache.
+_rec = {os_router._chave_placa("OOM 4131"):
+        {"veiculo_id": 88159, "rastreador_id": 50232,
+         "serie": "356354871411980"}}
+_op = {"placa": "OOM 4131",
+       "descricao": "Upgrade: OOM 4131 | ENTRARÁ: 356354871411980 | TERMO 8820",
+       "materiais": [{"descricao": "XT40 Portatil", "_equipamento": True}]}
+_criada_ok = {"ok": True, "materiais_ok": ["XT40 Portatil"], "materiais_erro": []}
+
+
+def _lib(op, criada, recipientes=None):
+    return asyncio.run(os_router._liberar_series(
+        UP, [op], [criada], _rec if recipientes is None else recipientes))
+
+
+# ⚠️ As tres provas, cada uma sozinha. Nenhuma chama a WESO: `_liberar_series`
+# so chega em `liberar_recipiente` depois de passar por todas.
+_r = _lib(_op, {"ok": False, "erro": "500"})
+checar("OS que falhou nao libera", False, _r[0]["ok"])
+checar("e diz o motivo", True, "não foi criada" in _r[0]["erro"])
+
+_r = _lib({**_op, "descricao": f"Upgrade: OOM 4131 | ENTRARÁ: "
+                               f"{equipamentos.MARCADOR_SERIE_A_PREENCHER}"},
+          _criada_ok)
+checar("descricao sem serie nao libera", False, _r[0]["ok"])
+
+_r = _lib({**_op, "materiais": []}, _criada_ok)
+checar("sem material de equipamento nao libera", False, _r[0]["ok"])
+
+_r = _lib(_op, {"ok": True, "materiais_ok": [],
+                "materiais_erro": ["XT40 Portatil: 500"]})
+checar("material recusado pelo Harmonit nao libera", False, _r[0]["ok"])
+checar("e devolve os numeros para corrigir na mao", (88159, 50232),
+       (_r[0]["dados_para_correcao"]["veiculo_id"],
+        _r[0]["dados_para_correcao"]["rastreador_id"]))
+
+checar("sem recipiente nao ha o que liberar", [], _lib(_op, _criada_ok, {}))
+
 print()
 print(f"{ok} verificações OK, {len(falhas)} falha(s)")
 if falhas:

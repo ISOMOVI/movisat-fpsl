@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Histórico de Cadastros — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --blue: #2563EB; --blue-dim: #EFF6FF; --blue-mid: #93C5FD;
+    --green: #16a34a; --green-dim: #F0FDF4;
+    --red: #DC2626; --red-dim: #FEF2F2;
+    --amber: #D97706; --amber-dim: #FFFBEB;
+    --bg: #F8FAFC; --bg2: #F1F5F9; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --card: #FFFFFF;
+    --sidebar-bg: #0F172A; --sidebar-tx: #94A3B8; --sidebar-w: 230px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex;
+             flex-direction:column; padding:20px 0; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                           background:transparent; color:var(--sidebar-tx); font-size:.82rem;
+                           font-family:inherit; cursor:pointer; }
+  .sidebar-bottom button:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .main { flex:1; padding:32px; max-width:1080px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  h2 { font-size:1.02rem; font-weight:700; margin-bottom:4px; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:14px; }
+  section { margin-bottom:30px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; text-decoration:none; display:inline-block; }
+  .btn-ghost { background:var(--card); color:var(--text); border-color:var(--border); }
+  .btn-sm { padding:5px 10px; font-size:.78rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .card-pad { padding:20px; }
+  table { width:100%; border-collapse:collapse; font-size:.86rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase;
+       letter-spacing:.03em; padding:12px; border-bottom:1.5px solid var(--border); }
+  td { padding:11px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tbody tr.clicavel:hover { background:var(--bg2); cursor:pointer; }
+  .badge { font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .badge-blue { background:var(--blue-dim); color:var(--blue); }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  .badge-amber { background:var(--amber-dim); color:var(--amber); }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem; }
+  .hint { font-size:.76rem; color:var(--text2); line-height:1.45; }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-bottom:12px; }
+  .msg-erro { background:var(--red-dim); color:var(--red); }
+  .check-row { display:flex; align-items:center; gap:7px; font-size:.82rem; color:var(--text2); }
+  .oculto { display:none; }
+  .vazio { padding:26px; text-align:center; color:var(--text2); font-size:.86rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()">Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <h1>Histórico de Cadastros</h1>
+      <a class="btn btn-ghost btn-sm" href="/painel/cadastro-placas">Voltar ao cadastro</a>
+    </div>
+
+    <div class="msg msg-erro" id="msgErro"></div>
+
+    <!--
+      🚨 POR QUE ESTA TELA EXISTE. OS errada alguém abre e vê; veículo criado
+      errado some no meio de 9.107 no Harmonit e 1.969 na WESO. Sem ela, auditar
+      um cadastro exigiria comparar as bases inteiras.
+
+      Só leitura, de propósito: reprocessar escreve, e botão que escreve merece
+      rodada própria. Placa que falhou pode ser refeita subindo o mesmo termo.
+    -->
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px">
+        <div>
+          <h2>Rodadas</h2>
+          <p class="sub" style="margin:0">Cada termo subido é uma rodada.</p>
+        </div>
+        <label class="check-row">
+          <input type="checkbox" id="verSimulado" onchange="carregar()">
+          mostrar simulações
+        </label>
+      </div>
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th>Quando</th><th>Termo</th><th>Perfil</th><th>Cliente</th>
+                <th>Placas</th><th>Resultado</th><th>Quem</th></tr>
+          </thead>
+          <tbody id="tbodyLotes"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="secDetalhe" class="oculto">
+      <h2 id="detalheTitulo">Detalhe</h2>
+      <p class="sub">Uma linha por placa <strong>e por sistema</strong> — a mesma
+        placa produz duas tentativas, e elas podem terminar diferente.</p>
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th>Placa</th><th>Sistema</th><th>Resultado</th><th>ID lá</th>
+                <th>Descrição</th><th>Observação</th></tr>
+          </thead>
+          <tbody id="tbodyDetalhe"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('cadastro_placas');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function logout() { localStorage.removeItem('fpsl_painel_token'); window.location.href = '/painel'; }
+
+/* o texto vem do PDF e dos dois sistemas — as origens menos confiáveis que há */
+function escapeHtml(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+}
+
+function erro(m) {
+  const el = document.getElementById('msgErro');
+  el.textContent = m; el.style.display = 'block';
+}
+
+function quando(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  /* dd/mm/aaaa hh:mm, na marra: `toLocaleString` segue o idioma do navegador,
+     e foi essa dependência que produziu um prazo com ano 0002 no painel de
+     demandas em 07/08. */
+  const z = (n) => String(n).padStart(2, '0');
+  return `${z(d.getDate())}/${z(d.getMonth() + 1)}/${d.getFullYear()} `
+       + `${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
+const SINAL = {
+  criado:       ['badge-green', 'criado'],
+  ja_existia:   ['badge-blue',  'já existia'],
+  simulado:     ['badge-amber', 'simulado'],
+  ignorado:     ['badge-amber', 'ignorado'],
+  falhou:       ['badge-red',   'falhou'],
+  desconhecido: ['badge-red',   'desconhecido'],
+};
+
+function badge(acao) {
+  const [cls, txt] = SINAL[acao] || ['badge-amber', acao || '—'];
+  return `<span class="badge ${cls}">${escapeHtml(txt)}</span>`;
+}
+
+async function carregar() {
+  const sim = document.getElementById('verSimulado').checked;
+  const tb = document.getElementById('tbodyLotes');
+  try {
+    const res = await fetch(`/painel/api/placas/historico?incluir_simulado=${sim}`,
+                            { headers: auth() });
+    const bruto = await res.text();
+    let d = null;
+    try { d = JSON.parse(bruto); } catch (e) { /* não era JSON */ }
+    if (!res.ok) { erro((d && d.detail) || `Falha ao carregar (HTTP ${res.status}).`); return; }
+    if (!d.lotes.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="vazio">Nenhum cadastro ainda.</td></tr>';
+      return;
+    }
+    tb.innerHTML = d.lotes.map(l => {
+      const res_ = [];
+      if (l.criados) res_.push(`<span class="badge badge-green">${l.criados} criado(s)</span>`);
+      if (l.ja_existiam) res_.push(`<span class="badge badge-blue">${l.ja_existiam} já existia(m)</span>`);
+      if (l.falhas) res_.push(`<span class="badge badge-red">${l.falhas} falha(s)</span>`);
+      return `<tr class="clicavel" onclick="abrir('${escapeHtml(l.lote)}')">
+        <td>${escapeHtml(quando(l.quando))}<div class="hint mono">${escapeHtml(l.lote)}</div></td>
+        <td class="mono">${escapeHtml(l.termo || '—')}</td>
+        <td>${escapeHtml(l.perfil || '—')}</td>
+        <td class="mono">${escapeHtml(l.cnpjcpf || '—')}</td>
+        <td>${l.placas}</td>
+        <td>${res_.join(' ') || '—'}</td>
+        <td>${escapeHtml(l.usuario || '—')}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    erro('Falha ao carregar: ' + e.message);
+  }
+}
+
+async function abrir(lote) {
+  try {
+    const res = await fetch(`/painel/api/placas/historico/${encodeURIComponent(lote)}`,
+                            { headers: auth() });
+    const bruto = await res.text();
+    let d = null;
+    try { d = JSON.parse(bruto); } catch (e) { /* não era JSON */ }
+    if (!res.ok) { erro((d && d.detail) || `Falha ao abrir (HTTP ${res.status}).`); return; }
+    document.getElementById('detalheTitulo').textContent = `Rodada ${lote}`;
+    document.getElementById('tbodyDetalhe').innerHTML = d.itens.map(i => `
+      <tr>
+        <td class="mono">${escapeHtml(i.placa_gravada || i.placa_digitada || '—')}
+          ${i.recipiente ? '<span class="badge badge-blue">recipiente</span>' : ''}</td>
+        <td>${escapeHtml(i.sistema)}</td>
+        <td>${badge(i.acao)}</td>
+        <td class="mono">${escapeHtml(i.id_externo === null || i.id_externo === undefined ? '—' : String(i.id_externo))}</td>
+        <td>${escapeHtml(i.descricao || '—')}</td>
+        <td class="hint">${escapeHtml(i.erro || '')}</td>
+      </tr>`).join('');
+    document.getElementById('secDetalhe').classList.remove('oculto');
+    document.getElementById('secDetalhe').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) {
+    erro('Falha ao abrir: ' + e.message);
+  }
+}
+
+carregar();
+</script>
+</body>
+</html>

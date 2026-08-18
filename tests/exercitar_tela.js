@@ -9,6 +9,15 @@
  * respondendo o JSON REAL da extração. Se `extrair()` estourar em qualquer
  * ponto, este arquivo reprova -- que é o que faltava.
  *
+ * 17/08: os EVENTOS passaram a ser de verdade. `addEventListener` era uma
+ * função vazia, então as 4 interações que a página liga por evento (trocar o
+ * perfil, escolher o arquivo, buscar cliente, buscar serviço) nunca eram
+ * exercitadas -- o exercício chamava as funções pelo nome e apagar a ligação
+ * não reprovava nada. Agora o ouvinte é registrado e disparado.
+ *
+ * O QUE AINDA EXIGE NAVEGADOR: layout, CSS, elemento cobrindo outro, tela de
+ * celular. Isso não dá para fazer aqui, e continua sendo a lacuna real.
+ *
  * Uso: node exercitar_tela.js <gerar_os.html> <resposta_extracao.json> [perfil]
  *
  * Sai com JSON no stdout. `erros` vazio = a tela aguentou o fluxo inteiro.
@@ -35,8 +44,25 @@ function elemento(id) {
     elementos[id] = {
       id, value: "", innerHTML: "", textContent: "", disabled: false,
       files: [], style: {}, classList: { toggle() {}, add() {}, remove() {} },
-      appendChild() {}, prepend() {}, remove() {}, addEventListener() {},
+      appendChild() {}, prepend() {}, remove() {},
       focus() {},
+      // 🚨 `addEventListener() {}` VAZIO APROVA LIGAÇÃO QUEBRADA. Enquanto era
+      // uma função vazia, este exercício chamava `aplicarPerfil()` pelo NOME e
+      // a linha que LIGA o seletor à função (`sel.addEventListener('change',
+      // aplicarPerfil)`) nunca era exercitada: apagá-la deixa a tela inerte ao
+      // trocar de perfil, com os 448 testes verdes. Mesma família do defeito de
+      // 14/08 -- a função está certa, o caminho até ela é que não existe.
+      _ouvintes: {},
+      addEventListener(tipo, fn) {
+        (this._ouvintes[tipo] = this._ouvintes[tipo] || []).push(fn);
+      },
+      // Harness-only (o `_` avisa): dispara o que foi registrado e devolve
+      // QUANTOS ouvintes correram. Zero = ninguém ligou este evento.
+      _disparar(tipo) {
+        const fns = this._ouvintes[tipo] || [];
+        for (const fn of fns) fn({ target: this });
+        return fns.length;
+      },
     };
   }
   return elementos[id];
@@ -106,9 +132,9 @@ global.fetch = async (url) => {
       simulado: true, total_os: 1, avisos: [],
       solucao_tecnica_preview: "[14/08 10:00] Contexto\n-------------\n",
       operacoes: [{
-        cliente_id: 998063, placa: "GJN 8689", veiculo: "TESTE",
+        cliente_id: 998063, placa: "OVG7C78", veiculo: "TESTE VELASCO",
         rotulo: "Manutenção com troca",
-        descricao: "MANUTENÇÃO COM TROCA: GJN 8689 | TESTE | SAIRÁ: 007733214",
+        descricao: "MANUTENÇÃO COM TROCA: OVG7C78 | TESTE VELASCO | SAIRÁ: 007733214",
         materiais: [{ descricao: "SERVIÇO DO CABEÇALHO (sem flag)" },
                     { descricao: "ST310U" }, { descricao: "ENTREGA OS" }],
       }],
@@ -131,12 +157,20 @@ eval(src);
     await new Promise((r) => setTimeout(r, 50));
 
     const perfil = process.argv[4] || "rescisao";
+    // ⚠️ TROCAR O PERFIL PELO EVENTO, NÃO PELA FUNÇÃO. Antes isto chamava
+    // `aplicarPerfil()` direto, o que testava a função e não a ligação dela
+    // com o seletor. Agora o valor muda e o 'change' é disparado, como o
+    // navegador faria -- `_disparar` devolve quantos ouvintes correram.
     elemento("perfil").value = perfil;
+    resultado.ouvintes_perfil = elemento("perfil")._disparar("change");
     // Perfil sem termo não tem anexo: o fluxo pula a extração e vai à Etapa 2.
-    if (perfil.startsWith("manutencao")) {
-      aplicarPerfil();
-    } else {
+    if (!perfil.startsWith("manutencao")) {
+      // Mesma ideia no anexo: escolher o arquivo é um 'change' no input, e o
+      // handler da página escreve o nome no `dropLabel`. Conferir o rótulo
+      // prova que o evento chegou -- antes só o `.files` era preenchido na mão.
       elemento("arquivo").files = [{ name: "termo.pdf" }];
+      resultado.ouvintes_arquivo = elemento("arquivo")._disparar("change");
+      resultado.rotulo_arquivo = elemento("dropLabel").textContent;
     }
 
     await extrair();
@@ -151,17 +185,32 @@ eval(src);
     resultado.chamou_extrair = chamadas.some((u) => u.includes("/extrair"));
     resultado.alertas = global.__alertas;
 
+    // ── a busca de cliente é ligada por evento, com 400ms de espera ─────────
+    // Digitar no campo NÃO chama `buscarCliente` na hora: o handler agenda com
+    // `setTimeout(..., 400)`. Disparar o 'input' e esperar prova as duas coisas
+    // -- que a ligação existe e que o atraso continua funcionando.
+    elemento("buscaCliente").value = "VELASCO";
+    resultado.ouvintes_busca = elemento("buscaCliente")._disparar("input");
+    await new Promise((r) => setTimeout(r, 450));
+    resultado.busca_chamou_backend = chamadas.some((u) =>
+      u.includes("/clientes/buscar"));
+
     // ── Etapa 2 -> 3: o resumo. É onde a manutenção da Erika parou. ─────────
     // 🚨 Só chegar na Etapa 2 não prova nada: o fluxo continua, e cada passo
     // seguinte pode ter o mesmo tipo de defeito.
     selecionarCliente({ id: 998063, nome: "PASTELARIA VELASCO LTDA" }, "origem");
     selecionarServico({ id: 6966, descricao: "MANUTENÇÃO" });
-    if (elemento("placaManual")) elemento("placaManual").value = "GJN 8689";
-    if (elemento("veiculoManual")) elemento("veiculoManual").value = "TESTE";
+    // ⚠️ `OVG7C78` era a placa oficial de teste da Velasco e NÃO EXISTE MAIS na
+    // WESO: o teste de `liberar_serie` de 14/08 apagou o veículo, e o cache de
+    // 17/08 mostra a Velasco (cliente WESO 13562) com zero veículos. Aqui não
+    // faz diferença -- nada sai da máquina, o backend é mock --, mas quem for
+    // repetir isto CONTRA A WESO precisa cadastrar um veículo antes.
+    if (elemento("placaManual")) elemento("placaManual").value = "OVG7C78";
+    if (elemento("veiculoManual")) elemento("veiculoManual").value = "TESTE VELASCO";
 
     await montarResumo();
     resultado.resumo_montado =
-      (elemento("resumoTbody").innerHTML || "").includes("GJN 8689");
+      (elemento("resumoTbody").innerHTML || "").includes("OVG7C78");
     resultado.resumo_info = (elemento("resumoInfo").innerHTML || "").slice(0, 90);
     resultado.botao_gerar_liberado = elemento("btnGerar").disabled === false;
     resultado.chamou_dry_run = chamadas.some((u) => u.includes("/gerar-os"));

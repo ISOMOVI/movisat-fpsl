@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cadastro de Placas — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --blue: #2563EB; --blue-dim: #EFF6FF; --blue-mid: #93C5FD;
+    --green: #16a34a; --green-dim: #F0FDF4;
+    --red: #DC2626; --red-dim: #FEF2F2;
+    --amber: #D97706; --amber-dim: #FFFBEB;
+    --bg: #F8FAFC; --bg2: #F1F5F9; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --card: #FFFFFF;
+    --sidebar-bg: #0F172A; --sidebar-tx: #94A3B8; --sidebar-w: 230px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .sidebar-bottom button:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .main { flex:1; padding:32px; max-width:1020px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  h2 { font-size:1.02rem; font-weight:700; margin-bottom:4px; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:14px; }
+  section { margin-bottom:34px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; }
+  .btn-primary { background:var(--blue); color:#fff; }
+  .btn-primary:hover { background:#1d4ed8; }
+  .btn-primary:disabled { background:var(--blue-mid); cursor:not-allowed; }
+  .btn-ghost { background:var(--card); color:var(--text); border-color:var(--border); }
+  .btn-sm { padding:5px 10px; font-size:.78rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .card-pad { padding:20px; }
+  table { width:100%; border-collapse:collapse; font-size:.86rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase;
+       letter-spacing:.03em; padding:12px; border-bottom:1.5px solid var(--border); }
+  td { padding:12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  .badge { font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .badge-blue { background:var(--blue-dim); color:var(--blue); }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  .badge-amber { background:var(--amber-dim); color:var(--amber); }
+  label { font-size:.78rem; font-weight:600; display:block; margin-bottom:6px; }
+  input[type=text], input[type=file], select, textarea { width:100%; padding:9px 12px; border:1.5px solid var(--border);
+        border-radius:6px; background:var(--bg); color:var(--text); font-size:.88rem; font-family:inherit; }
+  textarea { min-height:96px; resize:vertical; line-height:1.5; }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue); background:var(--card); }
+  .radio-row { display:flex; gap:16px; margin-bottom:16px; }
+  .radio-row label { display:flex; align-items:center; gap:6px; font-weight:500; margin:0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .field { margin-bottom:14px; }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-bottom:12px; }
+  .msg-erro { background:var(--red-dim); color:var(--red); }
+  .msg-ok { background:var(--green-dim); color:var(--green); }
+  .msg-aviso { background:var(--amber-dim); color:var(--amber); }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem; }
+  .seta { color:var(--text2); }
+  .hint { font-size:.76rem; color:var(--text2); margin-top:5px; line-height:1.45; }
+  .oculto { display:none; }
+  /* tabela editável do termo */
+  .tbl-edit td { padding:7px 8px; }
+  .tbl-edit input[type=text] { padding:6px 9px; font-size:.84rem; }
+  .tbl-edit .col-acao { width:44px; text-align:center; }
+  .tbl-edit .col-num  { width:34px; color:var(--text2); font-size:.78rem; }
+  .btn-inverter { background:var(--bg2); border:1px solid var(--border);
+                  border-radius:6px; width:30px; height:30px; cursor:pointer;
+                  color:var(--text2); font-size:.9rem; line-height:1; }
+  .btn-inverter:hover { background:var(--card); color:var(--blue); border-color:var(--blue-mid); }
+  .linha-atencao td { background:var(--amber-dim); }
+  .cliente-cruz { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .cliente-cruz .cx { border:1px solid var(--border); border-radius:8px; padding:12px; }
+  .cliente-cruz h4 { font-size:.72rem; text-transform:uppercase; letter-spacing:.03em;
+                     color:var(--text2); margin-bottom:5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()">Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <h1>Cadastro de Placas</h1>
+      <a class="btn btn-ghost btn-sm" href="/painel/cadastro-placas/historico">Histórico</a>
+    </div>
+
+    <div class="msg" id="msgErro"></div>
+    <div class="msg" id="msgOk"></div>
+    <div class="msg" id="msgSimulacao"></div>
+
+    <!--
+      DUAS ORIGENS, e elas não são variações do mesmo formulário:
+
+      COM TERMO  -> as placas vêm do PDF; o cliente pode ser novo na WESO.
+      SEM TERMO  -> manutenção; não há documento. O operador digita a placa do
+                    chamado, o cliente e a placa real JÁ existem, e só o
+                    recipiente nasce.
+    -->
+    <section>
+      <h2>Origem</h2>
+      <p class="sub">De onde vêm as placas.</p>
+      <div class="radio-row">
+        <label><input type="radio" name="origem" value="termo" checked onchange="trocarOrigem()"> Do termo</label>
+        <label><input type="radio" name="origem" value="manutencao" onchange="trocarOrigem()"> Manutenção (sem termo)</label>
+      </div>
+
+      <!--
+        DO TERMO. O documento manda em tudo o que ele sabe: número do termo,
+        CNPJ e a descrição de cada veículo. São três coisas que deixam de ser
+        digitadas — e a mais perigosa é o número do termo, porque é ele que
+        forma a descrição `TERMO n` do recipiente, que a geração de OS confere
+        depois. Errar ali quebra a OS lá na frente, em silêncio.
+      -->
+      <div class="card card-pad" id="blocoTermo">
+        <div class="grid2">
+          <div class="field">
+            <label for="perfilTermo">Perfil</label>
+            <select id="perfilTermo"><option value="">carregando…</option></select>
+          </div>
+          <div class="field">
+            <label for="arquivoTermo">Termo (PDF)</label>
+            <input type="file" id="arquivoTermo" accept="application/pdf">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btnLer" onclick="lerTermo()">Ler termo</button>
+      </div>
+
+      <div class="card card-pad" id="blocoDigitado">
+        <div class="field">
+          <label for="cnpj">CNPJ/CPF do cliente</label>
+          <input type="text" id="cnpj" placeholder="somente números ou o documento como está na WESO">
+        </div>
+
+        <div class="grid2" id="camposTermo">
+          <div class="field">
+            <label for="termo">Número do termo</label>
+            <input type="text" id="termo" placeholder="8820">
+            <p class="hint">Obrigatório se marcar “criar recipiente de upgrade”:
+              a descrição gravada é <span class="mono">TERMO &lt;n&gt;</span>, e é
+              por ela que a geração da OS reconhece o recipiente depois.</p>
+          </div>
+          <div class="field">
+            <label for="sufixo">Criar também o recipiente</label>
+            <select id="sufixo">
+              <option value="">não criar recipiente</option>
+              <option value="-UPGRADE">-UPGRADE (upgrade de tecnologia)</option>
+              <option value="-MANUT">-MANUT (manutenção com troca)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="placas">Placas <span id="rotuloPlacas">do termo</span> — uma por linha</label>
+          <textarea id="placas" placeholder="OOM 4131&#10;OOM 3895"></textarea>
+          <p class="hint" id="hintPlacas">
+            A placa é gravada como a WESO exige: a convencional ganha espaço
+            (<span class="mono">TST0A11</span> → <span class="mono">TST 0A11</span>) e o
+            recipiente fica intacto (<span class="mono">TST0A11-MANUT</span>). A prévia
+            mostra exatamente o texto que vai para lá.
+          </p>
+        </div>
+
+        <button class="btn btn-primary" id="btnPrevia" onclick="verPrevia()">Conferir</button>
+      </div>
+    </section>
+
+    <section id="secTermo" class="oculto">
+      <h2>Cliente</h2>
+      <p class="sub">Cruzado pelo <strong>CNPJ</strong>, nunca pelo nome — os dois
+        sistemas guardam nomes diferentes para o mesmo documento.</p>
+      <div class="card card-pad" style="margin-bottom:22px">
+        <div class="cliente-cruz">
+          <div class="cx"><h4>Harmonit</h4><div id="cliHarmonit">—</div></div>
+          <div class="cx"><h4>WESO</h4><div id="cliWeso">—</div></div>
+        </div>
+        <p class="hint" id="cliTermoNome"></p>
+      </div>
+
+      <h2>Veículos do termo</h2>
+      <p class="sub">Nas colunas do documento. Corrija o que estiver errado e use
+        <strong>⇄</strong> se o contrato tiver trocado os campos.</p>
+      <div class="card">
+        <table class="tbl-edit">
+          <thead>
+            <tr><th class="col-num">#</th><th>Veículo</th><th>Placa</th><th class="col-acao"></th></tr>
+          </thead>
+          <tbody id="edicaoTbody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+        <button class="btn btn-primary" onclick="conferirDoTermo()">Conferir</button>
+        <span class="sub" id="edicaoInfo" style="margin:0;"></span>
+      </div>
+
+      <!-- progresso do laço: uma requisição por placa -->
+      <div id="progresso" class="card card-pad oculto" style="margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong id="progTitulo">Cadastrando…</strong>
+          <span class="hint" id="progRelogio"></span>
+        </div>
+        <div style="height:6px;background:var(--bg2);border-radius:999px;overflow:hidden">
+          <div id="progBarra" style="height:100%;width:0;background:var(--blue);transition:width .2s"></div>
+        </div>
+        <div id="progLinhas" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <section id="secResumo" class="oculto">
+      <h2>Resumo</h2>
+      <p class="sub">Nada foi gravado ainda. Confira antes de confirmar.</p>
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th>Digitada</th><th>Vai para a WESO</th><th>Descrição</th><th>Situação</th><th>Conferido</th></tr>
+          </thead>
+          <tbody id="resumoTbody"></tbody>
+        </table>
+      </div>
+      <div id="resumoRodape" style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+        <button class="btn btn-primary" id="btnCriar" onclick="cadastrar()">Cadastrar</button>
+        <span class="sub" id="resumoContagem" style="margin:0;"></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('cadastro_placas');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function logout() { localStorage.removeItem('fpsl_painel_token'); window.location.href = '/painel'; }
+
+let ultimoCorpo = null;
+let extraido = null;   // o que o termo devolveu, antes da edição
+
+/* ── perfis: só os que nascem de documento ────────────────────────────────
+   Os dois de manutenção têm `sem_termo` e não entram aqui -- eles são o outro
+   caminho, o digitado. É o PERFIL que decide o recipiente, não um seletor:
+   `upgrade` traz `-UPGRADE`, `manutencao_troca` traz `-MANUT`. Um seletor a
+   mais seria uma chance a mais de escolher errado. */
+async function carregarPerfis() {
+  const sel = document.getElementById('perfilTermo');
+  try {
+    const res = await fetch('/painel/api/perfis', { headers: auth() });
+    const perfis = await res.json();
+    const comTermo = Object.entries(perfis).filter(([, p]) => !p.sem_termo);
+    sel.innerHTML = comTermo
+      .map(([id, p]) => `<option value="${escapeHtml(id)}">${escapeHtml(p.label || id)}</option>`)
+      .join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">falha ao carregar</option>';
+  }
+}
+
+async function lerTermo() {
+  limparMsgs();
+  const perfil = document.getElementById('perfilTermo').value;
+  const arq = document.getElementById('arquivoTermo').files[0];
+  if (!perfil) { erro('Escolha o perfil.'); return; }
+  if (!arq) { erro('Anexe o termo em PDF.'); return; }
+
+  const btn = document.getElementById('btnLer');
+  btn.disabled = true; btn.textContent = 'Lendo…';
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', arq);
+    const res = await fetch(`/painel/api/placas/extrair?perfil=${encodeURIComponent(perfil)}`,
+                            { method: 'POST', headers: auth(), body: fd });
+    /* ⚠️ TEXTO PRIMEIRO. Em 14/08 uma página HTML de 504 do nginx caiu num
+       `res.json()` e virou "erro json" na cara do operador. */
+    const bruto = await res.text();
+    let d = null;
+    try { d = JSON.parse(bruto); } catch (e) { /* não era JSON */ }
+    if (!res.ok) { erro((d && d.detail) || `Não consegui ler o termo (HTTP ${res.status}).`); return; }
+    extraido = d;
+    desenharTermo(d);
+  } catch (e) {
+    erro('Falha ao ler o termo: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Ler termo';
+  }
+}
+
+function desenharTermo(d) {
+  const c = d.cliente;
+  document.getElementById('cliHarmonit').innerHTML = c.harmonit_id
+    ? `<strong>${escapeHtml(c.harmonit_nome || '—')}</strong>`
+      + `<div class="hint">id ${escapeHtml(String(c.harmonit_id))}</div>`
+    : '<span class="badge badge-amber">não encontrado</span>'
+      + '<div class="hint">sem ele os veículos vão só para a WESO</div>';
+  document.getElementById('cliWeso').innerHTML = c.weso_id
+    ? `<strong>${escapeHtml(c.weso_nome || '—')}</strong>`
+      + `<div class="hint">id ${escapeHtml(String(c.weso_id))} · ${escapeHtml(c.weso_situacao || '')}</div>`
+    : '<span class="badge badge-blue">será criado</span>';
+  document.getElementById('cliTermoNome').innerHTML =
+    `No termo: <strong>${escapeHtml(c.nome_no_termo || '—')}</strong>`
+    + ` · documento <span class="mono">${escapeHtml(d.documento || '—')}</span>`
+    + (d.termo ? ` · termo <span class="mono">${escapeHtml(d.termo)}</span>` : '');
+
+  const tb = document.getElementById('edicaoTbody');
+  tb.innerHTML = d.itens.map((i, n) => `
+    <tr class="${i.sem_descricao ? 'linha-atencao' : ''}">
+      <td class="col-num">${n + 1}</td>
+      <td><input type="text" data-campo="veiculo" data-linha="${n}"
+                 value="${escapeHtml(i.veiculo)}"
+                 placeholder="${i.sem_descricao ? 'o termo não trouxe — preencha' : ''}"></td>
+      <td><input type="text" data-campo="placa" data-linha="${n}"
+                 value="${escapeHtml(i.placa)}"></td>
+      <td class="col-acao">
+        <button class="btn-inverter" title="Inverter veículo e placa"
+                onclick="inverter(${n})">⇄</button>
+      </td>
+    </tr>`).join('');
+
+  const naoConv = d.itens.filter(i => !i.convencional).length;
+  const semDesc = d.itens.filter(i => i.sem_descricao).length;
+  const partes = [`${d.itens.length} veículo(s)`];
+  if (naoConv) partes.push(`${naoConv} sem placa convencional (chassi ou série)`);
+  if (semDesc) partes.push(`${semDesc} sem descrição no termo — preencha`);
+  if (d.recipiente_sufixo) partes.push(`recipiente ${d.recipiente_sufixo} será criado`);
+  document.getElementById('edicaoInfo').textContent = partes.join(' · ');
+
+  document.getElementById('secTermo').classList.remove('oculto');
+  document.getElementById('secResumo').classList.add('oculto');
+  if (!d.escrita_ativa) {
+    mostrar('msgSimulacao',
+      '<strong>Escrita desligada.</strong> Confirmar mostra o que seria enviado e '
+      + '<strong>não grava nada</strong>. O interruptor fica em Configurações.',
+      'msg-aviso');
+  }
+}
+
+/* Inverter é por LINHA, não global: o erro contratual costuma ser em algumas
+   linhas, não no documento inteiro. */
+function inverter(n) {
+  const v = document.querySelector(`input[data-campo=veiculo][data-linha="${n}"]`);
+  const p = document.querySelector(`input[data-campo=placa][data-linha="${n}"]`);
+  const tmp = v.value; v.value = p.value; p.value = tmp;
+}
+
+function linhasEditadas() {
+  const fora = [];
+  document.querySelectorAll('input[data-campo=placa]').forEach(inp => {
+    const n = inp.dataset.linha;
+    const v = document.querySelector(`input[data-campo=veiculo][data-linha="${n}"]`);
+    fora.push({ placa: inp.value.trim(), veiculo: (v ? v.value : '').trim() });
+  });
+  return fora;
+}
+
+async function conferirDoTermo() {
+  limparMsgs();
+  const linhas = linhasEditadas();
+  const vazias = linhas.filter(l => !l.placa);
+  if (vazias.length) { erro(`${vazias.length} linha(s) sem placa. Preencha ou remova.`); return; }
+  /* ⚠️ Descrição é obrigatória: o termo às vezes não traz (a `FKX 9E34` do
+     8800), e sem ela a WESO grava a própria placa como descrição. */
+  const semDesc = linhas.filter(l => !l.veiculo);
+  if (semDesc.length) { erro(`${semDesc.length} linha(s) sem descrição do veículo. Preencha.`); return; }
+
+  const itens = [];
+  for (const l of linhas) {
+    itens.push({ placa: l.placa, descricao: l.veiculo });
+    if (extraido.recipiente_sufixo) {
+      itens.push({ placa: l.placa, sufixo: extraido.recipiente_sufixo,
+                   termo: extraido.termo || null });
+    }
+  }
+  ultimoCorpo = { cnpjcpf: extraido.documento, itens: itens };
+  await verPrevia(ultimoCorpo);
+}
+
+function origem() {
+  return document.querySelector('input[name=origem]:checked').value;
+}
+
+function trocarOrigem() {
+  const manut = origem() === 'manutencao';
+  document.getElementById('blocoTermo').classList.toggle('oculto', manut);
+  document.getElementById('blocoDigitado').classList.toggle('oculto', !manut);
+  document.getElementById('secTermo').classList.add('oculto');
+  document.getElementById('camposTermo').classList.toggle('oculto', manut);
+  document.getElementById('rotuloPlacas').textContent = manut ? 'do chamado' : 'do termo';
+  document.getElementById('secResumo').classList.add('oculto');
+  document.getElementById('hintPlacas').innerHTML = manut
+    ? 'Na manutenção o painel cria <strong>só o recipiente</strong> '
+      + '<span class="mono">&lt;PLACA&gt;-MANUT</span>: a placa real e o cliente já existem. '
+      + 'O equipamento é vinculado depois, pelo setor de configuração.'
+    : 'A placa é gravada como a WESO exige: a convencional ganha espaço e o '
+      + 'recipiente fica intacto. A prévia mostra o texto exato.';
+}
+
+function limparMsgs() {
+  ['msgErro','msgOk','msgSimulacao'].forEach(id =>
+    document.getElementById(id).style.display = 'none');
+}
+function mostrar(id, msg, classe) {
+  const el = document.getElementById(id);
+  el.className = 'msg ' + classe;
+  el.innerHTML = msg;
+  el.style.display = 'block';
+}
+const erro = m => mostrar('msgErro', m, 'msg-erro');
+const ok   = m => mostrar('msgOk', m, 'msg-ok');
+
+function montarCorpo() {
+  const cnpj = document.getElementById('cnpj').value.trim();
+  if (!cnpj) { erro('Informe o CNPJ/CPF do cliente.'); return null; }
+
+  const linhas = document.getElementById('placas').value
+    .split('\n').map(s => s.trim()).filter(Boolean);
+  if (!linhas.length) { erro('Informe ao menos uma placa.'); return null; }
+
+  const manut = origem() === 'manutencao';
+  const termo = document.getElementById('termo').value.trim();
+  const sufixo = manut ? '-MANUT' : document.getElementById('sufixo').value;
+
+  const itens = [];
+  for (const placa of linhas) {
+    // Na manutenção NÃO se cria a placa real: ela já existe, é o veículo em
+    // campo. Só o recipiente entra.
+    if (!manut) itens.push({ placa: placa });
+    if (sufixo) itens.push({ placa: placa, sufixo: sufixo, termo: termo || null });
+  }
+  return { cnpjcpf: cnpj, itens: itens };
+}
+
+/* achado na auditoria de 2026-07-15, no gerar_os.html, e repetido aqui em
+   17/08 por eu ter escrito a tela sem olhar o padrão: o texto vem do que o
+   operador digita E da WESO. Descrição de veículo com `<` quebra a tabela; no
+   limite, executa script dentro do painel. */
+function escapeHtml(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+}
+
+const BADGE = {
+  criar:        ['badge-blue',  'vai ser criada'],
+  criada:       ['badge-green', 'criada'],
+  ja_existe:    ['badge-green', 'já existe'],
+  duplicada:    ['badge-amber', 'repetida na lista'],
+  indisponivel: ['badge-amber', 'não consegui conferir'],
+  recusar:      ['badge-red',   'recusada'],
+};
+
+function desenhar(itens, contagem, escritaAtiva) {
+  const tb = document.getElementById('resumoTbody');
+  tb.innerHTML = itens.map(i => {
+    /* `gravou` vence a intenção: depois de criar, a linha diz CRIADA, não
+       "vai ser criada". Antes o `criar()` remapeava tudo para `criar` e o
+       badge azul de intenção virava rótulo de resultado. */
+    const acao = i.gravou ? 'criada' : i.acao;
+    const [cls, texto] = BADGE[acao] || ['badge-amber', acao];
+    const obs = i.erro ? `<div class="hint" style="color:var(--red)">${escapeHtml(i.erro)}</div>` : '';
+    const atual = i.descricao_atual
+      ? `<div class="hint">na WESO hoje: ${escapeHtml(i.descricao_atual)}</div>` : '';
+    return `<tr>
+      <td class="mono">${escapeHtml(i.placa_digitada)}</td>
+      <td class="mono"><strong>${escapeHtml(i.placa_gravada)}</strong>${i.recipiente ? ' <span class="badge badge-blue">recipiente</span>' : ''}</td>
+      <td>${i.descricao ? escapeHtml(i.descricao) : '<span class="seta">—</span>'}${atual}</td>
+      <td><span class="badge ${cls}">${texto}</span>${obs}</td>
+      <td class="hint">${escapeHtml(i.conferido_em || '')}</td>
+    </tr>`;
+  }).join('');
+
+  const partes = Object.entries(contagem).map(([k, v]) =>
+    `${v} ${(BADGE[k] || ['', k])[1]}`);
+  document.getElementById('resumoContagem').textContent = partes.join(' · ');
+  /* Só há o que cadastrar se sobrou linha em `criar`. Depois de gravar elas
+     viram `criada` e o botão desabilita sozinho -- antes ficava habilitado,
+     convidando a um segundo clique sobre trabalho já feito. */
+  document.getElementById('btnCriar').disabled = !(contagem.criar > 0);
+  document.getElementById('secResumo').classList.remove('oculto');
+
+  if (!escritaAtiva) {
+    mostrar('msgSimulacao',
+      '<strong>Escrita desligada.</strong> Confirmar mostra exatamente o que seria '
+      + 'enviado e <strong>não grava nada</strong> na WESO. O interruptor fica em Configurações.',
+      'msg-aviso');
+  }
+}
+
+async function verPrevia(corpoPronto) {
+  if (!corpoPronto) limparMsgs();
+  const corpo = corpoPronto || montarCorpo();
+  if (!corpo) return;
+  ultimoCorpo = corpo;
+  const btn = document.getElementById('btnPrevia');
+  btn.disabled = true; btn.textContent = 'Conferindo...';
+  try {
+    const res = await fetch('/painel/api/placas/previa', {
+      method: 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+    });
+    // ⚠️ LER TEXTO, NÃO `res.json()` DIRETO. Em 14/08 uma página HTML de 504 do
+    // nginx caiu num `res.json()` e virou "erro json" na cara do operador. Aqui
+    // o corpo é lido como texto e só depois convertido.
+    const bruto = await res.text();
+    let dados = null;
+    try { dados = JSON.parse(bruto); } catch (e) { /* não era JSON */ }
+    if (!res.ok) {
+      erro((dados && dados.detail) || `A conferência falhou (HTTP ${res.status}).`);
+      return;
+    }
+    if (dados.aviso_cliente) mostrar('msgErro', dados.aviso_cliente, 'msg-aviso');
+    desenhar(dados.itens, dados.resumo, dados.escrita_ativa);
+  } catch (e) {
+    erro('Falha ao conferir: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Conferir';
+  }
+}
+
+/* O caminho DIGITADO (manutenção) continua indo pelo `/criar` em lote: são
+   uma ou duas linhas, só na WESO, e o recipiente é o próprio ponto. O caminho
+   do TERMO vai pelo laço, que passa também pelo Harmonit. */
+function cadastrar() {
+  return origem() === 'termo' ? cadastrarDoTermo() : criar();
+}
+
+async function criar() {
+  if (!ultimoCorpo) return;
+  if (!confirm('Cadastrar as placas marcadas como "vai ser criada" na WESO?')) return;
+  limparMsgs();
+  const btn = document.getElementById('btnCriar');
+  btn.disabled = true; btn.textContent = 'Cadastrando...';
+  try {
+    const res = await fetch('/painel/api/placas/criar', {
+      method: 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(ultimoCorpo),
+    });
+    const bruto = await res.text();
+    let dados = null;
+    try { dados = JSON.parse(bruto); } catch (e) { /* não era JSON */ }
+    if (!res.ok) {
+      erro((dados && dados.detail) || `Nenhuma placa foi criada (HTTP ${res.status}).`);
+      return;
+    }
+    const contagem = {};
+    dados.itens.forEach(i => {
+      contagem[i.gravou ? 'criada' : i.acao] = (contagem[i.gravou ? 'criada' : i.acao] || 0) + 1;
+    });
+    desenhar(dados.itens, contagem, dados.escrita_ativa);
+    if (!dados.escrita_ativa) {
+      ok('Simulação concluída: nada foi gravado. ' + dados.itens.length + ' linha(s) conferida(s).');
+    } else if (dados.falharam) {
+      erro(`${dados.criadas} criada(s), ${dados.falharam} com problema — veja a coluna Situação.`);
+    } else {
+      ok(`${dados.criadas} placa(s) criada(s) e conferida(s) relendo na WESO.`);
+    }
+  } catch (e) {
+    erro('Falha ao cadastrar: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Cadastrar na WESO';
+  }
+}
+
+carregarPerfis();
+
+/* ── o laço: UMA REQUISIÇÃO POR PLACA ──────────────────────────────────────
+   🚨 NÃO É LOTE. Medido em 17/08: gravar custa ~4s por placa, porque cada
+   criação é seguida de releitura para provar. Um termo de 11 placas em lote
+   levaria ~50s e, com recipientes, passaria de 1,5 min -- perto demais do teto
+   do nginx. Mexer no teto trataria o sintoma.
+
+   E isola o erro: falhou a sétima, as seis anteriores estão gravadas E
+   PROVADAS, e o histórico mostra exatamente onde parou. */
+async function cadastrarDoTermo() {
+  if (!extraido || !ultimoCorpo) return;
+  const itens = ultimoCorpo.itens;
+  if (!confirm(`Cadastrar ${itens.length} linha(s) no Harmonit e na WESO?`)) return;
+
+  limparMsgs();
+  const cx = document.getElementById('progresso');
+  const barra = document.getElementById('progBarra');
+  const linhas = document.getElementById('progLinhas');
+  const relogio = document.getElementById('progRelogio');
+  cx.classList.remove('oculto');
+  linhas.innerHTML = '';
+  document.getElementById('btnCriar').disabled = true;
+
+  const inicio = Date.now();
+  const tic = setInterval(() => {
+    const s = Math.round((Date.now() - inicio) / 1000);
+    relogio.textContent = s >= 5 ? `${s}s` : '';
+  }, 500);
+
+  let lote = null;
+  try {
+    lote = (await (await fetch('/painel/api/placas/lote',
+                               { method: 'POST', headers: auth() })).json()).lote;
+  } catch (e) {
+    clearInterval(tic); erro('Não consegui abrir a rodada: ' + e.message); return;
+  }
+
+  const c = extraido.cliente;
+  let feitas = 0, falhas = 0;
+  for (const it of itens) {
+    document.getElementById('progTitulo').textContent =
+      `Cadastrando ${feitas + 1} de ${itens.length}…`;
+    let d = null;
+    try {
+      const res = await fetch('/painel/api/placas/criar-uma', {
+        method: 'POST',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lote: lote, cnpjcpf: extraido.documento, placa: it.placa,
+          descricao: it.descricao || null, sufixo: it.sufixo || null,
+          termo: it.termo || extraido.termo || null, perfil: extraido.perfil,
+          cliente_harmonit_id: c.harmonit_id, cliente_weso_id: c.weso_id,
+        }),
+      });
+      const bruto = await res.text();
+      try { d = JSON.parse(bruto); } catch (e) { /* não era JSON */ }
+      if (!res.ok) throw new Error((d && d.detail) || `HTTP ${res.status}`);
+    } catch (e) {
+      d = { placa_gravada: it.placa,
+            harmonit: { acao: 'falhou', erro: e.message },
+            weso: { acao: 'falhou', erro: e.message } };
+    }
+    feitas++;
+    const ruim = ['falhou'].includes((d.harmonit || {}).acao)
+              || ['falhou'].includes((d.weso || {}).acao);
+    if (ruim) falhas++;
+    linhas.insertAdjacentHTML('beforeend', linhaProgresso(d, ruim));
+    barra.style.width = `${(feitas / itens.length) * 100}%`;
+  }
+
+  clearInterval(tic);
+  document.getElementById('progTitulo').textContent =
+    `${feitas} linha(s) processada(s)`;
+  if (falhas) {
+    erro(`${falhas} linha(s) com problema. Veja o detalhe acima ou no `
+         + `<a href="/painel/cadastro-placas/historico">histórico</a>.`);
+  } else {
+    ok(`${feitas} linha(s) processada(s) sem erro. `
+       + `<a href="/painel/cadastro-placas/historico">Ver no histórico</a>.`);
+  }
+}
+
+function sinal(r) {
+  const a = (r || {}).acao;
+  const cls = { criado: 'badge-green', ja_existia: 'badge-blue',
+                simulado: 'badge-amber', ignorado: 'badge-amber',
+                falhou: 'badge-red' }[a] || 'badge-amber';
+  const txt = { criado: 'criado', ja_existia: 'já existia', simulado: 'simulado',
+                ignorado: 'ignorado', falhou: 'falhou' }[a] || a || '—';
+  return `<span class="badge ${cls}">${escapeHtml(txt)}</span>`;
+}
+
+function linhaProgresso(d, ruim) {
+  const detalhe = [(d.harmonit || {}).erro, (d.weso || {}).erro,
+                   (d.harmonit || {}).motivo, (d.weso || {}).motivo]
+                  .filter(Boolean).map(escapeHtml).join(' · ');
+  return `<div style="padding:7px 0;border-top:1px solid var(--border)">
+    <span class="mono">${escapeHtml(d.placa_gravada || '')}</span>
+    &nbsp; Harmonit ${sinal(d.harmonit)} &nbsp; WESO ${sinal(d.weso)}
+    ${detalhe ? `<div class="hint" style="${ruim ? 'color:var(--red)' : ''}">${detalhe}</div>` : ''}
+  </div>`;
+}
+
+carregarPerfis();
+trocarOrigem();
+</script>
+</body>
+</html>

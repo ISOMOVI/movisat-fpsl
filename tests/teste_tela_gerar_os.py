@@ -87,6 +87,26 @@ else:
     checar("o botão voltou a ficar clicável", True, r_resc.get("botao_liberado"))
     checar("e nenhum alerta de erro subiu", [], r_resc.get("alertas"))
 
+    # ── as 4 interações que a página liga por EVENTO ─────────────────────────
+    # 🚨 POR QUE ISTO ENTROU EM 17/08. Até aqui o exercício chamava
+    # `aplicarPerfil()`, `selecionarCliente()` e `selecionarServico()` pelo
+    # NOME, e escrevia em `arquivo.files` na mão. Isso testa a função e não a
+    # LIGAÇÃO dela com a tela: apagar `sel.addEventListener('change',
+    # aplicarPerfil)` deixava trocar de perfil sem efeito nenhum e os 448
+    # testes continuavam verdes. Mesma família do defeito de 14/08 -- a função
+    # está certa, o caminho até ela é que não existe.
+    checar("o seletor de perfil tem ouvinte de 'change'", 1,
+           r_resc.get("ouvintes_perfil"))
+    checar("o campo de arquivo tem ouvinte de 'change'", 1,
+           r_resc.get("ouvintes_arquivo"))
+    checar("e escolher o arquivo escreve o nome no rótulo", "termo.pdf",
+           r_resc.get("rotulo_arquivo"))
+    checar("a busca de cliente tem ouvinte de 'input'", 1,
+           r_resc.get("ouvintes_busca"))
+    # o handler agenda com setTimeout(400); o exercício espera 450ms
+    checar("e a busca chega ao backend depois do atraso", True,
+           r_resc.get("busca_chamou_backend"))
+
 # ── 2. manutenção — o caminho sem termo ──────────────────────────────────────
 print("\n[2] manutenção — sem anexo, vai direto para a Etapa 2")
 r_manut = exercitar(HTML, {}, "manutencao_troca")
@@ -128,6 +148,35 @@ if r_resc is not None:
         checar("com o defeito, o termo NÃO chega à Etapa 2", True,
                rq.get("termo_na_tela") != "8842")
         checar("e a versão no ar chega", "8842", r_resc.get("termo_na_tela"))
+    finally:
+        pathlib.Path(caminho).unlink(missing_ok=True)
+
+# ── 4. a ligação do seletor também tem de ser pegável ────────────────────────
+# 🚨 A checagem de ouvinte acima só vale se ela REPROVAR quando a ligação some.
+# Aqui a linha que liga o seletor à função é apagada e o exercício tem de
+# devolver zero ouvinte. Sem esta seção, "ouvintes_perfil == 1" seria mais um
+# número que ninguém sabe se mede alguma coisa.
+print("\n[4] apagar a ligação do seletor reprova")
+if r_resc is not None:
+    texto = HTML.read_text(encoding="utf-8").replace("\r\n", "\n")
+    LIGACAO = "  sel.addEventListener('change', aplicarPerfil);\n"
+    sem_ligacao = texto.replace(LIGACAO, "")
+    checar("a linha da ligação existe no arquivo no ar", True,
+           sem_ligacao != texto)
+    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False,
+                                     encoding="utf-8") as f:
+        f.write(sem_ligacao)
+        caminho = f.name
+    try:
+        rs = exercitar(pathlib.Path(caminho), dados, "rescisao")
+        # ⚠️ A TELA NÃO ESTOURA SEM A LIGAÇÃO -- e é justamente esse o problema.
+        # `aplicarPerfil()` continua sendo chamado uma vez pelo `init()`, então
+        # a página abre normal e a extração funciona. O que morre é trocar de
+        # perfil depois. Por isso o que se mede é o ouvinte, não o erro.
+        checar("sem a linha, o seletor fica sem ouvinte", 0,
+               rs.get("ouvintes_perfil"))
+        checar("e mesmo assim a tela não acusa nada (por isso o teste existe)",
+               [], rs.get("erros"))
     finally:
         pathlib.Path(caminho).unlink(missing_ok=True)
 
