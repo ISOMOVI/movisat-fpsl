@@ -56,9 +56,11 @@ async def main():
         # (códigos do registro). Uma permissão pode ter mais de uma tela --
         # `cadastro_placas` tem CAD_1.1 e CAD_1.2 --, e o menu mostra tela.
         #
-        # 8 = as 7 de antes + CFG_9.1, o registro se mostrando. A CAD_1.2 não
-        # entra: é `no_menu`, alcançada por link.
-        checar("owner enxerga as 8 telas", len(me.get("abas", [])) == 8, str(len(me.get("abas", []))))
+        # 9 = as 7 antigas + CFG_9.1 (o registro se mostrando) + CAD_1.2, que
+        # em 18/08 saiu de `no_menu` e virou "Histórico de Placas", item próprio
+        # logo abaixo do Histórico de OS -- a pedido seu. O número é fixo de
+        # propósito: tela que aparece no menu sem ninguém pedir é defeito.
+        checar("owner enxerga as 9 telas", len(me.get("abas", [])) == 9, str(len(me.get("abas", []))))
 
         r = await c.get("/painel/api/usuarios/abas", headers=h_owner)
         catalogo = r.json()

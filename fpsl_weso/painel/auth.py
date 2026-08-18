@@ -39,10 +39,15 @@ async def seed_admin_inicial() -> None:
 
 
 def criar_token(login: str) -> str:
+    agora = datetime.utcnow()
     payload = {
         "sub": login,
         "tipo": "painel_os",
-        "exp": datetime.utcnow() + timedelta(hours=TOKEN_EXPIRE_HOURS),
+        # `iat` existe para a barra de status medir ha quanto tempo a sessao
+        # comecou. Token antigo, sem o campo, so mostra "--" ate a pessoa
+        # entrar de novo -- nada quebra e nao ha migracao.
+        "iat": agora,
+        "exp": agora + timedelta(hours=TOKEN_EXPIRE_HOURS),
     }
     return jwt.encode(payload, settings.painel_jwt_secret, algorithm=ALGORITHM)
 

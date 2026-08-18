@@ -32,6 +32,11 @@ async function montarSidebar(abaAtual) {
     return null;
   }
 
+  /* A barra de status desenha usuario, owner e o codigo da tela. Ela NAO
+     chama /me por conta propria: o perfil ja esta aqui, e duas chamadas para
+     o mesmo dado e a semente de duas verdades. */
+  if (window.barraStatusRecebePerfil) window.barraStatusRecebePerfil(perfil);
+
   const abasDoPerfil = perfil.abas || [];
 
   /* Quem fica em negrito é a ROTA, não a permissão. `config` cobre duas telas

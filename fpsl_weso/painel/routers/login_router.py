@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from .. import abas as abas_painel
+from .. import telas as telas_registro
 from ... import ratelimit
 from ..auth import validar_login, criar_token, get_usuario_painel
 from .. import google_auth
@@ -30,6 +31,19 @@ def _perfil(usuario: dict) -> dict:
         "admin": usuario["admin"],
         "owner": usuario.get("owner", False),
         "abas": abas_painel.do_usuario(usuario),
+        # Mapa rota -> {codigo, titulo} de TODA tela ativa, inclusive as que
+        # ficam fora do menu (o Historico de Cadastros). E o que a barra de
+        # status usa para saber em que tela a pessoa esta, sem uma chamada por
+        # pagina. Nao e segredo: e o catalogo, nao o conteudo -- a CFG_9.1
+        # continua so-owner porque mostra fase, permissao e aposentados.
+        "codigos": {
+            t["rota"]: {"codigo": t["codigo"], "titulo": t["titulo"]}
+            for t in telas_registro.ativas()
+            # `permissao is None` sao as telas de demandas, publicas por token e
+            # fora do painel: rota com `{token}` nunca casa com um caminho real
+            # e elas nem carregam a barra. Ficariam so como ruido no payload.
+            if t["permissao"] is not None
+        },
     }
 
 

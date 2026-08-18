@@ -1,8 +1,11 @@
 import asyncio
+import logging
+import secrets
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fpsl_weso.client import start_client, stop_client
 from fpsl_weso.harmonit_client import start_harmonit_client, stop_harmonit_client
 from fpsl_weso.routers import clientes, simcards, rastreadores, veiculos, admin
@@ -19,6 +22,8 @@ from fpsl_weso.painel.auth import seed_admin_inicial
 from fpsl_weso.services import onboarding
 from fpsl_weso.services.sync_inadimplencia import loop_inadimplencia
 from fpsl_weso import storage
+
+log = logging.getLogger("fpsl")
 
 
 @asynccontextmanager
@@ -44,6 +49,36 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
 )
+
+@app.middleware("http")
+async def identificar_requisicao(request: Request, call_next):
+    """Da um id curto a cada requisicao e devolve no header.
+
+    Espelha o middleware do MoviZap (`movizap/main.py`, em producao desde
+    12/08). E esse id que a barra de status mostra: no suporte, o que se
+    procura no journal nao e "a tela de placas por volta das 14h" -- e AQUELA
+    requisicao. So loga o que interessa (lento ou com erro), para nao repetir
+    no journal o que o uvicorn ja escreve.
+    """
+    req_id = secrets.token_hex(2)
+    request.state.req_id = req_id
+    inicio = time.perf_counter()
+    try:
+        resposta = await call_next(request)
+    except Exception:
+        log.exception("req=%s %s %s", req_id, request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Erro interno.", "req_id": req_id},
+            headers={"X-Request-Id": req_id},
+        )
+    ms = (time.perf_counter() - inicio) * 1000
+    resposta.headers["X-Request-Id"] = req_id
+    if ms > 1000 or resposta.status_code >= 400:
+        log.info("req=%s %s %s -> %s em %.0fms",
+                 req_id, request.method, request.url.path, resposta.status_code, ms)
+    return resposta
+
 
 app.include_router(clientes.router)
 app.include_router(simcards.router)

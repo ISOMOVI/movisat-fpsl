@@ -36,19 +36,6 @@ TELAS = [
         "permissao": "cadastro_placas",
         "fase": 1,
     },
-    {
-        # ⚠️ MESMA PERMISSÃO da CAD_1.1, de propósito. Quem cadastra precisa ver
-        # o que cadastrou; uma permissão separada para "ver o que eu mesmo fiz"
-        # seria burocracia sem dono. Fica fora do menu, alcançada por link.
-        "codigo": "CAD_1.2",
-        "titulo": "Histórico de Cadastros",
-        "rota": "/painel/cadastro-placas/historico",
-        "icone": "bi-clock-history",
-        "descricao": "O que cada rodada cadastrou, em qual sistema, e o que falhou.",
-        "permissao": "cadastro_placas",
-        "fase": 1,
-        "no_menu": True,
-    },
     # ---- OSG: geração de OS ----
     {
         "codigo": "OSG_1.1",
@@ -79,6 +66,25 @@ TELAS = [
         "icone": "bi-clock-history",
         "descricao": "Varredura de OS por número e os eventos de oficina encontrados.",
         "permissao": "os_historico",
+        "fase": 1,
+    },
+    {
+        # ⚠️ MESMA PERMISSÃO da CAD_1.1, de propósito. Quem cadastra precisa ver
+        # o que cadastrou; uma permissão separada para "ver o que eu mesmo fiz"
+        # seria burocracia sem dono -- e separar agora exigiria migrar a coluna
+        # `abas` de todas as contas para não tirar de ninguém o que já tem.
+        #
+        # 🚨 ESTA ENTRADA ESTÁ FORA DA ORDEM DOS CÓDIGOS DE PROPÓSITO. A ordem
+        # desta lista É a ordem do menu, e em 18/08 você pediu o Histórico de
+        # Placas logo abaixo do Histórico de OS, junto dos outros históricos.
+        # O CÓDIGO CONTINUA `CAD_1.2`: título, rota e posição mudam, código não
+        # -- é a regra do registro, e é ela que mantém o log antigo honesto.
+        "codigo": "CAD_1.2",
+        "titulo": "Histórico de Placas",
+        "rota": "/painel/cadastro-placas/historico",
+        "icone": "bi-clock-history",
+        "descricao": "O que cada rodada cadastrou, em qual sistema, e o que falhou.",
+        "permissao": "cadastro_placas",
         "fase": 1,
     },
     {
