@@ -900,6 +900,10 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         # 29/07 so o agrupado preenchia, e os templates por placa mandavam o
         # literal 'NUMERO DE SERIE' para a OS. Best-effort: WESO/cache fora
         # deixa o marcador e nao impede a geracao.
+        # 🚨 O QUE A WESO DEIXOU DE RESPONDER VIRA AVISO NA TELA. Antes ficava
+        # so no journal, e a OS saia sem equipamento sem ninguem notar -- foi
+        # assim que nasceu a 16775. Ver `_anotar` em `equipamentos.py`.
+        falhas_weso: list[str] = []
         todas = [p.placa for p in body.placas]
         todas += [p.placa_entrada for p in body.placas if getattr(p, "placa_entrada", None)]
         # Upgrade: a serie do equipamento que ENTRA vive na placa-recipiente de
@@ -912,7 +916,7 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         # No upgrade continua entrando: la nao ha leitura ao vivo.
         if perfil.get("placa_teste_sufixo") and not perfil.get("sem_termo"):
             todas += [placa_teste(p.placa, perfil["placa_teste_sufixo"]) for p in body.placas]
-        seriais = await buscar_seriais(todas)
+        seriais = await buscar_seriais(todas, falhas_weso)
 
         # 🚨 MANUTENCAO LE AO VIVO. O recipiente nasce minutos antes da OS e o
         # cache local so atualiza as 04:15 -- ler do cache aqui devolveria
@@ -931,7 +935,7 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
             alvos = [p.placa for p in body.placas]
             if sufixo:
                 alvos += [placa_teste(p.placa, sufixo) for p in body.placas]
-            lidos = await dados_das_placas(alvos)
+            lidos = await dados_das_placas(alvos, falhas_weso)
             for p in body.placas:
                 chave = _chave_placa(p.placa)
                 if lidos.get(chave):
@@ -952,6 +956,7 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
                         "serie": serie_de(seriais, pt)
                         if serie_de(seriais, pt) != MARCADOR_NAO_LOCALIZADO else None,
                     }
+        avisos += falhas_weso
         recipientes, avisos_rec = _conferir_recipientes(body, perfil, recipientes)
         avisos += avisos_rec
 

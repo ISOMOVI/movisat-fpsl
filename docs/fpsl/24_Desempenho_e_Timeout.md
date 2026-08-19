@@ -154,3 +154,87 @@ versão · alguém for mexer em `LIMIAR_PLACA_A_PLACA` ou `TETO_LEITURA_AO_VIVO`
 
 Ver também: `12_Nginx.md` (config real) · `23_Manutencao.md` (perfis sem termo)
 · `18_Testes.md` (o exercício da tela em node).
+
+---
+
+# A OS 16775 — quando o tempo da WESO vira OS errada, em silêncio (2026-08-19)
+
+Tudo acima trata de tempo que **derruba a tela**. Este trecho trata do caso
+pior: tempo que **não derruba nada** e entrega uma OS errada com cara de OS
+certa.
+
+## O que aconteceu
+
+Em 17/08 às 15:39 a **OS 16775** foi gerada sem o rastreador e sem o chip. O
+operador só percebeu conferindo no Harmonit, e corrigiu na mão. A tela não
+mostrou erro nenhum, o serviço ficou `active`, e o log de acesso registrou
+`200 OK`.
+
+A causa estava no journal do serviço, no minuto exato:
+
+```
+Aug 17 15:39:29 srv786604 uvicorn[3683780]:
+    equipamentos: base de veiculos indisponivel: 502: WESO indisponível (timeout)
+```
+
+`_rastreador_id_por_placa` chamava `/Veiculos/Consultar`, tomava exceção,
+escrevia um `log.warning` e devolvia `{}`. Para o resto do fluxo, `{}` é
+indistinguível de **"a WESO respondeu, e nenhuma dessas placas tem
+rastreador"**. Sem rastreador não há modelo; sem modelo, `_material_do_equipamento`
+devolve `None` e a OS sai sem o equipamento e sem o chip.
+
+🚨 **A HIPÓTESE REGISTRADA ERA OUTRA, E ERA FALSA.** O `Proximos_Passos.md`
+dizia que a causa era um modelo faltando no de-para (`produto_do_modelo`). Foi
+conferido em 19/08: o de-para tem 24 modelos, a WESO tem 29 distintos, e os 5
+de fora (`ST500`, `NT2x`, `ST4945S`, `NT11`, `Concox GT06`) somam 84 veículos —
+nenhum na 16775. **O de-para estava íntegro.** A hipótese era plausível e
+custou a apuração; o que a resolveu foi o journal, não o raciocínio.
+
+## A correção: a falha vira aviso na tela
+
+`equipamentos.py` ganhou `_anotar(falhas, texto)` e uma **lista opcional**
+`falhas` nas funções que engoliam a exceção — `_rastreador_id_por_placa`,
+`buscar_seriais`, `_base_inteira`, `_veiculos_ao_vivo` e `dados_das_placas`. O
+`os_router` passa a lista nas duas chamadas da geração e despeja o resultado em
+`avisos`, que a tela já renderiza escapado no passo do resumo, **antes** do
+botão Gerar.
+
+| Decisão | Por quê |
+|---|---|
+| **Não bloqueia** | continua valendo "lacuna é melhor que apagar". A OS sai; o que muda é que a pessoa vê |
+| **Lista opcional, não retorno em tupla** | tupla quebraria `buscar_recipientes` e o `teste_upgrade_8820` |
+| **Lista opcional, não variável de módulo** | variável de módulo mistura requisições concorrentes |
+| **WESO respondendo ⇒ nenhum aviso** | aviso falso treina a equipe a ignorar aviso. É verificação explícita no teste |
+
+Teste: `tests/teste_aviso_weso.py`, 20 verificações. Os itens 6 e 7 leem os
+**consumidores** — o fonte do `os_router` e o `gerar_os.html` — porque um aviso
+que a tela não mostra é o defeito de 18/08 outra vez.
+
+## O que isto diz sobre o teto de 30s
+
+O teto do cliente WESO (`client.py`, `timeout=30`) não é uma preocupação
+teórica: **ele já produziu uma OS errada em produção**. A documentação da WESO
+descreve 30 a 90s como tempo normal de resposta. O teto continua em 30s —
+mexer nele é decisão do usuário, e nada foi alterado.
+
+## 🚨 O timeout da WESO pode MENTIR na direção contrária
+
+Medido em 19/08 apagando placas de teste: `/Veiculos/Excluir` estourou os 30s e
+levantou `502: WESO indisponível (timeout)`. A releitura imediata da base
+mostrou o veículo **ainda existindo**. Na execução seguinte, minutos depois, o
+veículo **tinha sumido** e a base caiu de 1972 para 1971.
+
+Ou seja: **o pedido foi processado depois de o cliente desistir**, e a
+releitura imediata também mentiu, porque ainda era cedo demais.
+
+Consequências práticas:
+
+- em operação **idempotente** (excluir), repetir depois do timeout é seguro — a
+  segunda tentativa apenas informa "já não existe";
+- em operação **que cria**, repetir depois do timeout **duplica**. O registro
+  de 17/08 no `cadastro_placas_log` mostra exatamente isso: uma linha
+  `weso | falhou | nao consegui conferir na WESO: WESO indisponível (timeout)`
+  para o `9BD281AJPTYBM7701`, e o veículo criado assim mesmo (`88368`);
+- **"reler o estado" continua sendo a regra, mas uma releitura só não basta**
+  quando o timeout foi do lado da escrita. Reler de novo, mais tarde.
+

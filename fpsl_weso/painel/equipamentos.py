@@ -52,7 +52,35 @@ def _chave(placa: str) -> str:
     return re.sub(r"\s+", "", str(placa or "")).upper()
 
 
-async def _rastreador_id_por_placa(placas: list[str]) -> dict[str, int]:
+# 🚨 FALHA DE LEITURA DA WESO TEM DE CHEGAR NA TELA (17/08 -> 19/08).
+# A OS 16775 nasceu sem rastreador e sem chip, e o operador so descobriu
+# conferindo no Harmonit. A causa esta no journal, no minuto exato:
+#     Aug 17 15:39:29  equipamentos: base de veiculos indisponivel:
+#                      502: WESO indisponivel (timeout)
+# `_rastreador_id_por_placa` devolvia `{}` e a geracao seguia como se a base
+# tivesse respondido "nenhuma placa tem rastreador". Sem modelo nao ha material
+# e nao ha chip -- e o unico rastro era um `log.warning` que ninguem le.
+#
+# NAO BLOQUEIA. Continua valendo o que ficou decidido: lacuna e melhor que
+# apagar, e a OS sai. O que muda e que a pessoa VE antes de clicar em Gerar.
+#
+# POR QUE LISTA OPCIONAL, e nao retorno em tupla nem variavel de modulo: o
+# retorno em tupla quebraria `buscar_recipientes` e o `teste_upgrade_8820`, e
+# variavel de modulo mistura requisicoes concorrentes. Quem quer saber, passa a
+# lista; quem nao passa, continua com o comportamento de antes.
+def _anotar(falhas: list[str] | None, texto: str) -> None:
+    """Registra uma degradacao para o chamador mostrar. Nunca repete a mesma."""
+    if falhas is not None and texto not in falhas:
+        falhas.append(texto)
+
+
+AVISO_BASE_MUDA = ("A WESO nao respondeu ao ler a base de veiculos. "
+                   "As placas que nao resolveram saem SEM o equipamento e SEM "
+                   "o chip na OS -- confira antes de gerar.")
+
+
+async def _rastreador_id_por_placa(placas: list[str],
+                                   falhas: list[str] | None = None) -> dict[str, int]:
     """{chave_normalizada: rastreador_id}.
 
     UMA chamada para a base inteira, nao uma por placa. Medido em 29/07:
@@ -69,6 +97,7 @@ async def _rastreador_id_por_placa(placas: list[str]) -> dict[str, int]:
         r = await weso_get("/Veiculos/Consultar", {})
     except Exception as exc:
         log.warning("equipamentos: base de veiculos indisponivel: %s", exc)
+        _anotar(falhas, AVISO_BASE_MUDA)
         return {}
     base = (r.get("veiculos") if isinstance(r, dict) else r) or []
     achados: dict[str, int] = {}
@@ -109,7 +138,8 @@ def _cache():
 LIMIAR_LOTE = 4  # acima disso, 1 chamada em lote vence N chamadas por id
 
 
-async def buscar_seriais(placas: list[str]) -> dict[str, str]:
+async def buscar_seriais(placas: list[str],
+                         falhas: list[str] | None = None) -> dict[str, str]:
     """{chave_normalizada: numeroSerie} para as placas que resolveram.
 
     Ordem: cache local primeiro; o que faltar (placa cadastrada depois da
@@ -151,7 +181,7 @@ async def buscar_seriais(placas: list[str]) -> dict[str, str]:
 
     # O que o cache nao tinha: placa nova, ou cache indisponivel.
     log.info("equipamentos: %s placa(s) indo a WESO ao vivo", len(faltando))
-    ids = await _rastreador_id_por_placa(faltando)
+    ids = await _rastreador_id_por_placa(faltando, falhas)
     if not ids:
         return seriais
 
@@ -274,7 +304,8 @@ def _grafias(placa: str) -> tuple:
     return tuple(saida)
 
 
-async def _veiculos_ao_vivo(placas: list[str], alvo: set[str]) -> list | None:
+async def _veiculos_ao_vivo(placas: list[str], alvo: set[str],
+                            falhas: list[str] | None = None) -> list | None:
     """Registros de veículo da WESO para estas placas. `None` = não deu para ler.
 
     Poucas placas: uma consulta por placa (0,67s cada). Muitas: a base inteira,
@@ -323,10 +354,13 @@ async def _veiculos_ao_vivo(placas: list[str], alvo: set[str]) -> list | None:
             log.warning("equipamentos: sem tempo para a base inteira; %s placa(s) "
                         "ficam como NAO ENCONTRADAS: %s",
                         len(faltando), ", ".join(sorted(faltando))[:120])
+            _anotar(falhas, f"Sem tempo para consultar a WESO: "
+                            f"{len(faltando)} placa(s) ficaram sem equipamento "
+                            f"e sem chip ({', '.join(sorted(faltando))[:120]}).")
             return achados
         log.info("equipamentos: %s placa(s) sem resposta exata -- indo a base "
                  "inteira: %s", len(faltando), ", ".join(sorted(faltando))[:120])
-        base = await _base_inteira(restante())
+        base = await _base_inteira(restante(), falhas)
         if base is None:
             return achados
         # 🚨 DEDUPLICAR POR ID. O mesmo veículo volta nas duas consultas, e
@@ -335,7 +369,7 @@ async def _veiculos_ao_vivo(placas: list[str], alvo: set[str]) -> list | None:
         # ambiguidade é pior que lentidão: some o equipamento da OS.
         return _sem_repetido(achados + base)
 
-    return await _base_inteira()
+    return await _base_inteira(None, falhas)
 
 
 def _sem_repetido(veiculos: list) -> list:
@@ -349,7 +383,8 @@ def _sem_repetido(veiculos: list) -> list:
     return saida
 
 
-async def _base_inteira(teto: float | None = None) -> list | None:
+async def _base_inteira(teto: float | None = None,
+                        falhas: list[str] | None = None) -> list | None:
     """A base toda. `teto` em segundos: estourou, devolve None (= nao sei)."""
     try:
         chamada = weso_get("/Veiculos/Consultar", {})
@@ -357,14 +392,17 @@ async def _base_inteira(teto: float | None = None) -> list | None:
     except asyncio.TimeoutError:
         log.warning("equipamentos: base de veiculos passou de %ss -- desisti; "
                     "o que faltava fica como NAO ENCONTRADO", teto)
+        _anotar(falhas, AVISO_BASE_MUDA)
         return None
     except Exception as exc:
         log.warning("equipamentos: base de veiculos indisponivel ao vivo: %s", exc)
+        _anotar(falhas, AVISO_BASE_MUDA)
         return None
     return (r.get("veiculos") if isinstance(r, dict) else r) or []
 
 
-async def dados_das_placas(placas: list[str]) -> dict[str, dict]:
+async def dados_das_placas(placas: list[str],
+                           falhas: list[str] | None = None) -> dict[str, dict]:
     """{chave_normalizada: dados} lido AO VIVO da WESO, sem passar pelo cache.
 
     🚨 AO VIVO E REQUISITO, NAO LUXO, nos perfis de manutencao: o recipiente
@@ -384,7 +422,7 @@ async def dados_das_placas(placas: list[str]) -> dict[str, dict]:
     alvo = {_chave(p) for p in placas if str(p or "").strip()}
     if not alvo:
         return {}
-    base = await _veiculos_ao_vivo(placas, alvo)
+    base = await _veiculos_ao_vivo(placas, alvo, falhas)
     if base is None:
         return {}
 
