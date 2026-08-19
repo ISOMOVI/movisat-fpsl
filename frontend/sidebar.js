@@ -120,7 +120,16 @@ async function montarSidebar(abaAtual) {
     }))));
   } catch (e) { /* localStorage cheio ou bloqueado: só perde o atalho */ }
 
-  const temAba = abasDoPerfil.some((a) => a.id === abaAtual);
+  /* 🚨 A TRAVA LÊ `permissoes`, NÃO `abas`. `abas` é o que vai para o menu e
+     exclui as telas `no_menu`; usar essa lista aqui faz uma página fora do
+     menu se julgar fora do perfil e redirecionar -- o loop de 17/08. Enquanto
+     toda tela fora do menu dividia permissão com uma do menu, os dois
+     caminhos davam o mesmo resultado por acaso.
+     ⚠️ O `||` mantém compatível com um /me antigo em cache do navegador: sem
+     o campo novo, cai no comportamento anterior em vez de trancar todo mundo
+     para fora. */
+  const permitidas = perfil.permissoes || abasDoPerfil.map((a) => a.id);
+  const temAba = permitidas.includes(abaAtual);
   if (!temAba) {
     // sem acesso a esta aba: manda pra primeira que ele tem, ou pro login se
     // o perfil estiver vazio (usuário criado sem nenhuma aba marcada).

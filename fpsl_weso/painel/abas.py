@@ -55,6 +55,11 @@ def _uma_por_permissao() -> list[dict]:
 ABAS = _uma_por_permissao()
 
 
+def permissoes_do_usuario(usuario: dict) -> list[str]:
+    """Toda permissão acessível, inclusive fora do menu. Ver o registro."""
+    return registro.permissoes_do_usuario(usuario)
+
+
 def do_usuario(usuario: dict) -> list[dict]:
     """As telas que ESTE usuário vê na sidebar. Owner vê tudo que está ativo."""
     return registro.do_usuario(usuario)

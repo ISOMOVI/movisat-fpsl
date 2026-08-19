@@ -74,6 +74,13 @@ for campo in sorted(usados):
            all(campo in a and a[campo] not in (None, "") for a in operador))
 
 print("\n[4] o `id` e a PERMISSAO -- e o vocabulario que as paginas falam")
+# 🚨 O MENU TEM DE SER SUBCONJUNTO DO ACESSO, sempre. Item no menu que a pessoa
+# nao pode abrir e link que leva a 403; e o inverso (acesso sem menu) e
+# legitimo -- e o caso das telas `no_menu`.
+_menu = {a.get("id") for a in owner}
+_acesso = set(abas_painel.permissoes_do_usuario({"owner": True, "abas": []}))
+checar("o menu do owner cabe dentro do que ele pode acessar",
+       _menu <= _acesso, f"sobrando no menu: {sorted(_menu - _acesso)}")
 declarados = {}
 for html in sorted((RAIZ / "frontend").glob("*.html")):
     m = re.search(r"montarSidebar\(\s*'([^']+)'", html.read_text(encoding="utf-8"))
@@ -81,7 +88,15 @@ for html in sorted((RAIZ / "frontend").glob("*.html")):
         declarados[html.name] = m.group(1)
 checar("achou as paginas que montam sidebar", len(declarados) >= 8, str(len(declarados)))
 
-vistas_do_owner = {a.get("id") for a in owner}   # .get: campo ausente REPROVA, nao estoura
+# 🚨 A PERGUNTA E DE ACESSO, NAO DE MENU. Ate 19/08 as duas coincidiam, porque
+# toda tela fora do menu dividia permissao com uma do menu (o Historico de
+# Placas com o Cadastro) ou nao tinha permissao (as de demandas). A `OPR_1.1`
+# quebrou a coincidencia: permissao propria e fora do menu.
+#
+# Medir pela lista do MENU aqui reprovaria uma pagina que funciona -- e, pior,
+# esconderia o caso inverso: pagina que declara permissao que ninguem tem.
+# `permissoes_do_usuario` responde exatamente "o que esta pessoa pode abrir".
+vistas_do_owner = set(abas_painel.permissoes_do_usuario({"owner": True, "abas": []}))
 for arquivo, declarado in sorted(declarados.items()):
     checar(f"{arquivo} declara `{declarado}`, que o owner recebe",
            declarado in vistas_do_owner,

@@ -31,6 +31,11 @@ def _perfil(usuario: dict) -> dict:
         "admin": usuario["admin"],
         "owner": usuario.get("owner", False),
         "abas": abas_painel.do_usuario(usuario),
+        # 🚨 `abas` é O QUE DESENHAR; `permissoes` é O QUE PODE ABRIR. As duas
+        # coincidiam enquanto toda tela fora do menu dividia permissão com uma
+        # do menu. A `OPR_1.1` quebrou a coincidência, e o `sidebar.js` usava a
+        # primeira para decidir acesso -- a página se julgaria fora do perfil.
+        "permissoes": abas_painel.permissoes_do_usuario(usuario),
         # Mapa rota -> {codigo, titulo} de TODA tela ativa, inclusive as que
         # ficam fora do menu (o Historico de Cadastros). E o que a barra de
         # status usa para saber em que tela a pessoa esta, sem uma chamada por

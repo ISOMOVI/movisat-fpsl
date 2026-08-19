@@ -23,6 +23,27 @@ Ver `docs/fpsl/27_Registro_Telas.md`.
 # `fase` documenta quando a tela entra. Só as de fase 1 sobem; as demais ficam
 # registradas para o código já estar reservado e nunca ser reusado.
 TELAS = [
+    # ---- OPR: operações (a aba única, em construção desde 19/08) ----
+    # 🚨 SUBSTITUI `CAD_1.1` E `OSG_1.1`, e nasce AO LADO delas. As duas
+    # continuam no ar e intactas; a troca é a última fase, depois de uso real.
+    # É o oposto do que se fez com o interruptor do Cadastro de Placas em
+    # 19/08, onde a remoção veio antes da garantia do que dependia dela.
+    #
+    # ⚠️ FORA DO MENU e com permissão que ninguém tem. Ela sobe alcançável por
+    # URL para o owner (que enxerga tudo) e não aparece para mais ninguém --
+    # é assim que se testa em produção sem oferecer meia tela a quem trabalha.
+    #
+    # Escopo, regras e fases: `docs/fpsl/28_Operacoes.md`.
+    {
+        "codigo": "OPR_1.1",
+        "titulo": "Operações",
+        "rota": "/painel/operacoes",
+        "icone": "bi-diagram-3",
+        "descricao": "Termo, cliente, placas e OS numa tela só. Substitui Cadastro de Placas e Gerar OS.",
+        "permissao": "operacoes",
+        "fase": 1,
+        "no_menu": True,
+    },
     # ---- CAD: cadastro de placas ----
     # 🚨 PRIMEIRA DA LISTA DE PROPÓSITO. É a ordem do trabalho real: o termo
     # assinado vira placa na WESO e no Harmonit, e só depois vira OS. A sidebar
@@ -270,6 +291,24 @@ def do_usuario(usuario: dict) -> list[dict]:
         if not t.get("no_menu") and t["permissao"] is not None
         and pode_acessar(usuario, t["codigo"])
     ]
+
+
+def permissoes_do_usuario(usuario: dict) -> list[str]:
+    """TODA permissão que este usuário pode acessar -- inclusive as telas que
+    ficam FORA do menu.
+
+    🚨 NÃO É O MESMO QUE `do_usuario`, e confundir as duas custou caro. Aquela
+    responde "o que desenhar no menu"; esta responde "o que a pessoa pode
+    abrir". Enquanto toda tela `no_menu` dividia permissão com uma do menu, as
+    duas respostas coincidiam por acaso. A `OPR_1.1` quebrou a coincidência: é
+    a primeira com permissão própria e fora do menu, e o `sidebar.js` usava a
+    lista do menu para decidir se a página era acessível -- ela se julgaria
+    fora do perfil e redirecionaria, que é o loop de 17/08.
+    """
+    return sorted({
+        t["permissao"] for t in ativas()
+        if t["permissao"] is not None and pode_acessar(usuario, t["codigo"])
+    })
 
 
 def para_frontend() -> list[dict]:

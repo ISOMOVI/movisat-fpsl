@@ -15,6 +15,9 @@ from fpsl_weso.painel.routers import clientes_router as painel_clientes_router
 from fpsl_weso.painel.routers import usuarios_router as painel_usuarios_router
 from fpsl_weso.painel.routers import os_scan_router as painel_os_scan_router
 from fpsl_weso.painel.routers import placas_router as painel_placas_router
+# Aba Operações (OPR_1.1) — router próprio, sem depender dos dois que
+# vão ser desmontados. Ver docs/fpsl/28_Operacoes.md.
+from fpsl_weso.painel.routers import operacoes_router as painel_operacoes_router
 # 🚨 PÚBLICO por link, fora do /painel: o quadro de demandas não exige conta.
 from fpsl_weso.painel.routers import demandas_router
 from fpsl_weso import demandas as quadro_demandas
@@ -156,6 +159,7 @@ app.include_router(painel_clientes_router.router)
 app.include_router(painel_usuarios_router.router)
 app.include_router(painel_os_scan_router.router)
 app.include_router(painel_placas_router.router)
+app.include_router(painel_operacoes_router.router)
 app.include_router(demandas_router.router)
 
 app.mount("/painel/static", StaticFiles(directory="frontend"), name="painel_static")
@@ -179,6 +183,14 @@ async def painel_usuarios_page():
 @app.get("/painel/vinculos")
 async def painel_vinculos_page():
     return FileResponse("frontend/vinculos.html")
+
+
+# ── Operações (OPR_1.1) — a aba única, em construção ─────────────────────────
+# Ver `docs/fpsl/28_Operacoes.md`. Fora do menu: alcançável por URL enquanto só
+# o owner deve entrar.
+@app.get("/painel/operacoes")
+async def painel_operacoes_page():
+    return FileResponse("frontend/operacoes.html")
 
 
 @app.get("/painel/cadastro-placas")

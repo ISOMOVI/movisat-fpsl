@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Operações — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/painel/static/barra_status.css">
+<!-- 🚨 CSS PRÓPRIO, clonado do gerar_os.html. As duas telas velhas vão ser
+     apagadas; estilo compartilhado com elas sumiria junto. -->
+<link rel="stylesheet" href="/painel/static/operacoes.css">
+<style>
+  /* Só o que é desta tela e não existe nas outras. */
+  .etapa-titulo { font-size:.95rem; font-weight:700; margin-bottom:2px; }
+  .etapa-sub { font-size:.8rem; color:var(--text2); margin-bottom:16px; }
+  .em-construcao { border:1.5px dashed var(--border); border-radius:10px; padding:28px;
+                   text-align:center; color:var(--text2); font-size:.86rem; }
+  .em-construcao code { background:var(--bg2); padding:1px 6px; border-radius:4px; }
+  .step-dot.locked { opacity:.45; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom">
+      <button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <h1>Operações</h1>
+
+    <div class="aviso" id="avisoConstrucao">
+      <strong>Em construção (F1).</strong> Esta aba vai substituir Cadastro de
+      Placas e Gerar OS. As duas continuam funcionando normalmente e nada aqui
+      escreve em sistema nenhum ainda.
+    </div>
+
+    <div class="steps" style="margin-top:20px">
+      <div class="step-dot active" id="dot-1">1</div>
+      <div class="step-line"></div>
+      <div class="step-dot locked" id="dot-2">2</div>
+      <div class="step-line"></div>
+      <div class="step-dot locked" id="dot-3">3</div>
+      <div class="step-line"></div>
+      <div class="step-dot locked" id="dot-4">4</div>
+    </div>
+
+    <div class="card">
+      <!-- ETAPA 1 — documento -->
+      <div class="panel active" id="panel-1">
+        <div>
+          <div class="etapa-titulo">1 · Documento</div>
+          <div class="etapa-sub">O tipo de operação decide todo o resto: se há
+            termo, se a etapa 3 cria ou confere, e quais OS nascem no fim.</div>
+        </div>
+        <div>
+          <label for="perfil">Tipo de operação</label>
+          <select id="perfil"></select>
+        </div>
+        <div id="resumoPerfil" class="aviso-info" style="display:none"></div>
+        <div class="em-construcao">
+          Leitura do termo entra na <strong>F2</strong>.
+        </div>
+      </div>
+
+      <!-- ETAPA 2 — cliente -->
+      <div class="panel" id="panel-2">
+        <div>
+          <div class="etapa-titulo">2 · Cliente</div>
+          <div class="etapa-sub">Harmonit e WESO lado a lado. Falta na WESO,
+            cadastra. Falta no Harmonit, para.</div>
+        </div>
+        <div class="em-construcao">Entra na <strong>F2</strong>.</div>
+      </div>
+
+      <!-- ETAPA 3 — placas -->
+      <div class="panel" id="panel-3">
+        <div>
+          <div class="etapa-titulo">3 · Placas</div>
+          <div class="etapa-sub">Cria ou confere, conforme o perfil. É o ponto
+            em que a tela escreve nos dois sistemas.</div>
+        </div>
+        <div class="em-construcao">Entra na <strong>F3</strong>.</div>
+      </div>
+
+      <!-- ETAPA 4 — OS -->
+      <div class="panel" id="panel-4">
+        <div>
+          <div class="etapa-titulo">4 · Ordens de serviço</div>
+          <div class="etapa-sub">Mostra o que vai ser gravado, não o que foi
+            digitado.</div>
+        </div>
+        <div class="em-construcao">Entra na <strong>F4</strong>.</div>
+      </div>
+
+      <div class="footer-nav">
+        <button class="btn btn-ghost" id="btnVoltar" onclick="irPara(etapaAtual - 1)"
+                style="visibility:hidden">← Voltar</button>
+        <button class="btn btn-primary" id="btnAvancar" onclick="irPara(etapaAtual + 1)">
+          Avançar →
+        </button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="/painel/static/barra_status.js"></script>
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('operacoes');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+
+/* 🚨 ESCAPA TUDO QUE VEM DE FORA. O `gerar_os.html` tem 26 chamadas de
+   `escapeHtml` desde 15/07, e a tela de placas nasceu sem nenhuma em 17/08 --
+   a lição registrada foi "tela nova se compara com a tela que já existe".
+   Esta nasce com a função antes de existir conteúdo para escapar. */
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+/* 🚨 NEM TODA RESPOSTA É JSON. Quando o nginx corta por tempo (504) ou o
+   serviço cai (502), o corpo é uma PÁGINA HTML, e `res.json()` estoura
+   "Unexpected token '<'" -- que foi o "erro json" que a operadora viu em
+   14/08 e que não dizia nada sobre o que aconteceu. Lê como texto primeiro. */
+async function lerResposta(res) {
+  const bruto = await res.text();
+  let corpo = null;
+  try { corpo = JSON.parse(bruto); } catch (e) { corpo = null; }
+  if (res.ok) return corpo;
+  if (res.status === 401) { logout(); throw new Error('sessão expirada'); }
+  if (res.status === 403) throw new Error('sem permissão para esta aba');
+  if (res.status === 502 || res.status === 504) {
+    throw new Error('o servidor passou do tempo. Nada foi gravado — tente de novo.');
+  }
+  throw new Error((corpo && corpo.detail) || `erro HTTP ${res.status}`);
+}
+
+/* ── navegação entre etapas ─────────────────────────────────────────────────
+   🚨 A ORDEM É A REGRA, e é por isso que a aba existe. Hoje dá para gerar OS
+   de placa que não existe na WESO -- foi assim que a OS 16775 saiu sem
+   equipamento e sem chip. Aqui a etapa N só abre com a N-1 concluída.
+   Na F1 nada conclui nada, então a trava está solta de propósito. */
+let etapaAtual = 1;
+const TOTAL_ETAPAS = 4;
+
+function irPara(n) {
+  if (n < 1 || n > TOTAL_ETAPAS) return;
+  etapaAtual = n;
+  for (let i = 1; i <= TOTAL_ETAPAS; i++) {
+    const painel = document.getElementById('panel-' + i);
+    const bola = document.getElementById('dot-' + i);
+    painel.classList.toggle('active', i === n);
+    bola.classList.toggle('active', i === n);
+    bola.classList.toggle('done', i < n);
+    bola.classList.toggle('locked', i > n);
+  }
+  document.getElementById('btnVoltar').style.visibility = n === 1 ? 'hidden' : 'visible';
+  document.getElementById('btnAvancar').style.visibility =
+    n === TOTAL_ETAPAS ? 'hidden' : 'visible';
+}
+
+/* ── etapa 1: os perfis ─────────────────────────────────────────────────────
+   Vêm do servidor, nunca escritos aqui: a lista é `operacoes_config.PERFIS`, e
+   duplicá-la no navegador criaria duas verdades. */
+async function carregarPerfis() {
+  try {
+    const res = await fetch('/painel/api/operacoes/perfis', { headers: auth() });
+    const d = await lerResposta(res);
+    const sel = document.getElementById('perfil');
+    sel.innerHTML = (d.perfis || [])
+      .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`)
+      .join('');
+    sel.onchange = () => mostrarPerfil(d.perfis);
+    mostrarPerfil(d.perfis);
+  } catch (e) {
+    document.getElementById('resumoPerfil').style.display = 'block';
+    document.getElementById('resumoPerfil').textContent =
+      'Não consegui carregar os tipos de operação: ' + e.message;
+  }
+}
+
+/* Mostra o que o perfil escolhido implica, ANTES de o operador subir nada.
+   É informação que hoje só aparece depois de errar. */
+function mostrarPerfil(perfis) {
+  const id = document.getElementById('perfil').value;
+  const p = (perfis || []).find((x) => x.id === id);
+  const caixa = document.getElementById('resumoPerfil');
+  if (!p) { caixa.style.display = 'none'; return; }
+  const partes = [
+    p.sem_termo ? 'sem termo — entrada manual' : 'exige o PDF do termo',
+    { cria: 'etapa 3 CRIA as placas',
+      confere: 'etapa 3 CONFERE as placas',
+      cria_entrada: 'etapa 3 cria a placa de ENTRADA' }[p.etapa_placas] || p.etapa_placas,
+    p.recipiente ? `recipiente ${p.recipiente} (só na WESO)` : null,
+    p.sem_financeira ? 'sem OS financeira' : null,
+  ].filter(Boolean);
+  caixa.style.display = 'block';
+  caixa.textContent = partes.join(' · ');
+}
+
+irPara(1);
+carregarPerfis();
+</script>
+</body>
+</html>
