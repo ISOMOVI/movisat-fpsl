@@ -159,8 +159,13 @@ async def http():
 # ── 4. contrato com a tela ───────────────────────────────────────────────────
 print("\n[4] contrato entre a rota de perfis e o HTML que a consome")
 # lê o HTML e extrai os campos que ele usa de cada perfil
-campos_no_html = set(re.findall(r"\bp\.([a-z_]+)\b", html))
-campos_no_html |= set(re.findall(r"\bx\.([a-z_]+)\b", html))
+# ⚠️ SÓ O TRECHO QUE LÊ PERFIL. Varrer o arquivo inteiro atrás de `x.campo`
+# pegava `x.texto`, que é de outra lambda -- a das linhas não lidas do termo
+# -- e reprovava a rota de perfis por um campo que não é dela. Trava que
+# mede demais reprova o que está certo, e ensina a ignorar a trava.
+_ini = html.index("function mostrarPerfil")
+_fim = html.index("}", html.index("caixa.textContent"))
+campos_no_html = set(re.findall(r"\bp\.([a-z_]+)\b", html[_ini:_fim]))
 entregues = set(operacoes_router.listar_perfis.__doc__ and [] or [])
 amostra = asyncio.run(operacoes_router.listar_perfis(_=None))["perfis"][0]
 entregues = set(amostra)

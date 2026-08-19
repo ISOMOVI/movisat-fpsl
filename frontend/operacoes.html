@@ -35,9 +35,10 @@
     <h1>Operações</h1>
 
     <div class="aviso" id="avisoConstrucao">
-      <strong>Em construção (F1).</strong> Esta aba vai substituir Cadastro de
-      Placas e Gerar OS. As duas continuam funcionando normalmente e nada aqui
-      escreve em sistema nenhum ainda.
+      <strong>Em construção (F2).</strong> Esta aba vai substituir Cadastro de
+      Placas e Gerar OS. As duas continuam funcionando normalmente. Aqui já
+      funcionam a leitura do termo e a conferência do cliente; a única escrita
+      é cadastrar o cliente na WESO, quando ele já existe no Harmonit.
     </div>
 
     <div class="steps" style="margin-top:20px">
@@ -63,8 +64,25 @@
           <select id="perfil"></select>
         </div>
         <div id="resumoPerfil" class="aviso-info" style="display:none"></div>
-        <div class="em-construcao">
-          Leitura do termo entra na <strong>F2</strong>.
+
+        <!-- Some inteiro nos perfis sem termo: oferecer o campo seria oferecer
+             um caminho que não existe. -->
+        <div id="anexoWrap">
+          <label>Termo (PDF)</label>
+          <div class="drop" id="drop" onclick="document.getElementById('arquivo').click()">
+            <div id="dropLabel">Clique ou arraste o PDF do termo aqui</div>
+            <input type="file" id="arquivo" accept="application/pdf" onchange="aoEscolher()">
+          </div>
+        </div>
+        <div id="semTermoWrap" style="display:none" class="aviso-info">
+          Este tipo não nasce de documento — a entrada digitada entra na F3.
+        </div>
+
+        <div class="msg" id="msgEtapa1" style="display:none"></div>
+        <div id="leitura" style="display:none">
+          <div class="aviso-info" id="leituraResumo"></div>
+          <div id="leituraNaoLidos"></div>
+          <table id="tabelaLeitura"><thead id="cabLeitura"></thead><tbody></tbody></table>
         </div>
       </div>
 
@@ -75,7 +93,30 @@
           <div class="etapa-sub">Harmonit e WESO lado a lado. Falta na WESO,
             cadastra. Falta no Harmonit, para.</div>
         </div>
-        <div class="em-construcao">Entra na <strong>F2</strong>.</div>
+        <!-- 🚨 SÓ APARECE QUANDO O TERMO NÃO TRAZ O DOCUMENTO. Medido em
+             19/08: a rescisão vem sem `cnpj` e sem `cpf`, só com o nome. E
+             cruzar por nome é proibido -- o mesmo CNPJ tem razão social
+             diferente nos dois sistemas. Então quem informa é gente, com o
+             nome do termo à vista para conferir. -->
+        <div id="docWrap" style="display:none">
+          <div class="aviso" style="margin-bottom:12px">
+            <strong>Este termo não traz o CNPJ/CPF.</strong> No termo o cliente
+            é <strong id="nomeNoTermo"></strong>. Informe o documento — o
+            cruzamento é sempre por documento, nunca por nome.
+          </div>
+          <div class="campo-com-botao">
+            <input type="text" id="docDigitado" placeholder="CNPJ ou CPF do cliente do termo">
+            <button class="btn btn-primary" onclick="usarDocDigitado()">Conferir</button>
+          </div>
+        </div>
+        <div class="msg" id="msgEtapa2" style="display:none"></div>
+        <div id="cliente" style="display:none">
+          <table><thead><tr>
+            <th style="width:110px">Sistema</th><th>Nome</th><th style="width:110px">Id</th>
+          </tr></thead><tbody id="clienteCorpo"></tbody></table>
+          <div id="clienteRecado" style="margin-top:12px"></div>
+          <div id="clienteAcao" style="margin-top:12px"></div>
+        </div>
       </div>
 
       <!-- ETAPA 3 — placas -->
@@ -205,7 +246,199 @@ function mostrarPerfil(perfis) {
   ].filter(Boolean);
   caixa.style.display = 'block';
   caixa.textContent = partes.join(' · ');
+  /* Campo de PDF só existe para quem nasce de documento. */
+  document.getElementById('anexoWrap').style.display = p.sem_termo ? 'none' : 'block';
+  document.getElementById('semTermoWrap').style.display = p.sem_termo ? 'block' : 'none';
 }
+
+/* ── etapa 1: ler o termo ───────────────────────────────────────────────────
+   🚨 A LEITURA NÃO CRUZA O CLIENTE, ao contrário da tela velha. Lá o mesmo
+   endpoint lia o PDF e batia nos dois sistemas -- e é a consulta que oscila.
+   Quando ela demora, a leitura do PDF, que é local e instantânea, demora
+   junto e o operador fica olhando para nada. */
+let extraido = null;
+
+function aoEscolher() {
+  const f = document.getElementById('arquivo').files[0];
+  if (!f) return;
+  document.getElementById('dropLabel').textContent = f.name;
+  lerTermo();
+}
+
+function msg(id, texto, classe) {
+  const el = document.getElementById(id);
+  el.style.display = texto ? 'block' : 'none';
+  el.className = 'msg ' + (classe || '');
+  el.innerHTML = texto || '';
+}
+
+async function lerTermo() {
+  const f = document.getElementById('arquivo').files[0];
+  if (!f) return;
+  const perfil = document.getElementById('perfil').value;
+  msg('msgEtapa1', 'Lendo o termo… <span class="spinner"></span>', '');
+  document.getElementById('leitura').style.display = 'none';
+  try {
+    const corpo = new FormData();
+    corpo.append('arquivo', f);
+    const res = await fetch(
+      `/painel/api/operacoes/extrair?perfil=${encodeURIComponent(perfil)}`,
+      { method: 'POST', headers: auth(), body: corpo });
+    extraido = await lerResposta(res);
+    desenharLeitura(extraido);
+    msg('msgEtapa1', '', '');
+  } catch (e) {
+    extraido = null;
+    msg('msgEtapa1', escapeHtml(e.message), 'msg-erro');
+  }
+}
+
+function desenharLeitura(d) {
+  const r = d.resumo || {};
+  const partes = [`termo <strong>${escapeHtml(d.termo || '—')}</strong>`,
+                  `<strong>${r.veiculos}</strong> veículo(s)`];
+  if (r.nao_convencionais) partes.push(`${r.nao_convencionais} por chassi ou série`);
+  if (r.sem_descricao) partes.push(`<strong>${r.sem_descricao} sem descrição</strong>`);
+  if (d.recipiente_sufixo) partes.push(`recipiente <code>${escapeHtml(d.recipiente_sufixo)}</code>`);
+  document.getElementById('leituraResumo').innerHTML = partes.join(' · ');
+
+  /* 🚨 O QUE NÃO FOI LIDO APARECE, e em vermelho. Item que o sistema não
+     entende precisa ser visto: quem decide o que fazer com ele é gente. Foi
+     de texto solto assim que nasceu a `RFD 2447`, placa que não existe. */
+  const naoLidos = d.sem_placa || [];
+  document.getElementById('leituraNaoLidos').innerHTML = !naoLidos.length ? '' :
+    `<div class="msg msg-erro" style="margin-bottom:10px">` +
+    `<strong>${naoLidos.length} linha(s) sem placa reconhecida.</strong> ` +
+    `Nada é inventado a partir delas — você decide na etapa 3:<br>` +
+    naoLidos.map((x) => `<code>${escapeHtml(x.texto || x)}</code>`).join(' · ') +
+    `</div>`;
+
+  /* 🚨 A SUBSTITUIÇÃO TEM DOIS VEÍCULOS POR LINHA -- o que sai e o que entra.
+     É o único perfil assim, porque nele o equipamento muda de carro. O
+     extrator devolve isso em `pares`, não em `placas`. */
+  const temEntrada = (d.resumo || {}).com_entrada > 0;
+  document.getElementById('cabLeitura').innerHTML = `<tr>
+    <th style="width:34px">#</th><th>Veículo${temEntrada ? ' que SAI' : ''}</th>
+    <th>Placa</th><th style="width:120px">Como fica</th>` +
+    (temEntrada ? '<th>Veículo que ENTRA</th><th style="width:120px">Placa</th>' : '') +
+    `</tr>`;
+
+  document.querySelector('#tabelaLeitura tbody').innerHTML = (d.itens || [])
+    .map((i, n) => `<tr>
+      <td>${n + 1}</td>
+      <td>${i.sem_descricao ? '<span class="badge badge-red">sem descrição</span>'
+                            : escapeHtml(i.veiculo)}</td>
+      <td>${escapeHtml(i.placa)}</td>
+      <td><code>${escapeHtml(i.placa_gravada)}</code>${
+        i.convencional ? '' : ' <span class="badge badge-blue">chassi/série</span>'}</td>` +
+      (temEntrada ? `<td>${escapeHtml(i.veiculo_entrada || '—')}</td>
+                     <td><code>${escapeHtml(i.placa_entrada_gravada || '—')}</code></td>` : '') +
+    `</tr>`).join('');
+
+  /* As duas taxas vêm DO TERMO, não fixadas em código -- valor de serviço em
+     código apodrece igual a id de tipo. Aparecem aqui para conferência. */
+  if (d.taxa_local_diferente || d.taxa_mesmo_local) {
+    document.getElementById('leituraResumo').innerHTML +=
+      `<br>Taxas no termo · mesmo local <strong>${escapeHtml(d.taxa_mesmo_local || '—')}</strong>` +
+      ` · local diferente <strong>${escapeHtml(d.taxa_local_diferente || '—')}</strong>`;
+  }
+  document.getElementById('leitura').style.display = 'block';
+}
+
+/* ── etapa 2: o cliente ─────────────────────────────────────────────────────
+   🚨 CRUZA POR DOCUMENTO, NUNCA POR NOME, e mostra os DOIS nomes. O mesmo CNPJ
+   é `Velasco Leite Pastelaria ME` no Harmonit e `PASTELARIA VELASCO LTDA` na
+   WESO -- mostrar um só faz parecer que achou o cliente errado. */
+let cliente = null;
+
+function usarDocDigitado() {
+  const v = (document.getElementById('docDigitado').value || '').trim();
+  if (!v) { msg('msgEtapa2', 'Informe o documento.', 'msg-erro'); return; }
+  extraido.documento = v;
+  conferirCliente();
+}
+
+async function conferirCliente() {
+  if (!extraido) {
+    msg('msgEtapa2', 'Leia o termo na etapa 1 primeiro.', 'msg-erro');
+    return;
+  }
+  /* O termo sem documento não é erro -- é o caso da rescisão. Pede e para. */
+  if (!extraido.documento) {
+    document.getElementById('nomeNoTermo').textContent = extraido.nome_no_termo || '—';
+    document.getElementById('docWrap').style.display = 'block';
+    return;
+  }
+  document.getElementById('docWrap').style.display =
+    extraido.documento_no_termo ? 'none' : 'block';
+  msg('msgEtapa2', 'Consultando os dois sistemas… <span class="spinner"></span>', '');
+  document.getElementById('cliente').style.display = 'none';
+  try {
+    const res = await fetch(
+      `/painel/api/operacoes/cliente?documento=${encodeURIComponent(extraido.documento)}`,
+      { headers: auth() });
+    cliente = await lerResposta(res);
+    desenharCliente(cliente);
+    msg('msgEtapa2', '', '');
+  } catch (e) {
+    cliente = null;
+    msg('msgEtapa2', escapeHtml(e.message), 'msg-erro');
+  }
+}
+
+function desenharCliente(d) {
+  const linha = (sis, dados) => `<tr>
+    <td><strong>${sis}</strong></td>
+    <td>${dados ? escapeHtml(dados.nome || '—')
+                : '<span class="badge badge-red">não existe</span>'}</td>
+    <td>${dados ? escapeHtml(String(dados.id)) : '—'}</td>
+  </tr>`;
+  document.getElementById('clienteCorpo').innerHTML =
+    `<tr><td><strong>No termo</strong></td><td>${escapeHtml(extraido.nome_no_termo || '—')}</td><td>—</td></tr>` +
+    linha('Harmonit', d.harmonit) + linha('WESO', d.weso);
+
+  const classe = { ok: 'msg-ok', falta_na_weso: 'aviso', sem_harmonit: 'msg msg-erro' }[d.situacao];
+  document.getElementById('clienteRecado').innerHTML =
+    `<div class="${classe}">${escapeHtml(d.recado)}</div>`;
+
+  /* Só o caminho que existe vira botão. `sem_harmonit` não tem botão porque
+     não há ação possível daqui -- o painel nunca cria cliente no Harmonit. */
+  document.getElementById('clienteAcao').innerHTML = d.situacao !== 'falta_na_weso' ? '' :
+    `<button class="btn btn-primary" id="btnCriarCliente" onclick="criarClienteNaWeso()">
+       Cadastrar na WESO com os dados do Harmonit
+     </button>`;
+}
+
+async function criarClienteNaWeso() {
+  const btn = document.getElementById('btnCriarCliente');
+  btn.disabled = true; btn.textContent = 'Cadastrando…';
+  try {
+    const res = await fetch('/painel/api/operacoes/cliente/criar-na-weso', {
+      method: 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documento: extraido.documento }),
+    });
+    const d = await lerResposta(res);
+    msg('msgEtapa2',
+        d.acao === 'criado'
+          ? `Cliente criado na WESO (id ${escapeHtml(String(d.id))}) e conferido relendo.`
+          : `O cliente já existia na WESO (id ${escapeHtml(String(d.id))}).`,
+        'msg-ok');
+    await conferirCliente();
+  } catch (e) {
+    msg('msgEtapa2', escapeHtml(e.message), 'msg-erro');
+    btn.disabled = false;
+    btn.textContent = 'Cadastrar na WESO com os dados do Harmonit';
+  }
+}
+
+/* Ao entrar na etapa 2, consulta sozinho -- perguntar "quer conferir?" para
+   algo que sempre se quer conferir é clique a mais. */
+const irParaBase = irPara;
+irPara = function (n) {
+  irParaBase(n);
+  if (n === 2 && extraido && !cliente) conferirCliente();
+};
 
 irPara(1);
 carregarPerfis();
