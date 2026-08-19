@@ -303,20 +303,63 @@ WESO**: só diz à OS qual produto do Harmonit anexar.
 
 ## Fases
 
-| Fase | Entrega | O que o usuário faz |
+| Fase | Entrega | Estado |
 |---|---|---|
-| **F1** | Registro de tela, rota, permissão, esqueleto das 4 etapas, clone do `templates_config` com os 11 perfis | abre e vê a casca |
-| **F2** | Etapas 1 e 2 — documento e cliente | sobe um termo real e confere a leitura |
-| **F3** | Etapa 3 — placas | **ponto de escrita**: valida antes de seguir |
-| **F4** | Etapa 4 — OS, com as 14 regras | a parte mais densa; volta duas vezes |
-| **F5** | A rotina, com os 4 casos e teto de tentativas | |
-| **F6** | Registro cobrindo o fluxo novo | |
-| **F7** | Substituição: as duas velhas saem, o `os_router` parte em dois | |
+| **F1** | Registro de tela, rota, permissão, esqueleto das 4 etapas, clone dos 11 perfis | ✅ **ENTREGUE** `feb24d6` |
+| **F2** | Etapas 1 e 2 — documento e cliente | ✅ **ENTREGUE** `7b21e8b` |
+| **F3** | Etapa 3 — placas, com lote retomável | ✅ **ENTREGUE** `df875a0` |
+| **F4** | Etapa 4 — OS, com as 14 regras | falta — a mais densa |
+| **F5** | A rotina, com os 4 casos e teto de tentativas | falta |
+| **F6** | Registro cobrindo o fluxo novo | falta |
+| **F7** | Substituição: as duas velhas saem, o `os_router` parte em dois | falta — depende de uso real aprovado |
+
+**Dentro da F4, nesta ordem:** as 6 regras que mudaram (4, 7, 9, 10, 11, 12) ·
+o seletor de modelo para placa sem equipamento na WESO · a distinção entre
+"ainda não vinculado" e "não consegui ler a WESO" · as duas OS de novo titular ·
+a híbrida do ressarcimento.
 
 **Cada fase termina com teste que reprova sem ela.** De F3 em diante, com
 dublês: **nenhum teste da aba nova escreve em sistema externo.** Em 17/08 a
 própria suíte criou 6 veículos permanentes no Harmonit via
 `POST /painel/api/placas/criar` de `127.0.0.1` — não se repete.
+
+---
+
+## 🚨 O que a CONSTRUÇÃO achou, e a spec não previa
+
+Quatro coisas que só apareceram ao codar. Registradas aqui porque cada uma
+mudaria a spec se tivesse sido sabida antes.
+
+**1. A substituição não usa `placas`, usa `pares`.** O extrator devolve
+`{placa_saida, veiculo_saida, placa_entrada, veiculo_entrada}` — é o único
+perfil com dois veículos por linha, porque o equipamento muda de carro. Ler
+`placas` nela devolvia LISTA VAZIA: a etapa 1 mostrava **0 veículos num termo
+que tem 1**.
+
+**2. A rescisão não traz o documento.** Medido nos dois fixtures (8788 e 8842):
+`cnpj` e `cpf` vêm `None`; só o nome vem. E cruzar por nome é proibido — o
+mesmo CNPJ é `Velasco Leite Pastelaria ME` no Harmonit e `PASTELARIA VELASCO
+LTDA` na WESO. A resposta traz `documento_no_termo` explícito e o operador
+informa, com o nome do termo à vista.
+
+**3. 🚨 As duas taxas da substituição já vêm do termo:** `taxa_local_diferente`
+**299,90** e `taxa_mesmo_local` **199,90**. A regra 12 manda fixar 299,90 em
+código, e **valor de serviço fixado em código apodrece igual a id de tipo** —
+foi assim que 7 das 14 OS de manutenção ficaram com `tipo = 55`, que não existe
+mais. Talvez a pergunta certa não seja "qual id fixar", e sim "o valor vem do
+termo e o operador escolhe mesmo local × local diferente".
+
+**4. `no_menu` + permissão PRÓPRIA nunca tinha existido, e quebrava a tela.**
+`do_usuario` exclui `no_menu`, e o `sidebar.js` usava essa MESMA lista para
+decidir `temAba` — a aba se julgaria fora do perfil e entraria em loop de
+redirecionamento, que é o defeito de 17/08. Enquanto toda tela fora do menu
+dividia permissão com uma do menu, as duas perguntas coincidiam por acaso.
+Separadas: **`abas` é o que desenhar; `permissoes` é o que se pode abrir.**
+
+⚠️ **E um bug que o teste pegou antes de qualquer uso:** `harmonit_post` estava
+sendo chamado sem ter sido importado. Import faltando DENTRO de função não
+aparece no `py_compile` nem no import do módulo — só estouraria na primeira
+placa cadastrada de verdade.
 
 ---
 
