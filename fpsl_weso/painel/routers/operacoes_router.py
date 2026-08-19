@@ -31,8 +31,9 @@ from pydantic import BaseModel
 from ..auth import requer_aba
 from .. import operacoes_config as cfg
 from ..pdf_extractor import extrair_campos
+from .. import operacoes_registro as reg
 from ...client import weso_get, weso_post
-from ...harmonit_client import harmonit_get
+from ...harmonit_client import harmonit_get, harmonit_post
 from ... import placas as regra_placa
 
 log = logging.getLogger("fpsl.operacoes")
@@ -329,3 +330,250 @@ async def criar_cliente_na_weso(body: CriarClienteInput,
             "Nada foi confirmado — tente de novo.")
     return {"acao": "criado", "id": conferido.get("id"),
             "nome": conferido.get("razaoSocial"), "verificado_relendo": True}
+
+
+# ── etapa 3: as placas ───────────────────────────────────────────────────────
+#
+# 🚨 A ETAPA 3 NÃO É "CADASTRAR", É "GARANTIR". Em rescisão, transferência e
+# ressarcimento as placas já existem: a etapa CONFERE e casa. Em contrato novo
+# ela CRIA. Mesma etapa, mesmo desenho, decisão por perfil (`etapa_placas`).
+# Se ela fosse só cadastrar, metade dos perfis a pularia -- e a corrente
+# cliente → placa → OS, que é a razão desta aba existir, se quebraria
+# justamente onde ela serve.
+
+TIPO_BANCADA = 2   # `complemento.tipoEqp` que marca recipiente na WESO
+
+
+class LoteInput(BaseModel):
+    perfil: str
+    termo: str | None = None
+    documento: str | None = None
+
+
+@router.post("/lote")
+async def abrir_lote(body: LoteInput, usuario=Depends(requer_aba("operacoes"))):
+    """Abre a rodada. É o `lote` que permite RETOMAR.
+
+    🚨 UM TERMO DE 11 PLACAS LEVA MAIS DE UM MINUTO só nesta etapa (~4s por
+    placa), e a WESO oscila entre 6s e timeout de 30s. Se cair no meio, o
+    operador não pode recomeçar do PDF -- metade já nasceu, e recriar devolve
+    409 ou duplica. O lote diz de onde continuar.
+    """
+    if body.perfil not in cfg.PERFIS:
+        raise HTTPException(400, f"Tipo de operação desconhecido: {body.perfil}")
+    lote = await reg.abrir_lote((usuario or {}).get("login"), body.perfil,
+                                body.termo, _so_doc(body.documento))
+    return {"lote": lote}
+
+
+@router.get("/lote/{lote}")
+async def ler_lote(lote: str, _=Depends(requer_aba("operacoes"))):
+    """O que já aconteceu nesta rodada -- é por aqui que a tela retoma."""
+    cabecalho = await reg.ler_lote(lote)
+    if not cabecalho:
+        raise HTTPException(404, "Lote não encontrado.")
+    return {"lote": cabecalho, "passos": await reg.passos(lote),
+            "resumo": await reg.resumo(lote),
+            "resolvidas": {p: sorted(s) for p, s in (await reg.ja_resolvidas(lote)).items()}}
+
+
+async def _existe_na_weso(texto: str) -> dict | None:
+    """Consulta EXATA, nunca a base inteira.
+
+    🚨 Medido: base inteira 15,6s a timeout de 30s; uma placa 0,2s. E a placa
+    acabou de ser escrita com a grafia procurada, então a consulta exata acha.
+    ⚠️ `?placa=` compara por IGUALDADE e devolve VAZIO, não erro -- por isso
+    "não achou" aqui significa "não existe com esta grafia", nada além disso.
+    """
+    r = await weso_get("/Veiculos/Consultar", {"placa": texto})
+    lista = (r.get("veiculos") if isinstance(r, dict) else r) or []
+    # ⚠️ TRAVA: se o filtro for ignorado, a WESO devolve a base inteira e
+    # qualquer placa "existiria". Confere que o que voltou é o que se pediu.
+    for v in lista:
+        if str(v.get("placa") or "").strip().upper() == texto.strip().upper():
+            return v
+    return None
+
+
+async def _existe_no_harmonit(texto: str) -> dict | None:
+    """⚠️ `/Veiculo/ObterVeiculos` IGNORA TODOS OS FILTROS (medido). Lê a base
+    e casa aqui. 9.114 registros, ~1,9s -- caro, mas é o que existe."""
+    try:
+        r = await harmonit_get("/Veiculo/ObterVeiculos")
+    except Exception as exc:
+        log.warning("operacoes: base do Harmonit indisponivel: %s", exc)
+        return None
+    d = r.get("data") if isinstance(r, dict) else r
+    lista = (d.get("lista") if isinstance(d, dict) else d) or []
+    alvo = "".join(str(texto or "").split()).upper()
+    for v in lista:
+        if "".join(str(v.get("placa") or "").split()).upper() == alvo:
+            return v
+    return None
+
+
+class PlacaInput(BaseModel):
+    lote: str
+    placa: str
+    descricao: str | None = None
+    recipiente: bool = False
+    cliente_harmonit_id: int | None = None
+    documento: str | None = None
+
+
+@router.post("/placas/uma")
+async def criar_uma_placa(body: PlacaInput,
+                          _=Depends(requer_aba("operacoes"))):
+    """Garante UMA placa nos dois sistemas. Harmonit primeiro, WESO depois.
+
+    🚨 HARMONIT ANTES DA WESO, E FALHA DO PRIMEIRO PARA. Na ordem inversa
+    sobraria veículo na WESO sem par -- o estrago espelhado do de 27/07, quando
+    um `PUT` sem `veiculoId` criou 88 veículos e quebrou 93 vínculos.
+
+    🚨 RECIPIENTE SÓ NA WESO. Ele é bancada do setor de configuração, não
+    veículo do cliente.
+
+    🚨 A PROVA É RELER, NUNCA O CÓDIGO DE RETORNO. Este projeto já viu a WESO
+    devolver erro HTML e GRAVAR, e devolver timeout com a escrita acontecendo
+    depois. O que decide é a releitura.
+    """
+    cabecalho = await reg.ler_lote(body.lote)
+    if not cabecalho:
+        raise HTTPException(404, "Lote não encontrado.")
+    perfil = cfg.PERFIS.get(cabecalho["perfil"])
+    if not perfil:
+        raise HTTPException(400, f"Perfil do lote é desconhecido: {cabecalho['perfil']}")
+
+    texto = (regra_placa.formatar(body.placa) or body.placa or "").strip()
+    if not texto:
+        raise HTTPException(400, "Placa vazia.")
+    # 🚨 O RECIPIENTE NÃO SE FORMATA. `TST0A11-MANUT` não é placa convencional
+    # e ganhar espaço quebraria a chave que a geração de OS procura.
+    if body.recipiente:
+        texto = (body.placa or "").strip()
+
+    doc = _so_doc(body.documento or cabecalho.get("documento"))
+    comum = dict(placa_digitada=body.placa, placa_gravada=texto,
+                 descricao=body.descricao, recipiente=body.recipiente)
+    fora = {"placa_gravada": texto, "recipiente": body.recipiente,
+            "harmonit": None, "weso": None}
+
+    confere_apenas = perfil["etapa_placas"] == "confere"
+
+    # ── Harmonit ─────────────────────────────────────────────────────────────
+    if body.recipiente:
+        await reg.registrar(body.lote, 3, "harmonit", "ignorado",
+                            erro="recipiente é bancada, não veículo do cliente",
+                            **comum)
+        fora["harmonit"] = {"acao": "ignorado",
+                            "motivo": "recipiente é bancada, não veículo do cliente"}
+    else:
+        ja = await _existe_no_harmonit(texto)
+        if ja:
+            acao = "confere_ok" if confere_apenas else "ja_existia"
+            await reg.registrar(body.lote, 3, "harmonit", acao,
+                                id_externo=ja.get("id"), **comum)
+            fora["harmonit"] = {"acao": acao, "id": ja.get("id"),
+                                "dono": ja.get("cliente"),
+                                "dono_id": ja.get("clienteId")}
+        elif confere_apenas:
+            # 🚨 CONFERIR NÃO CRIA. Perfil de rescisão/transferência/
+            # ressarcimento opera sobre placa que já existe: se ela não existe,
+            # o dado está errado e criar seria esconder o erro.
+            await reg.registrar(body.lote, 3, "harmonit", "confere_falta",
+                                erro="não existe no Harmonit", **comum)
+            fora["harmonit"] = {"acao": "confere_falta",
+                                "motivo": "não existe no Harmonit"}
+        elif not (body.cliente_harmonit_id or cabecalho.get("cliente_harmonit_id")):
+            await reg.registrar(body.lote, 3, "harmonit", "ignorado",
+                                erro="cliente não encontrado no Harmonit", **comum)
+            fora["harmonit"] = {"acao": "ignorado",
+                                "motivo": "cliente não encontrado no Harmonit"}
+        else:
+            cid = body.cliente_harmonit_id or cabecalho["cliente_harmonit_id"]
+            payload = {"id": 0, "veiculo": body.descricao or texto,
+                       "placa": texto, "clienteId": cid}
+            try:
+                await harmonit_post("/Veiculo/Incluir", payload)
+            except HTTPException as exc:
+                msg = f"o Harmonit recusou: {exc.detail}"
+                await reg.registrar(body.lote, 3, "harmonit", "falhou",
+                                    erro=msg, **comum)
+                await reg.registrar(body.lote, 3, "weso", "ignorado",
+                                    erro="o Harmonit falhou antes", **comum)
+                fora["harmonit"] = {"acao": "falhou", "erro": msg}
+                fora["weso"] = {"acao": "ignorado",
+                                "motivo": "o Harmonit falhou antes"}
+                return fora
+            conferido = await _existe_no_harmonit(texto)
+            if conferido:
+                await reg.registrar(body.lote, 3, "harmonit", "criado",
+                                    id_externo=conferido.get("id"), **comum)
+                fora["harmonit"] = {"acao": "criado", "id": conferido.get("id"),
+                                    "verificado_relendo": True}
+            else:
+                msg = ("o Harmonit não recusou, mas a placa não aparece na "
+                       "releitura")
+                await reg.registrar(body.lote, 3, "harmonit", "falhou",
+                                    erro=msg, **comum)
+                await reg.registrar(body.lote, 3, "weso", "ignorado",
+                                    erro="o Harmonit falhou antes", **comum)
+                fora["harmonit"] = {"acao": "falhou", "erro": msg}
+                fora["weso"] = {"acao": "ignorado",
+                                "motivo": "o Harmonit falhou antes"}
+                return fora
+
+    # ── WESO ─────────────────────────────────────────────────────────────────
+    try:
+        ja_w = await _existe_na_weso(texto)
+    except HTTPException as exc:
+        msg = f"não consegui conferir na WESO: {exc.detail}"
+        await reg.registrar(body.lote, 3, "weso", "falhou", erro=msg, **comum)
+        fora["weso"] = {"acao": "falhou", "erro": msg}
+        return fora
+
+    if ja_w:
+        acao = "confere_ok" if confere_apenas else "ja_existia"
+        await reg.registrar(body.lote, 3, "weso", acao,
+                            id_externo=ja_w.get("id"), **comum)
+        fora["weso"] = {"acao": acao, "id": ja_w.get("id"),
+                        "descricao_atual": ja_w.get("descricao")}
+        return fora
+
+    if confere_apenas:
+        await reg.registrar(body.lote, 3, "weso", "confere_falta",
+                            erro="não existe na WESO", **comum)
+        fora["weso"] = {"acao": "confere_falta", "motivo": "não existe na WESO"}
+        return fora
+
+    if not doc:
+        await reg.registrar(body.lote, 3, "weso", "falhou",
+                            erro="sem documento do cliente", **comum)
+        fora["weso"] = {"acao": "falhou", "erro": "sem documento do cliente"}
+        return fora
+
+    # 🚨 TRAVA: SÓ O DOCUMENTO vai para a WESO, nunca os dados do cliente.
+    equipamento = {"placa": texto, "cliente": {"cnpjcpf": doc}}
+    if body.descricao:
+        equipamento["descricao"] = body.descricao
+    if body.recipiente:
+        equipamento["complemento"] = {"tipoEqp": TIPO_BANCADA}
+    try:
+        await weso_post("/Veiculos/Cadastro", {"equipamento": equipamento},
+                        allow_409=True)
+    except HTTPException as exc:
+        # ⚠️ NÃO DESISTE NO ERRO. A WESO já gravou devolvendo erro HTML, e já
+        # processou depois de estourar o tempo. Quem decide é a releitura.
+        log.warning("operacoes: cadastro de %r devolveu erro: %s", texto, exc.detail)
+
+    conferido = await _existe_na_weso(texto)
+    if conferido:
+        await reg.registrar(body.lote, 3, "weso", "criado",
+                            id_externo=conferido.get("id"), **comum)
+        fora["weso"] = {"acao": "criado", "id": conferido.get("id"),
+                        "verificado_relendo": True}
+    else:
+        msg = "a WESO não recusou, mas a placa não aparece na releitura"
+        await reg.registrar(body.lote, 3, "weso", "falhou", erro=msg, **comum)
+        fora["weso"] = {"acao": "falhou", "erro": msg}
+    return fora

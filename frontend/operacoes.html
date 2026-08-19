@@ -35,10 +35,11 @@
     <h1>Operações</h1>
 
     <div class="aviso" id="avisoConstrucao">
-      <strong>Em construção (F2).</strong> Esta aba vai substituir Cadastro de
+      <strong>Em construção (F3).</strong> Esta aba vai substituir Cadastro de
       Placas e Gerar OS. As duas continuam funcionando normalmente. Aqui já
-      funcionam a leitura do termo e a conferência do cliente; a única escrita
-      é cadastrar o cliente na WESO, quando ele já existe no Harmonit.
+      funcionam a leitura do termo, a conferência do cliente e o cadastro das
+      placas. <strong>A etapa 3 escreve nos dois sistemas</strong> — confira
+      antes de clicar.
     </div>
 
     <div class="steps" style="margin-top:20px">
@@ -126,7 +127,13 @@
           <div class="etapa-sub">Cria ou confere, conforme o perfil. É o ponto
             em que a tela escreve nos dois sistemas.</div>
         </div>
-        <div class="em-construcao">Entra na <strong>F3</strong>.</div>
+        <div class="aviso-info" id="placasInfo"></div>
+        <div class="msg" id="msgEtapa3" style="display:none"></div>
+        <table id="tabelaPlacas"><thead id="cabPlacas"></thead><tbody></tbody></table>
+        <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" id="btnPlacas" onclick="processarPlacas()"></button>
+          <span id="progressoPlacas" style="font-size:.8rem;color:var(--text2)"></span>
+        </div>
       </div>
 
       <!-- ETAPA 4 — OS -->
@@ -220,6 +227,7 @@ async function carregarPerfis() {
     sel.innerHTML = (d.perfis || [])
       .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`)
       .join('');
+    perfisCarregados = d.perfis;
     sel.onchange = () => mostrarPerfil(d.perfis);
     mostrarPerfil(d.perfis);
   } catch (e) {
@@ -256,6 +264,7 @@ function mostrarPerfil(perfis) {
    endpoint lia o PDF e batia nos dois sistemas -- e é a consulta que oscila.
    Quando ela demora, a leitura do PDF, que é local e instantânea, demora
    junto e o operador fica olhando para nada. */
+let perfisCarregados = [];
 let extraido = null;
 
 function aoEscolher() {
@@ -438,7 +447,156 @@ const irParaBase = irPara;
 irPara = function (n) {
   irParaBase(n);
   if (n === 2 && extraido && !cliente) conferirCliente();
+  if (n === 3) prepararPlacas();
 };
+
+/* ── etapa 3: as placas ─────────────────────────────────────────────────────
+   🚨 UMA REQUISIÇÃO POR PLACA, NÃO LOTE. Medido em 17/08: gravar custa ~4s por
+   placa, porque cada uma escreve em dois sistemas e é RELIDA nos dois. Um lote
+   de 11 numa requisição só passa do `proxy_read_timeout` do nginx e a tela
+   morre sem dizer o que chegou a acontecer.
+
+   🚨 E É POR ISSO QUE O LOTE EXISTE. Caindo no meio, o que já nasceu está
+   registrado: a próxima rodada pula o resolvido em vez de tentar recriar e
+   tomar 409. */
+let lote = null;
+let linhasPlacas = [];
+
+function perfilAtual() {
+  const id = document.getElementById('perfil').value;
+  return (perfisCarregados || []).find((p) => p.id === id) || {};
+}
+
+async function prepararPlacas() {
+  if (!extraido) {
+    msg('msgEtapa3', 'Leia o termo na etapa 1 primeiro.', 'msg-erro');
+    return;
+  }
+  const p = perfilAtual();
+  const cria = p.etapa_placas !== 'confere';
+
+  /* 🚨 O RECIPIENTE ENTRA COMO LINHA PRÓPRIA, e só na WESO. Ele é bancada do
+     setor de configuração, não veículo do cliente. Deixá-lo implícito foi o
+     que fez a manutenção depender de leitura ao vivo por meses. */
+  linhasPlacas = [];
+  (extraido.itens || []).forEach((i) => {
+    linhasPlacas.push({ veiculo: i.veiculo, placa: i.placa_gravada,
+                        recipiente: false, situacao: null });
+    if (i.placa_entrada_gravada) {
+      linhasPlacas.push({ veiculo: i.veiculo_entrada, placa: i.placa_entrada_gravada,
+                          recipiente: false, entrada: true, situacao: null });
+    }
+    if (extraido.recipiente_sufixo) {
+      linhasPlacas.push({
+        veiculo: '(bancada)',
+        placa: i.placa_gravada.replace(/\s+/g, '') + extraido.recipiente_sufixo,
+        recipiente: true, situacao: null });
+    }
+  });
+
+  document.getElementById('placasInfo').innerHTML =
+    (cria ? '<strong>Este tipo CRIA as placas</strong> nos dois sistemas.'
+          : '<strong>Este tipo apenas CONFERE.</strong> Placa que não existir é apontada, nunca criada — o dado é que está errado.')
+    + ` ${linhasPlacas.length} linha(s).`;
+  document.getElementById('btnPlacas').textContent = cria ? 'Cadastrar' : 'Conferir';
+  desenharPlacas();
+
+  if (!lote) {
+    const res = await fetch('/painel/api/operacoes/lote', {
+      method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ perfil: document.getElementById('perfil').value,
+                             termo: extraido.termo, documento: extraido.documento }),
+    });
+    lote = (await lerResposta(res)).lote;
+  }
+}
+
+function desenharPlacas() {
+  document.getElementById('cabPlacas').innerHTML = `<tr>
+    <th style="width:34px">#</th><th>Veículo</th><th>Placa</th>
+    <th style="width:56px">⇄</th><th style="width:200px">Situação</th></tr>`;
+  document.querySelector('#tabelaPlacas tbody').innerHTML = linhasPlacas
+    .map((l, n) => `<tr>
+      <td>${n + 1}${l.recipiente ? ' <span class="badge badge-blue">bancada</span>' : ''}${
+        l.entrada ? ' <span class="badge badge-green">entra</span>' : ''}</td>
+      <td><input type="text" data-campo="veiculo" data-linha="${n}"
+                 value="${escapeHtml(l.veiculo || '')}"></td>
+      <td><input type="text" data-campo="placa" data-linha="${n}"
+                 value="${escapeHtml(l.placa || '')}"></td>
+      <td>${l.recipiente ? '' :
+        `<button class="btn btn-ghost" style="padding:4px 8px" onclick="inverter(${n})">⇄</button>`}</td>
+      <td id="sit-${n}">${situacaoHtml(l.situacao)}</td>
+    </tr>`).join('');
+}
+
+/* Inverter é por LINHA, não global: o erro contratual costuma ser em algumas
+   linhas, não no documento inteiro. */
+function inverter(n) {
+  lerCampos();
+  const l = linhasPlacas[n];
+  [l.veiculo, l.placa] = [l.placa, l.veiculo];
+  desenharPlacas();
+}
+
+function lerCampos() {
+  document.querySelectorAll('#tabelaPlacas input').forEach((el) => {
+    linhasPlacas[+el.dataset.linha][el.dataset.campo] = el.value;
+  });
+}
+
+function situacaoHtml(s) {
+  if (!s) return '<span style="color:var(--text2)">—</span>';
+  const cor = { criado: 'badge-green', ja_existia: 'badge-blue',
+                confere_ok: 'badge-green', confere_falta: 'badge-red',
+                falhou: 'badge-red', ignorado: 'badge-blue' };
+  return ['harmonit', 'weso'].map((sis) => {
+    const r = s[sis];
+    if (!r) return '';
+    return `<div style="font-size:.72rem"><strong>${sis}</strong> ` +
+      `<span class="badge ${cor[r.acao] || 'badge-blue'}">${escapeHtml(r.acao)}</span> ` +
+      escapeHtml(r.erro || r.motivo || '') + `</div>`;
+  }).join('');
+}
+
+async function processarPlacas() {
+  lerCampos();
+  const btn = document.getElementById('btnPlacas');
+  btn.disabled = true;
+  const prog = document.getElementById('progressoPlacas');
+  msg('msgEtapa3', '', '');
+
+  /* 🚨 SEQUENCIAL, NÃO EM PARALELO. Disparar 11 de uma vez contra a WESO,
+     que já oscila entre 6s e timeout, é a receita para metade falhar por
+     tempo -- e falha por tempo é a pior, porque pode ter gravado. */
+  for (let n = 0; n < linhasPlacas.length; n++) {
+    const l = linhasPlacas[n];
+    prog.innerHTML = `${n + 1} de ${linhasPlacas.length} · ${escapeHtml(l.placa)} <span class="spinner"></span>`;
+    try {
+      const res = await fetch('/painel/api/operacoes/placas/uma', {
+        method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lote, placa: l.placa, descricao: l.veiculo, recipiente: !!l.recipiente,
+          cliente_harmonit_id: (cliente && cliente.harmonit) ? cliente.harmonit.id : null,
+          documento: extraido.documento,
+        }),
+      });
+      l.situacao = await lerResposta(res);
+    } catch (e) {
+      l.situacao = { weso: { acao: 'falhou', erro: e.message } };
+    }
+    document.getElementById(`sit-${n}`).innerHTML = situacaoHtml(l.situacao);
+  }
+  prog.textContent = '';
+  btn.disabled = false;
+
+  const ruins = linhasPlacas.filter((l) => ['falhou', 'confere_falta'].includes(
+    ((l.situacao || {}).weso || {}).acao) || ['falhou', 'confere_falta'].includes(
+    ((l.situacao || {}).harmonit || {}).acao));
+  msg('msgEtapa3', ruins.length
+      ? `<strong>${ruins.length} linha(s) com problema.</strong> Corrija e clique de novo — o que já resolveu não é refeito.`
+      : `Todas as ${linhasPlacas.length} linhas resolvidas e conferidas relendo.`,
+      ruins.length ? 'msg-erro' : 'msg-ok');
+}
 
 irPara(1);
 carregarPerfis();
