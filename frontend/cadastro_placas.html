@@ -107,7 +107,6 @@
 
     <div class="msg" id="msgErro"></div>
     <div class="msg" id="msgOk"></div>
-    <div class="msg" id="msgSimulacao"></div>
 
     <!--
       DUAS ORIGENS, e elas não são variações do mesmo formulário:
@@ -346,12 +345,6 @@ function desenharTermo(d) {
 
   document.getElementById('secTermo').classList.remove('oculto');
   document.getElementById('secResumo').classList.add('oculto');
-  if (!d.escrita_ativa) {
-    mostrar('msgSimulacao',
-      '<strong>Escrita desligada.</strong> Confirmar mostra o que seria enviado e '
-      + '<strong>não grava nada</strong>. O interruptor fica em Configurações.',
-      'msg-aviso');
-  }
 }
 
 /* Inverter é por LINHA, não global: o erro contratual costuma ser em algumas
@@ -415,7 +408,7 @@ function trocarOrigem() {
 }
 
 function limparMsgs() {
-  ['msgErro','msgOk','msgSimulacao'].forEach(id =>
+  ['msgErro','msgOk'].forEach(id =>
     document.getElementById(id).style.display = 'none');
 }
 function mostrar(id, msg, classe) {
@@ -468,7 +461,7 @@ const BADGE = {
   recusar:      ['badge-red',   'recusada'],
 };
 
-function desenhar(itens, contagem, escritaAtiva) {
+function desenhar(itens, contagem) {
   const tb = document.getElementById('resumoTbody');
   tb.innerHTML = itens.map(i => {
     /* `gravou` vence a intenção: depois de criar, a linha diz CRIADA, não
@@ -497,12 +490,6 @@ function desenhar(itens, contagem, escritaAtiva) {
   document.getElementById('btnCriar').disabled = !(contagem.criar > 0);
   document.getElementById('secResumo').classList.remove('oculto');
 
-  if (!escritaAtiva) {
-    mostrar('msgSimulacao',
-      '<strong>Escrita desligada.</strong> Confirmar mostra exatamente o que seria '
-      + 'enviado e <strong>não grava nada</strong> na WESO. O interruptor fica em Configurações.',
-      'msg-aviso');
-  }
 }
 
 async function verPrevia(corpoPronto) {
@@ -529,7 +516,7 @@ async function verPrevia(corpoPronto) {
       return;
     }
     if (dados.aviso_cliente) mostrar('msgErro', dados.aviso_cliente, 'msg-aviso');
-    desenhar(dados.itens, dados.resumo, dados.escrita_ativa);
+    desenhar(dados.itens, dados.resumo);
   } catch (e) {
     erro('Falha ao conferir: ' + e.message);
   } finally {
@@ -567,10 +554,8 @@ async function criar() {
     dados.itens.forEach(i => {
       contagem[i.gravou ? 'criada' : i.acao] = (contagem[i.gravou ? 'criada' : i.acao] || 0) + 1;
     });
-    desenhar(dados.itens, contagem, dados.escrita_ativa);
-    if (!dados.escrita_ativa) {
-      ok('Simulação concluída: nada foi gravado. ' + dados.itens.length + ' linha(s) conferida(s).');
-    } else if (dados.falharam) {
+    desenhar(dados.itens, contagem);
+    if (dados.falharam) {
       erro(`${dados.criadas} criada(s), ${dados.falharam} com problema — veja a coluna Situação.`);
     } else {
       ok(`${dados.criadas} placa(s) criada(s) e conferida(s) relendo na WESO.`);

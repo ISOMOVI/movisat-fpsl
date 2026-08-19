@@ -75,8 +75,8 @@ ROTAS = [
     # O fluxo tem teste próprio em `teste_cadastro_placas.py`.
     ("POST", "/painel/api/placas/previa",       "cadastro_placas",    None, False),
     ("POST", "/painel/api/placas/criar",        "cadastro_placas",    None, True),
-    ("GET",  "/painel/api/placas/config/ativo", "config",             None, False),
-    ("PUT",  "/painel/api/placas/config/ativo", "config",             {"ativo": False}, True),
+    # O toggle `placas/config/ativo` saiu em 19/08 junto com o interruptor do
+    # Cadastro de Placas: subir o termo passou a gravar, como rotina nativa.
     # As 4 rotas de `/painel/api/oficina/*` sairam em 17/08, junto com o fluxo
     # de sincronizacao de oficina: tabela `oficinas_processadas` com ZERO linhas
     # em toda a vida, ZERO chamadas no journal e o interruptor

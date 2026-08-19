@@ -39,10 +39,14 @@ AS TRAVAS, e o que cada uma impede
 3. **Nada e gravado sem passar pela previa.** `/previa` nao escreve nada e diz,
    placa por placa, o que aconteceria. E o ponto de decisao.
 
-4. **Interruptor proprio** (`placas_registro_ativo`, `false` por padrao).
-   Desligado, `/criar` devolve exatamente o que faria e nao chama a WESO.
-   ⚠️ NAO reaproveita o `oficina_registro_ativo`: aquele controlava a
-   sincronizacao de oficina e saiu do sistema em 17/08, junto com o fluxo.
+4. **Sem interruptor. Subir o termo GRAVA** (decisao do usuario, 19/08:
+   "se subir por la ele deve funcionar como rotina nativa"). O `/previa` do
+   item 3 e o ponto de decisao -- ele existe justamente para que nao seja
+   preciso um segundo botao de seguranca em cima do primeiro.
+   ⚠️ Existiu um `placas_registro_ativo` de 17 a 19/08. Ele **nunca teve UI**:
+   a tela de Configuracoes dizia "nenhum interruptor configuravel" enquanto o
+   Cadastro de Placas mandava o operador procurar la. Interruptor sem tela e
+   pior que interruptor nenhum -- parece uma trava e nao e.
 """
 import io
 import logging
@@ -268,10 +272,6 @@ async def _base_weso(forcar: bool = False) -> list:
     return _WESO_BASE
 
 
-async def _escrita_ativa() -> bool:
-    return (await storage.get_config("placas_registro_ativo", "false")) == "true"
-
-
 def _montar(body: PreviaInput, situacao: dict) -> list[dict]:
     # 🚨 A MESMA PLACA PODE VIR VARIAS VEZES. `ABC1D23`, `abc1d23` e `ABC 1D23`
     # sao a mesma coisa depois de formatadas, e a situacao e lida UMA vez, antes
@@ -342,7 +342,6 @@ async def previa(body: PreviaInput, _=Depends(requer_aba("cadastro_placas"))):
             f"senao nenhuma placa vai nascer."),
         "itens": linhas,
         "resumo": contagem,
-        "escrita_ativa": await _escrita_ativa(),
     }
 
 
@@ -352,9 +351,11 @@ async def criar(body: CriarInput, _=Depends(requer_aba("cadastro_placas"))):
     if not body.itens:
         raise HTTPException(400, "Nenhuma placa informada.")
 
-    ativa = await _escrita_ativa()
     cliente = await _cliente_na_weso(body.cnpjcpf)
-    if not cliente and ativa:
+    # 🚨 AGORA BLOQUEIA DE VERDADE. Com o interruptor, esta trava so valia com a
+    # escrita ligada -- sem cliente na WESO nenhuma placa nasce, e deixar seguir
+    # produzia um lote inteiro de falhas placa a placa em vez de um erro so.
+    if not cliente:
         raise HTTPException(422,
             f"O CNPJ {body.cnpjcpf} nao esta na WESO. Cadastre o cliente antes.")
 
@@ -381,11 +382,6 @@ async def criar(body: CriarInput, _=Depends(requer_aba("cadastro_placas"))):
         if linha["recipiente"]:
             equipamento["complemento"] = {"tipoEqp": TIPO_BANCADA}
 
-        if not ativa:
-            resultados.append({**linha, "ok": True, "gravou": False,
-                               "simulado": True, "payload": equipamento})
-            continue
-
         try:
             r = await weso_post("/Veiculos/Cadastro", {"equipamento": equipamento},
                                 allow_409=True)
@@ -410,30 +406,12 @@ async def criar(body: CriarInput, _=Depends(requer_aba("cadastro_placas"))):
                                "verificado_relendo": True})
 
     return {
-        "escrita_ativa": ativa,
         "cliente_id": (cliente or {}).get("id"),
         "itens": resultados,
         "criadas": sum(1 for r in resultados if r.get("gravou")),
         "ja_existiam": sum(1 for r in resultados if r["acao"] == "ja_existe"),
         "falharam": sum(1 for r in resultados if not r.get("ok")),
     }
-
-
-@router.get("/config/ativo")
-async def obter_toggle(_=Depends(requer_aba("config"))):
-    return {"ativo": await _escrita_ativa()}
-
-
-class ToggleInput(BaseModel):
-    ativo: bool
-
-
-@router.put("/config/ativo")
-async def definir_toggle(body: ToggleInput, _=Depends(requer_aba("config"))):
-    await storage.set_config("placas_registro_ativo",
-                             "true" if body.ativo else "false")
-    log.info("placas: escrita real %s", "LIGADA" if body.ativo else "desligada")
-    return {"ativo": body.ativo}
 
 
 # ── ler o termo (passo 2) ────────────────────────────────────────────────────
@@ -545,7 +523,6 @@ async def extrair(perfil: str = Query(...), arquivo: UploadFile = File(...),
         "recipiente_sufixo": sufixo,
         "itens": itens,
         "sem_placa": campos.get("veiculos_sem_placa") or [],
-        "escrita_ativa": await _escrita_ativa(),
     }
 
 
@@ -628,7 +605,6 @@ async def criar_uma(body: CriarUmaInput,
     texto = _texto_gravado(item)
     descricao, erro_desc = _descricao_final(item)
     recipiente = bool(body.sufixo)
-    ativa = await _escrita_ativa()
 
     comum = dict(usuario=(usuario or {}).get("login"), termo=body.termo,
                  perfil=body.perfil, cnpjcpf=body.cnpjcpf,
@@ -639,7 +615,7 @@ async def criar_uma(body: CriarUmaInput,
 
     fora = {"placa_digitada": body.placa, "placa_gravada": texto,
             "descricao": descricao, "recipiente": recipiente,
-            "escrita_ativa": ativa, "harmonit": None, "weso": None}
+            "harmonit": None, "weso": None}
 
     if erro_desc:
         for sis in ("harmonit", "weso"):
@@ -673,10 +649,6 @@ async def criar_uma(body: CriarUmaInput,
             fora["harmonit"] = {"acao": "ja_existia", "id": ja.get("id"),
                                 "dono": ja.get("cliente"),
                                 "dono_id": ja.get("clienteId")}
-        elif not ativa:
-            await storage.registrar_cadastro_placa(body.lote, "harmonit", "simulado",
-                                                   **comum)
-            fora["harmonit"] = {"acao": "simulado"}
         else:
             payload = {"id": 0, "veiculo": descricao or texto, "placa": texto,
                        "clienteId": body.cliente_harmonit_id}
@@ -733,11 +705,6 @@ async def criar_uma(body: CriarUmaInput,
         fora["weso"] = {"acao": "ja_existia", "id": s.get("veiculo_id"),
                         "descricao_atual": s.get("descricao_atual")}
         return fora
-    if not ativa:
-        await storage.registrar_cadastro_placa(body.lote, "weso", "simulado", **comum)
-        fora["weso"] = {"acao": "simulado"}
-        return fora
-
     equipamento = {"placa": texto, "cliente": {"cnpjcpf": body.cnpjcpf}}
     if descricao:
         equipamento["descricao"] = descricao

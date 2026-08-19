@@ -18,12 +18,23 @@
   4. **Upgrade sem termo é RECUSADO.** Sem o número não dá para montar
      `TERMO {n}`, e gravar uma descrição incompleta é pior que não gravar.
 
-  5. **A simulação não escreve.** Com `placas_registro_ativo=false`, `/criar`
-     devolve o que faria e não chama a WESO.
+  5. **A prévia LÊ e não escreve.** É o ponto de decisão do operador, e o
+     único passo desta tela que este teste exercita pela rede.
+
+🚨 O QUE MUDOU EM 19/08. O interruptor `placas_registro_ativo` foi removido --
+o cadastro é rotina nativa e subir o termo grava. Este teste se protegia dele:
+desligava a escrita e chamava `/criar` à vontade. **Agora não chama `/criar`.**
+O caminho de escrita é exercitado in-process, com dublês, em
+`teste_criar_uma.py`; aqui ficam a tranca, as regras puras e a prévia.
+
+🚨 E NÃO DEPENDE MAIS DE PLACA VIVA. A fixture `TST 0A11` era um veículo real
+na WESO, criado numa medição de 17/08. A placa "já existe" agora é **descoberta
+em tempo de execução** no cache local da WESO: fixture escrita à mão em teste é
+dado de produção esperando ser apagado por outra pessoa.
 
 Roda na VPS: venv/bin/python tests/teste_cadastro_placas.py
-⚠️ Fala com a WESO em LEITURA (a prévia confere placa). Não escreve: o teste
-força o interruptor desligado e o restaura no fim.
+⚠️ Fala com a WESO em LEITURA (a prévia confere placa). NÃO escreve em lugar
+nenhum.
 """
 import asyncio
 import pathlib
@@ -43,6 +54,27 @@ SENHA = "senha-de-teste-123"
 CNPJ_VELASCO = "WQ0P6GLD000108"
 
 ok, falhas = 0, []
+
+
+def placa_que_existe() -> str | None:
+    """Uma placa que existe na WESO agora, tirada do cache local (04:15).
+
+    🚨 SEM ESCREVER NADA E SEM REDE. O cache é sqlite só-leitura. Se ele
+    estiver indisponível, o teste falha ruidosamente em vez de passar por
+    engano -- que é o que uma fixture ausente deve fazer.
+
+    ⚠️ Pega placa CONVENCIONAL (3 letras, espaço, 4 caracteres), porque é a
+    grafia que `_texto_gravado` produz. Chassi e série têm outro caminho.
+    """
+    caminho = "/home/claude/weso_cache/weso.db"
+    if not pathlib.Path(caminho).exists():
+        return None
+    with sqlite3.connect(f"file:{caminho}?mode=ro", uri=True) as conn:
+        linha = conn.execute(
+            "SELECT placa FROM veiculos "
+            "WHERE placa GLOB '[A-Z][A-Z][A-Z] [A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]' "
+            "ORDER BY id LIMIT 1").fetchone()
+    return linha[0] if linha else None
 
 
 def limpar_usuario():
@@ -112,65 +144,40 @@ async def main():
 
     print("\n[2] a tranca — foi a falta dela que matou a aba de julho")
     async with httpx.AsyncClient(base_url=BASE, timeout=60) as c:
+        # ⚠️ A tranca se confere nas DUAS rotas, mas só a prévia é chamada com
+        # token bom mais abaixo -- `/criar` grava de verdade desde 19/08.
         for rota in ("/painel/api/placas/previa", "/painel/api/placas/criar"):
             r = await c.post(rota, json=corpo)
             checar(f"401 sem token em {rota}", 401, r.status_code)
             r = await c.post(rota, json=corpo, headers=h_magro)
             checar(f"403 sem a aba em {rota}", 403, r.status_code)
 
-        # ⚠️ o toggle é de `config`, que é somente_owner -- não da aba nova
-        r = await c.get("/painel/api/placas/config/ativo", headers=h_magro)
-        checar("403 no toggle sem a aba config", 403, r.status_code)
-
         print("\n[3] prévia — lê a WESO e NÃO escreve")
-        anterior = await storage.get_config("placas_registro_ativo", "false")
-        await storage.set_config("placas_registro_ativo", "false")
-        try:
-            r = await c.post("/painel/api/placas/previa", headers=h_owner, json={
-                "cnpjcpf": CNPJ_VELASCO,
-                "itens": [
-                    {"placa": "TST0A11"},
-                    {"placa": "TST0A11", "sufixo": "-MANUT"},
-                    {"placa": "ZZZ9Z99"},
-                ]})
-            checar("prévia responde 200", 200, r.status_code)
-            d = r.json()
-            checar("achou a Velasco na WESO", True, d["cliente"]["existe_na_weso"])
-            checar("e é o cliente 13562", 13562, d["cliente"]["id"])
-            checar("a escrita está desligada", False, d["escrita_ativa"])
+        # 🚨 A PLACA "JÁ EXISTE" É DESCOBERTA, NÃO ESCRITA AQUI. Ver a docstring:
+        # fixture escrita à mão é dado de produção esperando ser apagado.
+        viva = placa_que_existe()
+        checar("achei no cache uma placa viva para usar de fixture", True,
+               bool(viva))
+        r = await c.post("/painel/api/placas/previa", headers=h_owner, json={
+            "cnpjcpf": CNPJ_VELASCO,
+            "itens": [{"placa": viva}, {"placa": "ZZZ9Z99"}]})
+        checar("prévia responde 200", 200, r.status_code)
+        d = r.json()
+        checar("achou a Velasco na WESO", True, d["cliente"]["existe_na_weso"])
+        checar("e é o cliente 13562", 13562, d["cliente"]["id"])
 
-            porplaca = {i["placa_gravada"]: i for i in d["itens"]}
-            # as duas primeiras EXISTEM: foram criadas na medição de 17/08
-            checar("TST 0A11 já existe", "ja_existe",
-                   porplaca["TST 0A11"]["acao"])
-            checar("TST0A11-MANUT já existe", "ja_existe",
-                   porplaca["TST0A11-MANUT"]["acao"])
-            checar("e a placa inventada seria criada", "criar",
-                   porplaca["ZZZ 9Z99"]["acao"])
-
-            print("\n[4] criar com a escrita desligada NÃO grava")
-            r = await c.post("/painel/api/placas/criar", headers=h_owner, json={
-                "cnpjcpf": CNPJ_VELASCO,
-                "itens": [{"placa": "ZZZ9Z99"}]})
-            checar("criar responde 200", 200, r.status_code)
-            d = r.json()
-            checar("nada foi gravado", 0, d["criadas"])
-            checar("e a linha veio marcada como simulada", True,
-                   d["itens"][0].get("simulado"))
-            # 🚨 A PROVA: reler. Se a placa apareceu, a simulação mentiu.
-            #
-            # ⚠️ A releitura vai pela ROTA, não por `buscar_veiculo` direto:
-            # o cliente HTTP da WESO é inicializado no `lifespan` do app, e
-            # neste processo ele não existe (`_client` é None). Chamar a função
-            # daqui estoura em AttributeError -- que foi o que aconteceu na
-            # primeira versão deste teste. Pela rota, quem consulta é o serviço,
-            # que é exatamente o caminho que o operador exercita.
-            r = await c.post("/painel/api/placas/previa", headers=h_owner, json={
-                "cnpjcpf": CNPJ_VELASCO, "itens": [{"placa": "ZZZ9Z99"}]})
-            checar("a placa continua NÃO existindo depois da simulação", "criar",
-                   r.json()["itens"][0]["acao"])
-        finally:
-            await storage.set_config("placas_registro_ativo", anterior)
+        porplaca = {i["placa_gravada"]: i for i in d["itens"]}
+        achado = next(i for k, i in porplaca.items() if k != "ZZZ 9Z99")
+        checar("a placa viva é reconhecida como existente", "ja_existe",
+               achado["acao"])
+        checar("e a placa inventada seria criada", "criar",
+               porplaca["ZZZ 9Z99"]["acao"])
+        # 🚨 A PROVA DE QUE A PRÉVIA NÃO ESCREVE: perguntar de novo. Se a placa
+        # inventada tivesse nascido, a segunda resposta seria `ja_existe`.
+        r = await c.post("/painel/api/placas/previa", headers=h_owner, json={
+            "cnpjcpf": CNPJ_VELASCO, "itens": [{"placa": "ZZZ9Z99"}]})
+        checar("a placa inventada continua não existindo", "criar",
+               r.json()["itens"][0]["acao"])
 
     limpar_usuario()
     checar("usuário de teste removido", None,
