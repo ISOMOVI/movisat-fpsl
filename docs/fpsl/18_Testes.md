@@ -281,26 +281,79 @@ cd /home/claude/fpsl_weso && venv/bin/python tests/teste_tela_gerar_os.py
 
 ---
 
-## Contagem atual (2026-08-14, 17h)
+## Contagem atual (2026-08-19)
 
-**448 verificações em 11 arquivos**, todas verdes.
+**804 verificações em 22 arquivos.** Verdes menos as **8 falhas esperadas** do
+`teste_upgrade_8820.py` — ver abaixo.
 
 | Arquivo | Verificações |
 |---|---|
-| `tests/teste_roteadores_painel.py` | 75 |
+| `tests/teste_barra_status.py` | 76 |
+| `tests/teste_roteadores_painel.py` | 74 |
 | `tests/teste_placas.py` | 72 |
 | `tests/teste_manutencao.py` | 68 |
-| `tests/teste_upgrade_8820.py` | 58 |
+| `tests/teste_upgrade_8820.py` | 60 (**8 falham de propósito**) |
 | `tests/teste_regressao_extracao.py` | 57 |
 | `tests/teste_demandas.py` | 43 |
+| `tests/teste_registro_telas.py` | 39 |
+| `tests/teste_contrato_sidebar.py` | 38 |
+| `tests/teste_extrair_termo.py` | 29 |
+| `tests/teste_google_login.py` | 27 |
+| `tests/teste_tela_cadastro_placas.py` | 27 |
+| `tests/teste_cadastro_placas.py` | 26 |
 | `tests/teste_higiene_placas_weso.py` | 25 |
-| `tests/teste_perfis.py` | 22 |
-| `tests/teste_tela_gerar_os.py` | 15 |
+| `tests/teste_perfis.py` | 24 |
+| `tests/teste_criar_uma.py` | 23 |
+| `tests/teste_tela_gerar_os.py` | 23 |
+| `tests/teste_cadastro_log.py` | 21 |
+| `tests/teste_aviso_weso.py` | 20 |
+| `tests/teste_auditoria_placas.py` | 19 |
 | `tests/teste_continuacao_pagina.py` | 11 |
 | `tests/teste_disjuntor_harmonit.py` | 2 |
 
-⚠️ **Os roteadores caíram de 81 para 75** porque as 2 rotas de `api/placas`
-saíram junto com o router. Número menor aqui não é regressão.
+Trilha: **448/11** (14/08) → **677/19** (17/08) → **784/21** (18/08) →
+**804/22** (19/08).
+
+⚠️ **Os roteadores caíram de 81 para 75** em 14/08 porque as 2 rotas de
+`api/placas` saíram junto com o router. Número menor aqui não é regressão.
+
+🚨 **AS 8 FALHAS DO `teste_upgrade_8820.py` SÃO ESPERADAS.** Ele lê a WESO ao
+vivo e os recipientes `OOM4131-UPGRADE` e `OOM3895-UPGRADE` foram apagados de
+lá. O próprio teste afirma que "ausência de recipiente NÃO bloqueia", então não
+é defeito — mas **8 falhas verdes de propósito treinam a equipe a ignorar o
+placar**, e isso continua aberto: ou os recipientes voltam à WESO, ou o teste
+pula sozinho quando o recipiente não existe.
+
+🚨 **PLACAR VERDE NÃO É PROVA DE QUE A TELA ABRE.** Em 17/08 as 677
+verificações passaram **todas** com o painel inteiro derrubado — nenhuma olhava
+o consumidor do JSON. Desde 18/08 há dois testes que leem o consumidor:
+`teste_contrato_sidebar.py` (lê o `sidebar.js`) e, desde 19/08,
+`teste_aviso_weso.py` (lê o `os_router.py` e o `gerar_os.html`).
+
+---
+
+## `tests/teste_aviso_weso.py` — a WESO que não responde vira aviso (19/08)
+
+**20 verificações. Não faz rede:** `weso_get` e o cache local são substituídos
+por dublês.
+
+Nasceu da **OS 16775**, gerada em 17/08 sem rastreador e sem chip porque a WESO
+deu timeout e `_rastreador_id_por_placa` devolveu `{}` em silêncio. Detalhe em
+`24_Desempenho_e_Timeout.md`.
+
+O que ele prende:
+
+1. `_anotar` não repete a mesma mensagem e aceita `None` sem explodir;
+2. WESO fora ⇒ `buscar_seriais` e `dados_das_placas` **anotam** a falha;
+3. chamador que não passa lista continua funcionando como antes;
+4. 🚨 **WESO respondendo ⇒ nenhum aviso** — aviso falso treina a ignorar aviso;
+5. contrato com o `os_router`: as duas chamadas passam a lista, e ela cai em
+   `avisos` **antes** de montar as operações;
+6. contrato com a **tela**: o `gerar_os.html` lê `data.avisos` e escapa.
+
+```bash
+cd /home/claude/fpsl_weso && venv/bin/python tests/teste_aviso_weso.py
+```
 
 🚨 **NÃO SÃO `assert`.** Os testes usam uma função `checar()` própria — um
 `grep assert` no projeto devolve **zero** e engana quem for medir cobertura.

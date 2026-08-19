@@ -43,7 +43,13 @@ ROUTER = RAIZ / "fpsl_weso" / "painel" / "routers" / "placas_router.py"
 CNPJ = "WQ0P6GLD000108"
 CLIENTE_HARMONIT = 998063
 CLIENTE_WESO = 13562
-JA_EXISTE = "TST 0G77"          # criada em 17/08, existe nos DOIS
+# 🚨 FIXTURE VIVA — NÃO APAGAR DA WESO NEM DO HARMONIT.
+# Precisa existir nos DOIS, gravada COM espaço, sob a Velasco. Hoje:
+# WESO 88357 · Harmonit 108711.
+# Era `TST 0G77` até 19/08, quando a limpeza das placas de teste a apagou da
+# WESO e este teste reprovou. A dependência não estava escrita em lugar nenhum:
+# um `grep` pela placa era tudo que faltava antes de apagar.
+JA_EXISTE = "TST 0E55"
 NAO_EXISTE = "TST9Z00"
 
 ok, falhas = 0, []

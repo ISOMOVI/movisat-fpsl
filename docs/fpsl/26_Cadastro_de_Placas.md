@@ -229,7 +229,7 @@ entrega. `situacao` vem `Adimplente` sozinha.
 
 ## Suíte
 
-**638 verificações em 18 arquivos.** As deste trabalho:
+**804 verificações em 22 arquivos** (medido em 19/08). As deste trabalho:
 
 | Arquivo | O que prende |
 |---|---|
@@ -238,5 +238,73 @@ entrega. `situacao` vem `Adimplente` sozinha.
 | `teste_tela_cadastro_placas.py` | os dois caminhos convivem, inverter por linha, descrição obrigatória, escape |
 | `teste_criar_uma.py` | só o `Incluir`, ordem Harmonit→WESO, recipiente fora do Harmonit, simulação não escreve |
 
-⚠️ **Falha conhecida e aceita** em `teste_upgrade_8820.py`: a asserção usa
-`GCW9H80-UPGRADE`, placa desativada quando o ticket foi concluído.
+⚠️ **Falhas conhecidas e aceitas** em `teste_upgrade_8820.py`: são **8**, não
+1, e os recipientes que sumiram da WESO são `OOM4131-UPGRADE` e
+`OOM3895-UPGRADE` — **não** o `GCW9H80-UPGRADE` que este texto afirmava. O
+próprio teste diz que "ausência de recipiente NÃO bloqueia", então não é
+defeito. Corrigido em 19/08.
+
+---
+
+## Limpeza das placas de teste (2026-08-19)
+
+As **7 placas** criadas por esta tela em 17/08 foram apagadas da WESO. Os ids
+não vieram de lista escrita à mão: vieram do próprio `cadastro_placas_log`,
+filtrando `acao IN ('criado','ja_existia')` — que é a razão de o registro
+existir.
+
+| Placa | WESO | Harmonit |
+|---|---|---|
+| `TST 0G77` | `88362` apagada | `108713` **fica** |
+| `CHASSI: 9BD281AJPTYBM7701` | `88368` apagada | `108714` **fica** |
+| `CHASSI: 9BD281AJPTYBM7711` | `88365` apagada | `108715` **fica** |
+| `CHASSI: 9BD281AJPTYBM7721` | `88366` apagada | `108716` **fica** |
+| `CHASSI: 9BD281AJPTYBM7731` | `88367` apagada | `108717` **fica** |
+| `CHASSI: 9BD281AJPTYBM7741` | `88369` apagada | `108718` **fica** |
+| `CHASSI: 9BD281AJPTYBM7751` | `88370` apagada | `108719` **fica** |
+
+Base da WESO: **1972 → 1965**, conferido relendo, e o cache local foi
+atualizado na hora (não esperou as 04:15). Nenhuma tinha rastreador vinculado,
+então nenhum equipamento ficou órfão.
+
+### 🚨 O Harmonit não tem como apagar veículo
+
+`/Veiculo/` expõe `ObterVeiculos`, `ObterTipoEMarca`, `Incluir` e `Atualizar`
+(`docs/harmonit/06_Ativos.md`). **Não há DELETE.** Os 7 registros continuam lá,
+sob o cliente `998063` (Pastelaria Velasco), sem rastreador e sem chassi.
+
+Não se tentou contornar com `PUT /Veiculo/Atualizar`: em 27/07 um `PUT` sem
+`veiculoId` **criou 88 veículos**, e `ativar: false` e `clienteId: 0` são
+aceitos e ignorados. Chutar verbo de exclusão em ERP de produção com 9.114
+veículos não se faz sem decisão de quem responde pelo sistema.
+
+### 🚨 Existem 9 outras placas de teste na WESO — e NÃO se apagam
+
+Levantadas na mesma varredura, fora do escopo das 7:
+
+| Placa | id | Nota |
+|---|---|---|
+| `TST 0A11` · `TST0A11-MANUT` | `88341` · `88342` | **fixture viva**: `teste_cadastro_placas.py:144` exige que existam, para conferir a ação `ja_existe` |
+| `TST 0B22` · `TST0B22-UPGRADE` | `88344` · `88345` | de 17/08, sem rastreador |
+| `TST 0D44` · `TST0D44-UPGRADE` | `88349` · `88350` | de 17/08, sem rastreador |
+| `TST 0E55` | `88357` | **fixture viva**: `teste_criar_uma.py` exige que exista nos DOIS (Harmonit `108711`) |
+| `TST 0F66` | `88358` | de 17/08, sem rastreador. Existe nos dois (Harmonit `108712`) — é a reserva se a `TST 0E55` cair |
+| `TESTE-RFID` | `88407` | ⚠️ **criada em 19/08 13:19 UTC**, com rastreador real `40907` (ST4305, série `1610038792`, situação Instalado, com SIM). Não é resto de teste antigo — é uso corrente |
+
+Apagar `88341`/`88342` quebraria a suíte. Apagar `88407` deixaria um rastreador
+**Instalado** órfão, porque excluir o veículo na WESO não libera o rastreador —
+são duas chamadas. As outras 6 aguardam decisão do usuário.
+
+### 🚨 A lição: apagar exige `grep`, inclusive no que você mesmo criou
+
+A limpeza das 7 quebrou o `teste_criar_uma.py`. Ele usava `TST 0G77` como
+fixture "existe nos DOIS" — e a dependência não estava escrita em lugar nenhum
+além daquela linha. Antes de apagar, foi feito `grep` pelas **9 placas que
+ficariam**, e não pelas **7 que sairiam**: conferiu-se o lado errado.
+
+A fixture passou a ser `TST 0E55`, com um comentário no próprio teste dizendo
+que ela não pode ser apagada. O `grep` que faltava era de um segundo:
+
+```bash
+cd /home/claude/fpsl_weso && grep -rn "TST 0G77" --include='*.py' .
+```
