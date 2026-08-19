@@ -26,6 +26,69 @@ from fpsl_weso import storage
 log = logging.getLogger("fpsl")
 
 
+class MascararSegredoDaQueryString(logging.Filter):
+    """Tira segredo da query string da linha de acesso ANTES de ela ir ao disco.
+
+    🚨 O `code` DO OAUTH DO GOOGLE ESTAVA INDO INTEIRO PARA O JOURNAL. Medido em
+    18/08: 37 entradas; em 19/08 ainda havia 31 no journal vivo (o resto saiu na
+    rotacao). E a mesma classe do incidente de 12/08 no MoviZap, onde o segredo
+    do webhook do Evolution foi para o disco 2.527 vezes em 24 h.
+
+    ⚠️ O RISCO AQUI E MENOR, e vale dizer por que: o `code` e de uso unico e
+    expira em ~10 min, entao um journal antigo nao autentica ninguem. O que
+    justifica o filtro nao e o dano provavel -- e o habito. Segredo em log e
+    algo que so se conserta antes de acontecer.
+
+    🚨 POR QUE UM FILTRO E NAO UM MIDDLEWARE: quem escreve esta linha e o
+    `uvicorn.access`, que nao passa pelo middleware da aplicacao. Em 12/08
+    tentou-se resolver no middleware e o segredo continuou saindo.
+
+    ⚠️ REESCREVE `record.args`, NAO A MENSAGEM FORMATADA. O `uvicorn.access`
+    guarda os campos separados (`%s - "%s %s HTTP/%s" %d`) e so os junta na
+    hora de escrever; mexer na mensagem final nao pega nada. Foi assim que o
+    MoviZap resolveu, e o formato e o mesmo.
+
+    ⚠️ NAO ALCANCA O `access.log` DO NGINX, que registra a mesma linha e exige
+    root. No FPSL isso hoje nao e problema: a entrada pelo Google chega pelo
+    nginx do MoviZap, que ja tem `log_format` mascarado desde 12/08.
+    """
+
+    # Nomes de parametro cujo VALOR nunca pode ir ao disco. `state` entra
+    # junto: e o anti-CSRF do fluxo, e vale a mesma regra.
+    SENSIVEIS = ("code", "state", "id_token", "access_token", "refresh_token")
+
+    def _limpar(self, caminho: str) -> str:
+        if "?" not in caminho:
+            return caminho
+        rota, _, consulta = caminho.partition("?")
+        partes = []
+        for par in consulta.split("&"):
+            nome, sep, _valor = par.partition("=")
+            if sep and nome in self.SENSIVEIS:
+                partes.append(f"{nome}=<mascarado>")
+            else:
+                partes.append(par)
+        return rota + "?" + "&".join(partes)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple):
+            return True
+        limpos = tuple(
+            self._limpar(a) if isinstance(a, str) and "?" in a else a
+            for a in args
+        )
+        if limpos != args:
+            record.args = limpos
+        return True
+
+
+# Vale para o logger do uvicorn e para o do gunicorn, conforme quem sobe o
+# processo -- registrar nos dois e barato e nao depende de lembrar qual e.
+for _nome in ("uvicorn.access", "gunicorn.access"):
+    logging.getLogger(_nome).addFilter(MascararSegredoDaQueryString())
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     storage.init_db()

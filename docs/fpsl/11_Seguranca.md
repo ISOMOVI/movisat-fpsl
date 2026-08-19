@@ -82,3 +82,54 @@ limit_req zone=fpsl burst=10 nodelay;
     create 600 claude claude
 }
 ```
+
+---
+
+## Segredo na query string do log de acesso (2026-08-19)
+
+**O que acontecia.** O `code` do OAuth do Google ia inteiro para o journal do
+serviço. Medido em 18/08: **37 entradas**; em 19/08 ainda havia 31 no journal
+vivo — o resto saiu na rotação. A linha era assim:
+
+```
+GET /painel/api/auth/google/callback?code=4/0AVMBsJi... HTTP/1.1" 302
+```
+
+É a mesma classe do incidente de 12/08 no MoviZap, onde o segredo do webhook do
+Evolution foi ao disco **2.527 vezes em 24 h**. A diferença é onde o segredo
+mora: lá no **caminho**, aqui na **query string**.
+
+⚠️ **O risco aqui é menor, e vale dizer por quê.** O `code` é de **uso único** e
+expira em ~10 minutos, então journal antigo não autentica ninguém. O que
+justifica o filtro não é o dano provável — é o hábito. Segredo em log só se
+conserta antes de acontecer.
+
+**A correção.** `MascararSegredoDaQueryString`, em `main.py`, registrada em
+`uvicorn.access` e `gunicorn.access`. Mascara o **valor** de `code`, `state`,
+`id_token`, `access_token` e `refresh_token`, e deixa o resto da linha intacta.
+
+🚨 **POR QUE UM FILTRO DE LOG E NÃO UM MIDDLEWARE.** Quem escreve essa linha é o
+`uvicorn.access`, que **não passa pelo middleware da aplicação**. Em 12/08
+tentou-se resolver no middleware e o segredo continuou saindo.
+
+🚨 **O FILTRO REESCREVE `record.args`, NÃO A MENSAGEM FORMATADA.** O
+`uvicorn.access` guarda os campos separados (`%s - "%s %s HTTP/%s" %d`) e só os
+junta na hora de escrever. Mexer na mensagem final não pega nada — e um teste
+que olhasse a mensagem final passaria com o filtro errado. Por isso
+`tests/teste_segredo_no_log.py` monta um `LogRecord` no formato real do uvicorn
+e confere `record.args`.
+
+🚨 **A VERIFICAÇÃO QUE MAIS IMPORTA É A DO `addFilter`.** O erro mais provável é
+escrever a classe certinha e esquecer de registrá-la: aí todo teste de
+mascaramento passa e o segredo continua indo para o disco. O teste confere que
+o filtro está **na lista de filtros** dos dois loggers.
+
+⚠️ **O FILTRO NÃO ALCANÇA O `access.log` DO NGINX**, que registra a mesma linha
+e exige root para calar. Hoje isso não é um buraco no FPSL: a entrada pelo
+Google chega pelo nginx do MoviZap, que já tem `log_format` **mascarado** desde
+12/08. Se algum dia o FPSL ganhar um callback pelo nginx dele, o `log_format`
+tem de ser mascarado lá também.
+
+⚠️ **Isto não desfaz a exposição** das 31 entradas que já estão no journal. Elas
+saem sozinhas na rotação, e como o `code` já expirou, não há rotação de segredo
+a fazer.
