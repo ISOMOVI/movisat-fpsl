@@ -41,7 +41,19 @@ As demais, que não mudam:
 | `DMD_1.1` | Demandas — esteira | **pública** | não |
 | `DMD_1.2` | Demandas — planilha | **pública** | não |
 
-**Reservadas:** `HST_3.1` Aderência (fase 2) · `REL_1.1` Relatórios (fase 3).
+**Reservada:** `REL_1.1` Relatórios (fase 3).
+
+🚨 **`HST_3.1` (Aderência) foi APAGADA em 19/08 e o código fica queimado.** Ela
+comparava Harmonit × WESO para mostrar "o que diverge", e a premissa estava
+errada: os dois sistemas têm trabalhos diferentes e **divergir é o estado
+normal** — veículo do cliente sem rastreador só existe no Harmonit; recipiente
+de bancada e equipamento em estoque só existem na WESO. A pergunta estreita que
+de fato tem dono ("o par que o FPSL escreveu nasceu dos dois lados?") já é
+respondida pelo `cadastro_placas_log`.
+
+⚠️ **Ela nunca foi pedida** — foi proposta minha em 17/08, com uma justificativa
+que eu mesmo escrevi no código. Reservar tela sem demanda queima código de tela
+e devolve pendência inventada para a mesa do usuário.
 
 ### As decisões por trás dos códigos
 

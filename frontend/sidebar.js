@@ -17,9 +17,79 @@
  * usuário, sem erro nenhum no servidor (786 chamadas, todas 200). O teste
  * `teste_contrato_sidebar.py` agora lê ESTE arquivo e prende os campos.
  */
+const CHAVE_ABAS = 'fpsl_painel_abas';
+
+/* Desenha o <nav> e devolve o índice do item ativo. Separado de
+   `montarSidebar` porque roda DUAS vezes: uma com o que estava no cache e
+   outra com o que o /me acabou de responder. */
+function desenharAbas(abasDoPerfil) {
+  /* Quem fica em negrito é a ROTA, não a permissão. `config` cobre duas telas
+     (Configurações e Registro de Telas) e comparar por permissão acenderia as
+     duas ao mesmo tempo. Exato ganha de prefixo, para o Registro de Telas não
+     acender junto com Configurações; o prefixo existe para a página filha sem
+     link próprio (o Histórico de Cadastros) acender a mãe dela. */
+  const caminho = window.location.pathname.replace(/\/+$/, '') || '/';
+  let ativo = abasDoPerfil.findIndex((a) => a.rota === caminho);
+  if (ativo < 0) {
+    let melhor = 0;
+    abasDoPerfil.forEach((a, i) => {
+      if (caminho.startsWith(a.rota + '/') && a.rota.length > melhor) {
+        melhor = a.rota.length; ativo = i;
+      }
+    });
+  }
+  const nav = document.getElementById('sidebarNav');
+  if (nav) {
+    nav.innerHTML = abasDoPerfil.map((a, i) => (
+      `<a href="${a.rota}"${i === ativo ? ' class="active"' : ''}>` +
+      `<i class="bi ${a.icone}"></i> ${a.nome}</a>`
+    )).join('');
+  }
+  return { caminho, ativo };
+}
+
+/* 🚨 O CACHE PINTA, O /me MANDA. A sidebar nascia vazia e só aparecia quando o
+   /me respondia -- resquício de 27/07, quando a permissão passou a ser
+   resolvida no backend. Os links surgiam um instante depois da página, e
+   quanto mais lento o /me, mais visível.
+ *
+ * ⚠️ NÃO DÁ PARA O SERVIDOR ENTREGAR A SIDEBAR PRONTA NO HTML. O token vive no
+ * localStorage e vai como header `Bearer`; a requisição da PÁGINA não carrega
+ * credencial nenhuma, então o servidor não sabe quem está pedindo. Fazer
+ * aquilo exigiria trocar o modelo de autenticação para cookie.
+ *
+ * 🚨 O CACHE NÃO DECIDE PERMISSÃO -- ele só PINTA. A trava de "esta aba é
+ * minha?" continua rodando apenas sobre a resposta do /me, mais abaixo. Se
+ * alguém mexer no perfil de um usuário, ele vê o menu antigo pelo tempo do
+ * /me e depois ele se corrige; e mesmo enquanto o link está na tela, a rota
+ * continua barrando no backend. É cosmético, não é furo.
+ *
+ * ⚠️ O CACHE É POR USUÁRIO. Guardar o menu de quem saiu e pintá-lo para quem
+ * entrou seria mostrar a estrutura do painel de outra pessoa -- por isso o
+ * `logout` apaga a chave, junto com o token. */
+function abasDoCache() {
+  try {
+    const cru = localStorage.getItem(CHAVE_ABAS);
+    if (!cru) return null;
+    const abas = JSON.parse(cru);
+    /* Só aceita o formato que `desenharAbas` sabe ler. Cache de uma versão
+       antiga do contrato desenharia `undefined` em cada link -- que é
+       exatamente a cara do defeito de 17/08. */
+    if (!Array.isArray(abas) || !abas.length) return null;
+    if (!abas.every((a) => a && a.id && a.nome && a.rota && a.icone)) return null;
+    return abas;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function montarSidebar(abaAtual) {
   const token = localStorage.getItem('fpsl_painel_token');
   if (!token) { window.location.href = '/painel'; return null; }
+
+  // pinta na hora com o que já se sabia; o /me confirma logo abaixo
+  const doCache = abasDoCache();
+  if (doCache) desenharAbas(doCache);
 
   let perfil;
   try {
@@ -39,29 +109,16 @@ async function montarSidebar(abaAtual) {
 
   const abasDoPerfil = perfil.abas || [];
 
-  /* Quem fica em negrito é a ROTA, não a permissão. `config` cobre duas telas
-     (Configurações e Registro de Telas) e comparar por permissão acenderia as
-     duas ao mesmo tempo. Exato ganha de prefixo, para o Registro de Telas não
-     acender junto com Configurações; o prefixo existe para a página filha sem
-     link próprio (o Histórico de Cadastros) acender a mãe dela. */
-  const caminho = window.location.pathname.replace(/\/+$/, '') || '/';
-  let ativo = abasDoPerfil.findIndex((a) => a.rota === caminho);
-  if (ativo < 0) {
-    let melhor = 0;
-    abasDoPerfil.forEach((a, i) => {
-      if (caminho.startsWith(a.rota + '/') && a.rota.length > melhor) {
-        melhor = a.rota.length; ativo = i;
-      }
-    });
-  }
+  // repinta com a verdade do servidor (se o cache já acertou, não muda nada)
+  const { caminho } = desenharAbas(abasDoPerfil);
 
-  const nav = document.getElementById('sidebarNav');
-  if (nav) {
-    nav.innerHTML = abasDoPerfil.map((a, i) => (
-      `<a href="${a.rota}"${i === ativo ? ' class="active"' : ''}>` +
-      `<i class="bi ${a.icone}"></i> ${a.nome}</a>`
-    )).join('');
-  }
+  /* Guarda para a próxima página. Só o que `desenharAbas` consome -- nada de
+     jogar o perfil inteiro no localStorage. */
+  try {
+    localStorage.setItem(CHAVE_ABAS, JSON.stringify(abasDoPerfil.map((a) => ({
+      id: a.id, nome: a.nome, rota: a.rota, icone: a.icone,
+    }))));
+  } catch (e) { /* localStorage cheio ou bloqueado: só perde o atalho */ }
 
   const temAba = abasDoPerfil.some((a) => a.id === abaAtual);
   if (!temAba) {
@@ -86,5 +143,8 @@ async function montarSidebar(abaAtual) {
 function logout() {
   localStorage.removeItem('fpsl_painel_token');
   localStorage.removeItem('fpsl_painel_admin');
+  // 🚨 o menu sai junto: pintar o menu de quem saiu para quem entra depois
+  // mostraria a estrutura do painel de outra pessoa
+  localStorage.removeItem(CHAVE_ABAS);
   window.location.href = '/painel';
 }

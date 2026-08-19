@@ -155,18 +155,22 @@ TELAS = [
         "no_menu": True,
     },
     # ---- reservados: código já ocupado, tela ainda não existe ----
-    {
-        # A comparação Harmonit × WESO que o cadastro de placas tornou
-        # necessária: quais veículos estão só num lado, e quais divergem na
-        # grafia. Proposta em 17/08, sem data.
-        "codigo": "HST_3.1",
-        "titulo": "Aderência",
-        "rota": "/painel/aderencia",
-        "icone": "bi-arrow-left-right",
-        "descricao": "O que existe só no Harmonit, só na WESO, e o que diverge.",
-        "permissao": "os_historico",
-        "fase": 2,
-    },
+    # 🚨 `HST_3.1` (Aderência) FOI APAGADA EM 19/08, e o código fica QUEIMADO --
+    # código de tela nunca se reaproveita. Ela media "o quanto o Harmonit e a
+    # WESO são iguais", e a premissa estava errada: os dois sistemas têm
+    # trabalhos diferentes e DIVERGIR É O ESTADO NORMAL. Veículo do cliente sem
+    # rastreador só existe no Harmonit; recipiente de bancada e equipamento em
+    # estoque só existem na WESO. A tela produziria uma lista de "divergências"
+    # que ninguém deveria tratar.
+    #
+    # A única pergunta desse assunto que tem dono é bem mais estreita -- "o par
+    # que o FPSL escreveu nasceu dos DOIS lados?" -- e o `cadastro_placas_log`
+    # já responde, gravando uma linha por (placa, sistema).
+    #
+    # ⚠️ ELA NUNCA FOI PEDIDA. Foi proposta minha em 17/08, e o comentário que
+    # estava aqui dizia "que o cadastro de placas tornou necessária" -- uma
+    # justificativa que eu mesmo escrevi. Reservar tela sem demanda queima
+    # código e devolve pendência inventada para a mesa do usuário.
     {
         "codigo": "REL_1.1",
         "titulo": "Relatórios",

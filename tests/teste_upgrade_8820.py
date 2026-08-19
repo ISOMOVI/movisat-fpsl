@@ -66,6 +66,67 @@ checar("sufixo do recipiente", "-UPGRADE", perfil["placa_teste_sufixo"])
 checar("template tem SAIRA", True, "SAIRÁ: {serie}" in perfil["descricao_template"])
 checar("template tem ENTRARA", True, "ENTRARÁ: {serie_entrada}" in perfil["descricao_template"])
 
+# ── a WESO deste teste é um dublê ────────────────────────────────────────────
+#
+# 🚨 POR QUE MUDOU EM 19/08. Este arquivo lia a WESO ao vivo e ficava com **8
+# falhas permanentes** desde que os recipientes `OOM4131-UPGRADE` e
+# `OOM3895-UPGRADE` foram apagados de lá por outra pessoa. As placas reais
+# `OOM 4131` e `OOM 3895` continuam existindo; só os recipientes sumiram.
+#
+# A saída ANTERIORMENTE anotada era "recriar os dois recipientes na WESO". Está
+# errada por dois motivos:
+#
+#   1. **Consertaria o sintoma no sistema errado.** O recipiente é dado de
+#      OUTRO sistema, que qualquer pessoa pode apagar de novo amanhã. Um teste
+#      que reprova por isso está medindo a WESO, não o nosso código.
+#   2. **O recipiente hoje nasce do painel.** O Cadastro de Placas cria a placa
+#      e o recipiente e registra os dois; não há por que um teste depender de
+#      um recipiente que alguém deixou lá em julho.
+#
+# O que este arquivo prende é LÓGICA NOSSA: a derivação do nome do recipiente,
+# o template da descrição, e `_modelo_da_operacao` devolver o que ENTRA e não o
+# que SAI. A WESO só fornecia entradas. Agora as entradas são estas, congeladas
+# com a data em que foram medidas ao vivo.
+#
+# ⚠️ SE A REGRA DE NEGÓCIO MUDAR, ESTES VALORES NÃO ACUSAM SOZINHOS. É a troca
+# consciente: determinismo em vez de leitura ao vivo. Quem cobre o caminho real
+# de leitura é `teste_higiene_placas_weso.py`, que fala com a WESO de verdade.
+BASE_MEDIDA = {
+    # placa gravada na WESO -> (numeroSerie, modelo, descricao)
+    "OOM 4131": ("356354872583936", "XT40",
+                 "SR/FACCHINI SRF CA, DIESEL, 2015/2016, CINZA"),
+    "OOM 3895": ("356354872585899", "XT40", None),
+    # ⚠️ na WESO o segundo estava gravado como ' OOM3895-UPGRADE', COM espaço na
+    # frente. A chave normalizada é o que faz os dois casarem -- e é justamente
+    # essa tolerância que o teste prende.
+    "OOM4131-UPGRADE": ("356354871411980", "XT40 Portatil", "TERMO 8820"),
+    "OOM3895-UPGRADE": ("356354871410958", "XT40 Portatil", "TERMO 8820"),
+    # recipiente de OUTRO termo: é o caso que a conferência existe para pegar
+    "GCW9H80-UPGRADE": ("356354871400000", "XT40 Portatil", "TERMO 8824"),
+}
+_POR_CHAVE = {equipamentos._chave(p): v for p, v in BASE_MEDIDA.items()}
+
+
+async def _seriais_dublê(placas, falhas=None):
+    return {equipamentos._chave(p): _POR_CHAVE[equipamentos._chave(p)][0]
+            for p in placas if equipamentos._chave(p) in _POR_CHAVE}
+
+
+def _modelo_dublê(placa):
+    achado = _POR_CHAVE.get(equipamentos._chave(placa))
+    return achado[1] if achado else None
+
+
+def _descricao_dublê(placa):
+    achado = _POR_CHAVE.get(equipamentos._chave(placa))
+    return achado[2] if achado else None
+
+
+equipamentos.buscar_seriais = _seriais_dublê
+equipamentos.modelo_da_placa = _modelo_dublê
+equipamentos.descricao_da_placa = _descricao_dublê
+
+
 # ── 4. a descrição final, ponta a ponta ──────────────────────────────────────
 seriais = asyncio.run(equipamentos.buscar_seriais(
     ["OOM 4131", "OOM 3895", "OOM4131-UPGRADE", "OOM3895-UPGRADE"]))
