@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from ..auth import requer_aba
 from .. import operacoes_config as cfg
 from ..pdf_extractor import extrair_campos
+from .. import operacoes_espera as esp
 from .. import operacoes_registro as reg
 from ...client import weso_get, weso_post
 from ...harmonit_client import harmonit_get, harmonit_post
@@ -988,7 +989,80 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
                 placa_gravada=r.get("placa"), descricao=r.get("rotulo"),
                 id_externo=r.get("os_id"), erro=r.get("erro"))
 
+    pendencias = await _gravar_pendencias(body, pre, operacionais, criadas)
+
     return {"criadas": criadas, "avisos": pre["avisos"],
+            "pendencias": pendencias,
             "falhas_de_leitura": pre["ctx"]["falhas"],
             "total": len(criadas),
             "com_erro": sum(1 for r in criadas if not r.get("ok"))}
+
+
+async def _gravar_pendencias(body: "oos.MontarInput", pre: dict,
+                             operacionais: list[dict],
+                             criadas: list[dict]) -> list[dict]:
+    """Grava o que a rotina (F5) vai ter de terminar depois.
+
+    🚨 QUEM SABE É QUEM GEROU. Seis horas depois, a rotina não tem como saber
+    qual OS estava esperando qual recipiente -- deduzir pela descrição é frágil
+    e falha calado, que é a família de defeito mais cara deste projeto.
+
+    Só OS criada com sucesso vira pendência: uma OS que falhou não deixou nada
+    pendente, deixou um erro, e esse já está no registro do lote.
+
+    Os quatro casos vêm do PERFIL, nunca do nome da placa:
+      `libera_serie` .......... recipiente a devolver e apagar
+      `desativa_apos_oficina` . rescisão e ressarcimento
+      `vincula_apos_oficina` .. substituição, a única que vincula
+    """
+    perfil = pre["perfil"]
+    recipientes = pre["ctx"]["recipientes"]
+    pendencias: list[dict] = []
+
+    # As criadas vêm na MESMA ordem das operacionais -- a financeira entra
+    # depois, e por isso `criadas` é cortado no tamanho de `operacionais`.
+    for op, criada in zip(operacionais, criadas):
+        if not criada.get("ok"):
+            continue
+
+        caso = None
+        if perfil.get("libera_serie") and perfil.get("placa_teste_sufixo"):
+            caso = "recipiente"
+        elif perfil.get("vincula_apos_oficina"):
+            caso = "substituicao"
+        elif perfil.get("desativa_apos_oficina"):
+            caso = ("ressarcimento" if perfil.get("hibrida") else "rescisao")
+        if not caso:
+            continue
+
+        rec = recipientes.get(eqp.chave(op.get("placa") or "")) or {}
+        # ⚠️ Na substituição a OS de RETIRADA é a que carrega a pendência: é
+        # dela que sai o equipamento. A de instalação recebe, e recebe pela
+        # mesma linha -- por isso `placa_entrada` viaja junto.
+        if caso == "substituicao" and op.get("rotulo") != "Retirada":
+            continue
+
+        entrada = next((p.placa_entrada for p in body.placas
+                        if p.placa == op.get("placa")), None)
+        novo = await esp.registrar(
+            lote=body.lote, perfil=body.perfil, caso=caso,
+            os_id=criada.get("os_id"), numero_os=criada.get("numero_ordem"),
+            placa=op.get("placa") or "", placa_entrada=entrada,
+            recipiente_placa=(eqp.placa_teste(op.get("placa") or "",
+                                              perfil["placa_teste_sufixo"])
+                              if perfil.get("placa_teste_sufixo") else None),
+            veiculo_id=rec.get("veiculo_id"),
+            rastreador_id=rec.get("rastreador_id"))
+        if novo:
+            pendencias.append({"id": novo, "caso": caso,
+                               "placa": op.get("placa"),
+                               "numero_os": criada.get("numero_ordem")})
+    return pendencias
+
+
+@router.get("/pendencias")
+async def listar_pendencias(caso: str | None = Query(None),
+                            _=Depends(requer_aba("operacoes"))):
+    """O que a rotina ainda deve, e o que ela desistiu de tentar."""
+    return {"pendentes": await esp.pendentes(caso), "resumo": await esp.resumo(),
+            "teto_tentativas": esp.TETO_TENTATIVAS}
