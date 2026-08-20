@@ -178,6 +178,12 @@ async def extrair(perfil: str = Query(...), arquivo: UploadFile = File(...),
         "documento_no_termo": bool(doc),
         "nome_no_termo": campos.get("cliente_nome_sugerido"),
         "itens": itens,
+        # 🚨 OS ITENS DO CONTRATO, com nome proprio. O `itens` acima sao os
+        # VEICULOS; estes sao as linhas de produto e servico do termo, e sao
+        # eles que a etapa 4 resolve contra o catalogo do Harmonit. Sem eles a
+        # OS sai so com o servico do cabecalho e o ENTREGA OS -- completa na
+        # aparencia e vazia no conteudo.
+        "itens_contrato": campos.get("itens") or [],
         "sem_placa": sem_placa,
         "recipiente_sufixo": (p.get("placa_teste_sufixo") or "").upper() or None,
         # 🆕 A SUBSTITUIÇÃO TRAZ AS DUAS TAXAS NO PRÓPRIO TERMO (medido em
@@ -1084,3 +1090,53 @@ async def rodar_rotina(caso: str | None = Query(None),
     clicando deixa de valer para o que roda de madrugada.
     """
     return await rot.rodar(caso)
+
+
+# ── apoio da etapa 4: as listas que os seletores consomem ───────────────────
+#
+# 🚨 PREFIXO PRÓPRIO, e não é preciosismo. As equivalentes do `os_router`
+# exigem `gerar_os` — quem tem só `operacoes` toma 403 nas três, e isso só
+# apareceria ao usar a tela. Aqui elas nascem sob `operacoes`, e quando as
+# telas velhas saírem (F7) nenhuma rota desta aba muda de endereço.
+
+
+@router.get("/servicos/buscar")
+async def buscar_servico(q: str = Query("", min_length=0),
+                         _=Depends(requer_aba("operacoes"))):
+    """Serviços do Harmonit para o Produto/Serviço do cabeçalho da OS."""
+    params = {"skip": 0, "take": 30}
+    if q:
+        params["search"] = q
+    r = await harmonit_get("/Produto/ObterServicos", params=params)
+    itens = (r.get("data") if isinstance(r, dict) else r) or []
+    return {"resultados": [{"id": i.get("id"), "descricao": i.get("descricao"),
+                            "grupo": i.get("grupo")} for i in itens]}
+
+
+@router.get("/prioridades")
+async def listar_prioridades(_=Depends(requer_aba("operacoes"))):
+    """Prioridade das OS OPERACIONAIS. A financeira é sempre Normal (regra 5).
+
+    ⚠️ Lista muda não trava a tela: ela cai no padrão Normal, que é o que a
+    esmagadora maioria das OS usa de qualquer forma.
+    """
+    lista = await _lista_do_harmonit("/PrioridadeAtendimento/ObterPrioridades")
+    return {"default": cfg.PRIORIDADE_NORMAL_ID,
+            "prioridades": [{"id": i.get("id"),
+                             "descricao": i.get("descricao") or i.get("nome")}
+                            for i in (lista or []) if i.get("id")]}
+
+
+@router.get("/problemas")
+async def listar_problemas(_=Depends(requer_aba("operacoes"))):
+    """Problemas do Harmonit — só os perfis SEM TERMO mostram este seletor.
+
+    🚨 Num contrato o problema é ditado pelo documento; oferecer escolha ali
+    só convidaria a OS a divergir do papel assinado. Quem aplica essa distinção
+    é `_aplicar_cabecalho`.
+    """
+    lista = await _lista_do_harmonit("/Problema/ObterProblemas")
+    if lista is None:
+        raise HTTPException(502, "A lista de Problemas do Harmonit não respondeu.")
+    return {"problemas": [{"id": p.get("id"), "descricao": p.get("descricao")}
+                          for p in lista if p.get("id")]}

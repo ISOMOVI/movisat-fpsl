@@ -143,7 +143,47 @@
           <div class="etapa-sub">Mostra o que vai ser gravado, não o que foi
             digitado.</div>
         </div>
-        <div class="em-construcao">Entra na <strong>F4</strong>.</div>
+        <div class="aviso-info" id="osInfo"></div>
+        <div class="msg" id="msgEtapa4" style="display:none"></div>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <div style="flex:2;min-width:260px">
+            <label style="font-size:.78rem;color:var(--text2)">Produto/Serviço do cabeçalho</label>
+            <input type="text" id="buscaServico" placeholder="digite parte do nome e aguarde"
+                   oninput="buscarServico()" style="width:100%">
+            <select id="servicoId" style="width:100%;margin-top:4px"></select>
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label style="font-size:.78rem;color:var(--text2)">Prioridade</label>
+            <select id="prioridadeId" style="width:100%"></select>
+            <div style="font-size:.7rem;color:var(--text2);margin-top:2px">
+              Só nas operacionais — a financeira é sempre Normal.</div>
+          </div>
+          <div style="flex:1;min-width:160px;display:none" id="campoProblema">
+            <label style="font-size:.78rem;color:var(--text2)">Problema</label>
+            <select id="problemaId" style="width:100%"></select>
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px">
+          <label style="font-size:.78rem;color:var(--text2)">Observação (vai para a OBS da OS)</label>
+          <input type="text" id="observacao" style="width:100%">
+        </div>
+
+        <div id="blocoModelos" style="display:none;margin-bottom:12px">
+          <div style="font-size:.82rem;font-weight:600;margin-bottom:4px">
+            Equipamento por placa</div>
+          <table id="tabelaModelos"><thead></thead><tbody></tbody></table>
+        </div>
+
+        <div id="previaOS"></div>
+
+        <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-ghost" onclick="conferirOS()">Conferir o que será gravado</button>
+          <button class="btn btn-primary" id="btnGerar" onclick="gerarOS()" disabled>
+            Gerar as OS</button>
+          <span id="progressoOS" style="font-size:.8rem;color:var(--text2)"></span>
+        </div>
       </div>
 
       <div class="footer-nav">
@@ -597,6 +637,247 @@ async function processarPlacas() {
       : `Todas as ${linhasPlacas.length} linhas resolvidas e conferidas relendo.`,
       ruins.length ? 'msg-erro' : 'msg-ok');
 }
+
+/* ── etapa 4: as OS ─────────────────────────────────────────────────────────
+   🚨 MOSTRA O QUE VAI SER GRAVADO, NAO O QUE FOI DIGITADO. A previa e a
+   gravacao chamam a MESMA montagem no servidor; esta tela so desenha o que
+   voltou. Previa que remonta o resultado por conta propria e previa que mente,
+   e ela e a ultima coisa que a pessoa ve antes de escrever em dois sistemas. */
+let modelosDePara = [];
+let previa = null;
+let apoioCarregado = false;
+
+async function carregarApoio() {
+  if (apoioCarregado) return;
+  apoioCarregado = true;
+  try {
+    const r = await fetch('/painel/api/operacoes/modelos', { headers: auth() });
+    modelosDePara = (await lerResposta(r)).modelos || [];
+  } catch (e) { modelosDePara = []; }
+
+  try {
+    const r = await fetch('/painel/api/operacoes/prioridades', { headers: auth() });
+    const d = await lerResposta(r);
+    const sel = document.getElementById('prioridadeId');
+    sel.innerHTML = (d.prioridades || [])
+      .map((p) => `<option value="${p.id}"${p.id === d.default ? ' selected' : ''}>` +
+                  `${escapeHtml(p.descricao || '')}</option>`).join('');
+    if (!sel.innerHTML) sel.innerHTML = `<option value="${d.default}">Normal</option>`;
+  } catch (e) {
+    /* Lista muda nao trava a tela: cai no padrao Normal, que e o que a
+       esmagadora maioria das OS usa. */
+    document.getElementById('prioridadeId').innerHTML = '<option value="382">Normal</option>';
+  }
+
+  if (perfilAtual().sem_termo) {
+    document.getElementById('campoProblema').style.display = '';
+    try {
+      const r = await fetch('/painel/api/operacoes/problemas', { headers: auth() });
+      const d = await lerResposta(r);
+      document.getElementById('problemaId').innerHTML =
+        '<option value="">(o do perfil)</option>' + (d.problemas || [])
+          .map((p) => `<option value="${p.id}">${escapeHtml(p.descricao || '')}</option>`).join('');
+    } catch (e) { /* o perfil decide sozinho */ }
+  }
+  buscarServico();
+}
+
+let buscaTimer = null;
+function buscarServico() {
+  clearTimeout(buscaTimer);
+  buscaTimer = setTimeout(async () => {
+    const q = document.getElementById('buscaServico').value.trim();
+    try {
+      const r = await fetch('/painel/api/operacoes/servicos/buscar?q=' + encodeURIComponent(q),
+                            { headers: auth() });
+      const d = await lerResposta(r);
+      document.getElementById('servicoId').innerHTML = (d.resultados || [])
+        .map((s) => `<option value="${s.id}">${escapeHtml(s.descricao || '')}</option>`).join('')
+        || '<option value="">(nada encontrado)</option>';
+    } catch (e) { /* silencioso: o botao Conferir dira o que falta */ }
+  }, 400);
+}
+
+/* O corpo e montado UMA vez e serve a previa e a gravacao -- se cada uma
+   montasse o seu, elas poderiam divergir sem ninguem ver. */
+function corpoOS(confirmar) {
+  lerCampos();
+  const linhas = linhasPlacas.filter((l) => !l.recipiente && !l.entrada);
+  const problema = document.getElementById('problemaId');
+  return {
+    perfil: document.getElementById('perfil').value,
+    cliente_id: (cliente && cliente.harmonit) ? cliente.harmonit.id : 0,
+    lote: lote,
+    termo: (extraido && extraido.termo) || '',
+    observacao: document.getElementById('observacao').value,
+    problema_id: problema && problema.value ? +problema.value : null,
+    produto_servico_id: +document.getElementById('servicoId').value || 0,
+    prioridade_id: +document.getElementById('prioridadeId').value || 382,
+    placas: linhas.map((l) => {
+      const par = linhasPlacas.find((x) => x.entrada && x.veiculo === l.veiculo);
+      return {
+        placa: l.placa, veiculo: l.veiculo,
+        placa_entrada: par ? par.placa : null,
+        veiculo_entrada: par ? par.veiculo : '',
+        modelo_escolhido: l.modelo_escolhido || null,
+      };
+    }),
+    itens: ((extraido && extraido.itens_contrato) || []).map((i) => ({
+      descricao: i.descricao, quantidade: i.quantidade,
+      valor_unitario: i.valor_unitario,
+      comodato_ou_aquisicao: i.comodato_ou_aquisicao,
+    })),
+    confirmar: !!confirmar,
+  };
+}
+
+async function conferirOS() {
+  msg('msgEtapa4', 'Montando a prévia… <span class="spinner"></span>', '');
+  document.getElementById('btnGerar').disabled = true;
+  try {
+    const res = await fetch('/painel/api/operacoes/os/previa', {
+      method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpoOS(false)),
+    });
+    previa = await lerResposta(res);
+    desenharPrevia(previa);
+    msg('msgEtapa4', '', '');
+  } catch (e) {
+    previa = null;
+    document.getElementById('previaOS').innerHTML = '';
+    msg('msgEtapa4', escapeHtml(e.message), 'msg-erro');
+  }
+}
+
+/* 🚨 OS DOIS ESTADOS QUE PRODUZIAM O MESMO TEXTO. "Nasceu agora" e normal
+   nesta aba -- a etapa 3 acabou de criar a placa. "Nao consegui ler a WESO" e
+   o defeito da OS 16775. O servidor sabe em qual esta porque ele mesmo criou a
+   placa; a tela so precisa NAO misturar os dois. */
+function desenharModelos(placas) {
+  const precisam = placas.filter((p) => !p.modelo_na_weso);
+  document.getElementById('blocoModelos').style.display = precisam.length ? '' : 'none';
+  if (!precisam.length) return;
+
+  const opcoes = '<option value="">(deixar em branco)</option>' + modelosDePara
+    .map((m) => `<option value="${escapeHtml(m.modelo)}">${escapeHtml(m.modelo)}` +
+                `${m.tem_produto ? '' : ' — sem produto no de-para'}</option>`).join('');
+
+  document.querySelector('#tabelaModelos thead').innerHTML =
+    '<tr><th>Placa</th><th>Situação</th><th style="width:280px">Modelo</th></tr>';
+  document.querySelector('#tabelaModelos tbody').innerHTML = precisam.map((p) => {
+    const cor = p.motivo === 'weso_nao_respondeu' ? 'badge-red' : 'badge-blue';
+    return `<tr>
+      <td><strong>${escapeHtml(p.placa)}</strong></td>
+      <td><span class="badge ${cor}">${escapeHtml(p.motivo || '')}</span>
+          <div style="font-size:.72rem;color:var(--text2);margin-top:2px">
+            ${escapeHtml(p.recado || '')}</div></td>
+      <td><select data-placa="${escapeHtml(p.placa)}" onchange="escolherModelo(this)">
+            ${opcoes}</select></td></tr>`;
+  }).join('');
+
+  precisam.forEach((p) => {
+    if (!p.modelo_escolhido) return;
+    const el = document.querySelector(`#tabelaModelos select[data-placa="${p.placa}"]`);
+    if (el) el.value = p.modelo_escolhido;
+  });
+}
+
+function escolherModelo(el) {
+  const l = linhasPlacas.find((x) => x.placa === el.dataset.placa);
+  if (l) l.modelo_escolhido = el.value || null;
+  /* Reconfere sozinho: escolher o modelo muda o material e a descricao, e
+     mostrar a previa velha ao lado da escolha nova seria mentir. */
+  conferirOS();
+}
+
+function desenharPrevia(d) {
+  desenharModelos(d.placas || []);
+
+  let html = '';
+  if ((d.pendentes || []).length) {
+    html += `<div class="msg msg-erro" style="display:block"><strong>` +
+      `${d.pendentes.length} item(ns) do termo sem vínculo no catálogo</strong> — ` +
+      `a OS sairia sem eles, e ninguém veria. Vincule antes de gerar:<ul>` +
+      d.pendentes.map((p) => `<li>${escapeHtml(p)}</li>`).join('') + `</ul></div>`;
+  }
+  if ((d.avisos || []).length) {
+    html += `<div class="aviso-info"><strong>${d.avisos.length} aviso(s)</strong><ul>` +
+      d.avisos.map((a) => `<li>${escapeHtml(a)}</li>`).join('') + `</ul></div>`;
+  }
+
+  html += (d.operacoes || []).map((op) => {
+    const fin = op.eh_financeira;
+    return `<div class="panel" style="margin-top:10px;padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>${escapeHtml(op.rotulo || '')}</strong>
+        <span class="badge ${fin ? 'badge-blue' : 'badge-green'}">
+          ${fin ? 'financeira' : 'operacional'}</span></div>
+      <div style="font-size:.78rem;color:var(--text2);margin:6px 0">
+        ${escapeHtml(op.descricao || '')}</div>
+      <table><thead><tr><th>Material</th><th style="width:70px">Qtd</th>
+        <th style="width:100px">Valor</th><th style="width:120px">Flags</th></tr></thead>
+        <tbody>${(op.materiais || []).map((m) => `<tr>
+          <td>${escapeHtml(m.descricao || '')}</td>
+          <td>${m.quantidade}</td>
+          <td>${Number(m.valor_unitario || 0).toLocaleString('pt-BR',
+                {style:'currency',currency:'BRL'})}</td>
+          <td>${m.comodato ? '<span class="badge badge-blue">comodato</span>' : ''}
+              ${m.cobrar ? '<span class="badge badge-green">cobrar</span>' : ''}</td>
+        </tr>`).join('')}</tbody></table></div>`;
+  }).join('');
+
+  document.getElementById('previaOS').innerHTML = html;
+  document.getElementById('osInfo').innerHTML =
+    `<strong>${(d.operacoes || []).length} OS</strong> serão gravadas no Harmonit. ` +
+    (d.pode_gerar ? 'Confira acima antes de gerar.'
+                  : '<strong>Bloqueado</strong> — resolva os vínculos pendentes.');
+  document.getElementById('btnGerar').disabled = !d.pode_gerar;
+}
+
+async function gerarOS() {
+  if (!previa || !previa.pode_gerar) return;
+  const btn = document.getElementById('btnGerar');
+  btn.disabled = true;
+  const prog = document.getElementById('progressoOS');
+  prog.innerHTML = 'Gravando no Harmonit… <span class="spinner"></span>';
+  msg('msgEtapa4', '', '');
+  try {
+    const res = await fetch('/painel/api/operacoes/os/gerar', {
+      method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpoOS(true)),
+    });
+    const d = await lerResposta(res);
+    prog.textContent = '';
+    document.getElementById('previaOS').innerHTML =
+      `<table><thead><tr><th>OS</th><th>Placa</th><th>Tipo</th>
+        <th>Materiais</th></tr></thead><tbody>` +
+      (d.criadas || []).map((r) => `<tr>
+        <td>${r.ok ? `<strong>${escapeHtml(String(r.numero_ordem || ''))}</strong>`
+                   : '<span class="badge badge-red">falhou</span>'}</td>
+        <td>${escapeHtml(r.placa || '')}</td>
+        <td>${escapeHtml(r.rotulo || '')}</td>
+        <td style="font-size:.72rem">${escapeHtml(
+          r.ok ? (r.materiais_erro || []).join('; ') || 'todos aceitos'
+               : (r.erro || ''))}</td></tr>`).join('') + '</tbody></table>';
+    msg('msgEtapa4', d.com_erro
+        ? `<strong>${d.com_erro} de ${d.total} OS com problema.</strong> Os números acima são o que existe no Harmonit.`
+        : `<strong>${d.total} OS criadas.</strong>` +
+          ((d.pendencias || []).length
+            ? ` ${d.pendencias.length} ficaram esperando a rotina (recipiente ou oficina).`
+            : ''),
+        d.com_erro ? 'msg-erro' : 'msg-ok');
+  } catch (e) {
+    prog.textContent = '';
+    btn.disabled = false;
+    msg('msgEtapa4', escapeHtml(e.message), 'msg-erro');
+  }
+}
+
+const irParaEtapa4 = irPara;
+irPara = function (n) {
+  irParaEtapa4(n);
+  if (n === 4) carregarApoio();
+};
 
 irPara(1);
 carregarPerfis();
