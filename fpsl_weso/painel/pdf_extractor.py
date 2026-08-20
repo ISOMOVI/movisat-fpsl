@@ -388,6 +388,67 @@ def _identificador_nao_convencional(celula: str) -> tuple[str | None, str, list[
     return variantes[0], " ".join(veiculo.split()), variantes
 
 
+# ── o que vem depois do traco e a placa ─────────────────────────────────────
+
+# Guarda medida nos 14 fixtures em 20/08. Nao e "conservadorismo": cada limite
+# abaixo existe por causa de uma linha real que a medicao mostrou.
+_POS_TRACO_MAX_TOKENS = 2      # 'RZL H405' tem 2; texto corrido tem 6+
+_POS_TRACO_MIN_CHARS = 5       # abaixo disso e sobra de pontuacao
+_POS_TRACO_MAX_CHARS = 12      # chassi (17) tem caminho proprio, com rotulo
+
+
+def _placa_pos_traco(celula: str) -> tuple[str | None, str]:
+    """(identificador, descricao) quando o que vem depois do traco e a placa.
+
+    🚨 REGRA DO USUARIO (20/08, termo 8846). A coluna se chama "Veiculo e Placa
+    ou Chassis do veiculo": o que vem depois do `-` e o identificador, mesmo em
+    formato nao convencional. O 8846 traz `NISSAN, 2022, DIESEL - RZL H405`, e
+    `RZL H405` nao casa com nenhum padrao brasileiro -- nem o antigo
+    (3 letras + 4 digitos) nem o Mercosul (3 letras + digito + letra + 2
+    digitos). Existe na WESO com rastreador vinculado; e a placa daquele
+    veiculo, e o painel recusava gerar a OS.
+
+    ⚠️ RODA DEPOIS DO RECONHECIMENTO DE PLACA, NUNCA ANTES. Medido: 4 linhas
+    dos fixtures tem placa E traco na descricao (`SEMI- REBOQUE`,
+    `- (Veiculo transferido do contrato n 8665)`). Rodar antes roubaria a placa
+    certa e poria lixo no lugar.
+
+    🚨 E A GUARDA NAO E ZELO EXCESSIVO: sem ela, duas linhas de texto corrido
+    que caem na tabela de veiculos do `transferencia_novo.pdf` virariam a placa
+    `la tambem no contrato principal de`. Isso e o `RFD 2447` de novo -- dado
+    plausivel apontando para lugar nenhum -- e a regra 13 existe para impedir.
+
+    O que passa: no maximo 2 blocos, so letras e digitos ASCII, ao menos um
+    digito, entre 5 e 12 caracteres. Texto corrido reprova pelo numero de
+    blocos e pelo acento; sobra de pontuacao reprova pelo tamanho.
+    """
+    texto = " ".join(str(celula or "").split())
+    if "-" not in texto:
+        return None, ""
+
+    cabeca, _, cauda = texto.rpartition("-")
+    cauda = cauda.strip(" ,;.*")
+    if not cauda:
+        return None, ""
+
+    blocos = cauda.split()
+    if len(blocos) > _POS_TRACO_MAX_TOKENS:
+        return None, ""
+    # `isalnum` do Python aceita acentuada; aqui a exigencia e ASCII, que e o
+    # que separa identificador de palavra em portugues.
+    if not all(b.isascii() and b.isalnum() for b in blocos):
+        return None, ""
+    junto = "".join(blocos)
+    if not (_POS_TRACO_MIN_CHARS <= len(junto) <= _POS_TRACO_MAX_CHARS):
+        return None, ""
+    if not any(c.isdigit() for c in junto):
+        return None, ""
+    if not any(c.isalpha() for c in junto):
+        return None, ""
+
+    return cauda.upper(), " ".join(cabeca.split()).strip(" -,;.*")
+
+
 def _processar_linhas_placa(linhas: list, idx_placa_cols: list[int], placas: list[dict],
                             sem_placa: list[dict] | None = None) -> None:
     """Extrai placa+veículo das linhas de uma tabela de veículos.
@@ -446,6 +507,27 @@ def _processar_linhas_placa(linhas: list, idx_placa_cols: list[int], placas: lis
                     # Formas alternativas para a consulta à WESO adotar a
                     # grafia oficial -- ver `_identificador_nao_convencional`.
                     "placa_variantes": variantes,
+                })
+                continue
+
+            # 🆕 O QUE VEM DEPOIS DO TRAÇO É A PLACA (decisão do usuário,
+            # 20/08). A coluna se chama "Veículo e Placa ou Chassis do
+            # veículo", e o identificador vem ali -- inclusive fora do padrão
+            # brasileiro, como o `RZL H405` do termo 8846, que existe na WESO
+            # com rastreador vinculado e mesmo assim travava a geração.
+            #
+            # ⚠️ Vem DEPOIS do reconhecimento normal e do rótulo de
+            # série/chassi, de propósito: só decide o que sobrou.
+            identificador, veiculo = _placa_pos_traco(celula)
+            if identificador:
+                placas.append({
+                    "placa": identificador,
+                    "veiculo": veiculo,
+                    "sem_bloqueio": bool(_SEM_BLOQUEIO_RE.search(celula)),
+                    "nota_transferencia": _detectar_transferencia(celula),
+                    # Destaca na tela para conferência visual, como já se faz
+                    # com série e chassi -- não muda o tratamento.
+                    "placa_convencional": False,
                 })
                 continue
 

@@ -142,6 +142,61 @@ async def _escrever_serie_na_os(numero_os: int, serie: str) -> tuple[bool, str]:
                    "releitura")
 
 
+# ── anexar o equipamento que a geração não pôde anexar ──────────────────────
+
+async def _anexar_equipamento(os_id: int | None, modelo: str | None,
+                              materiais_do_contrato: float = 0.0
+                              ) -> tuple[bool, str]:
+    """Põe o equipamento nos MATERIAIS da OS, não só na descrição.
+
+    🚨 ESCREVER A SÉRIE NO TEXTO NÃO BASTA, e foi a auditoria que pegou. Quando
+    o recipiente não estava pronto na geração, `conferir_recipientes` o
+    descartou, não houve modelo, e a OS nasceu SEM a linha do equipamento nos
+    materiais. Completar só a descrição deixaria a OS parecendo pronta e sem o
+    equipamento — que é exatamente o defeito achado auditando o termo 8820.
+
+    A geração velha nunca precisou disto porque ela só liberava o recipiente
+    quando o equipamento JÁ tinha sido anexado (a terceira das três provas de
+    `_liberar_series`). Aqui o caso é o outro: anexar agora é o que torna a
+    prova verdadeira.
+    """
+    if not os_id:
+        return False, "pendência sem os_id — não há onde anexar o equipamento"
+    if not modelo:
+        return False, "o recipiente não informou o modelo"
+
+    produto = storage.produto_do_modelo(eqp.modelo_efetivo(modelo))
+    if not produto:
+        # ⚠️ NÃO LIBERA. Sem produto no de-para o equipamento não entra nos
+        # materiais, e a terceira prova continua falsa. TK-100, ST500, NT2x e
+        # Concox são esse caso. Vira pendência visível no Registro em vez de
+        # série liberada para uma OS incompleta.
+        return False, (f"o modelo {modelo!r} não tem produto no de-para — o "
+                       "equipamento não pode entrar nos materiais")
+
+    try:
+        await harmonit_post("/OrdemServico/SalvarMaterialOrdemServico", {
+            "id": 0, "empresaId": 98, "osId": os_id,
+            "produtoId": produto["harmonit_id"], "quantidade": 1,
+            "valor": produto["valor"] or materiais_do_contrato or 0.0,
+            "cobrar": False, "comodato": True})
+    except Exception as exc:
+        return False, f"o Harmonit recusou o material: {exc}"
+
+    # A prova é reler, nunca o código de retorno.
+    try:
+        lidos = _unwrap(await harmonit_get(
+            "/OrdemServico/ObterMateriaisOrdemServico", params={"osId": os_id}))
+    except Exception as exc:
+        return False, f"anexei mas não consegui conferir os materiais: {exc}"
+    achou = any(str(m.get("produtoId")) == str(produto["harmonit_id"])
+                for m in (lidos or []))
+    if achou:
+        return True, f"equipamento {produto['descricao']} anexado à OS"
+    return False, ("o Harmonit não recusou, mas o equipamento não aparece na "
+                   "releitura dos materiais")
+
+
 # ── caso 1: o recipiente ─────────────────────────────────────────────────────
 
 async def _caso_recipiente(p: dict) -> dict:
@@ -168,6 +223,17 @@ async def _caso_recipiente(p: dict) -> dict:
         estado = await esp.falhar(p["id"], msg, passos)
         return {"id": p["id"], "caso": p["caso"], "ok": False,
                 "estado": estado, "erro": msg, "passos": passos}
+
+    # 🚨 A TERCEIRA PROVA: o equipamento tem de estar nos MATERIAIS, não só no
+    # texto. Sem ela, liberaríamos a série de uma OS que o técnico abre e não
+    # encontra o equipamento — o defeito do termo 8820.
+    ok_mat, msg_mat = await _anexar_equipamento(p.get("os_id"),
+                                                dado.get("modelo"))
+    passos.append(msg_mat)
+    if not ok_mat:
+        estado = await esp.falhar(p["id"], msg_mat, passos)
+        return {"id": p["id"], "caso": p["caso"], "ok": False,
+                "estado": estado, "erro": msg_mat, "passos": passos}
 
     # 🚨 DEVOLVE AO ESTOQUE E SÓ ENTÃO APAGA. Na ordem contrária sobraria série
     # presa sem dono, que é invisível.

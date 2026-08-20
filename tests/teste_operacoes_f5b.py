@@ -68,9 +68,17 @@ class Espiao:
 
 def dubles(espiao, *, serie=None, rastreador_id=None, situacao="Instalado",
            veiculo_entrada_id=None, liberar_ok=True, soltar_ok=True,
-           vincula=True, descricao_os=None):
+           vincula=True, descricao_os=None, modelo="ST340",
+           tem_de_para=True, material_entra=True):
     """Nenhuma chamada sai desta máquina depois disto."""
-    estado = {"situacao": situacao, "vinculado": None}
+    estado = {"situacao": situacao, "vinculado": None, "materiais": []}
+
+    def _produto(m):
+        return ({"harmonit_id": 9001, "descricao": f"RASTREADOR {m}",
+                 "valor": 480.0} if tem_de_para else None)
+
+    storage.produto_do_modelo = _produto
+    rot.storage.produto_do_modelo = _produto
 
     async def _dados(placas, falhas=None):
         saida = {}
@@ -78,7 +86,7 @@ def dubles(espiao, *, serie=None, rastreador_id=None, situacao="Instalado",
             ch = eqp.chave(p)
             if "UPGRADE" in str(p).upper() or "MANUT" in str(p).upper():
                 saida[ch] = {"serie": serie, "veiculo_id": 4242,
-                             "rastreador_id": rastreador_id}
+                             "rastreador_id": rastreador_id, "modelo": modelo}
             elif ch == eqp.chave("BBB 0B00"):
                 # ⚠️ `veiculo_entrada_id=None` significa PLACA QUE NÃO EXISTE na
                 # WESO. Devolver um veiculo_id qualquer aqui faria o dublê
@@ -115,14 +123,12 @@ def dubles(espiao, *, serie=None, rastreador_id=None, situacao="Instalado",
             estado["vinculado"] = corpo.get("id")
         return {}
 
-    async def _hget(path, params=None):
-        espiao.ordem.append("ler_os")
-        return {"id": 900, "numeroOrdem": 990001, "clienteId": 1,
-                "descricaoDetalhada": descricao_os or
-                f"Upgrade | ENTRARÁ: {eqp.MARCADOR_SERIE_A_PREENCHER}",
-                "outroCampo": "nao pode sumir"}
-
     async def _hpost(path, payload):
+        if "Material" in path:
+            espiao.ordem.append("anexar_material")
+            if material_entra:
+                estado["materiais"].append(payload)
+            return {}
         espiao.ordem.append("salvar_os")
         espiao.os_salva = payload
         return {}
@@ -134,17 +140,24 @@ def dubles(espiao, *, serie=None, rastreador_id=None, situacao="Instalado",
     eqp.weso_post = _weso_post
     rot.harmonit_post = _hpost
 
-    chamadas = {"n": 0}
+    chamadas = {"os": 0}
 
-    async def _hget_conferindo(path, params=None):
-        chamadas["n"] += 1
-        r = await _hget(path, params)
-        if chamadas["n"] > 1 and serie:
-            r["descricaoDetalhada"] = r["descricaoDetalhada"].replace(
-                eqp.MARCADOR_SERIE_A_PREENCHER, serie)
-        return r
+    async def _hget(path, params=None):
+        if "Materiais" in path:
+            espiao.ordem.append("ler_materiais")
+            return list(estado["materiais"])
+        espiao.ordem.append("ler_os")
+        chamadas["os"] += 1
+        texto = descricao_os or (
+            f"Upgrade | ENTRARÁ: {eqp.MARCADOR_SERIE_A_PREENCHER}")
+        # A segunda leitura é a conferência: já com a série trocada.
+        if chamadas["os"] > 1 and serie:
+            texto = texto.replace(eqp.MARCADOR_SERIE_A_PREENCHER, serie)
+        return {"id": 900, "numeroOrdem": 990001, "clienteId": 1,
+                "descricaoDetalhada": texto,
+                "outroCampo": "nao pode sumir"}
 
-    rot.harmonit_get = _hget_conferindo
+    rot.harmonit_get = _hget
     return estado
 
 
@@ -223,6 +236,45 @@ async def teste_recipiente():
            r["ok"] is False, str(r))
     checar("e continua na fila para a próxima rodada",
            len(await esp.pendentes("recipiente")) == 1)
+
+
+# ── 2b. a terceira prova: o equipamento nos MATERIAIS ────────────────────────
+
+async def teste_equipamento_nos_materiais():
+    print("\n2b. O equipamento entra nos MATERIAIS, não só na descrição")
+    e = Espiao()
+    dubles(e, serie="007933914", rastreador_id=50171, modelo="ST340")
+    p = await pendencia("recipiente", recipiente_placa="AAA0A00-UPGRADE")
+    r = await rot._caso_recipiente(p)
+    checar("conclui quando o equipamento entra", r["ok"] is True, str(r))
+    checar("anexou o material", "anexar_material" in e.ordem, str(e.ordem))
+    checar("conferiu RELENDO os materiais", "ler_materiais" in e.ordem,
+           str(e.ordem))
+    checar("anexou ANTES de liberar o recipiente",
+           e.ordem.index("anexar_material")
+           < e.ordem.index("liberar_recipiente"), str(e.ordem))
+
+    # 🚨 Sem produto no de-para o equipamento NÃO pode entrar nos materiais, e
+    # liberar a série ali deixaria a OS com série no texto e sem equipamento --
+    # que é o defeito do termo 8820. Vira pendência visível, não série solta.
+    e = Espiao()
+    dubles(e, serie="007933914", rastreador_id=50171, modelo="ST500",
+           tem_de_para=False)
+    p = await pendencia("recipiente", recipiente_placa="AAA0A00-UPGRADE")
+    r = await rot._caso_recipiente(p)
+    checar("modelo sem de-para NÃO conclui", r["ok"] is False, str(r))
+    checar("e NÃO libera o recipiente",
+           "liberar_recipiente" not in e.ordem, str(e.ordem))
+    checar("o motivo aponta o de-para", "de-para" in str(r["erro"]), str(r))
+
+    e = Espiao()
+    dubles(e, serie="007933914", rastreador_id=50171, material_entra=False)
+    p = await pendencia("recipiente", recipiente_placa="AAA0A00-UPGRADE")
+    r = await rot._caso_recipiente(p)
+    checar("material que não aparece na releitura NÃO conclui",
+           r["ok"] is False, str(r))
+    checar("e o recipiente fica onde está",
+           "liberar_recipiente" not in e.ordem, str(e.ordem))
 
 
 # ── 3. a oficina é gatilho, o estado decide ──────────────────────────────────
@@ -340,7 +392,8 @@ async def teste_laco():
 
 
 async def main():
-    for t in (teste_cobertura, teste_recipiente, teste_oficina_e_gatilho,
+    for t in (teste_cobertura, teste_recipiente,
+              teste_equipamento_nos_materiais, teste_oficina_e_gatilho,
               teste_substituicao, teste_laco):
         await t()
     limpar()
