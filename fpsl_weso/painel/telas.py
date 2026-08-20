@@ -29,9 +29,16 @@ TELAS = [
     # É o oposto do que se fez com o interruptor do Cadastro de Placas em
     # 19/08, onde a remoção veio antes da garantia do que dependia dela.
     #
-    # ⚠️ FORA DO MENU e com permissão que ninguém tem. Ela sobe alcançável por
-    # URL para o owner (que enxerga tudo) e não aparece para mais ninguém --
-    # é assim que se testa em produção sem oferecer meia tela a quem trabalha.
+    # 🆕 ENTROU NO MENU EM 20/08, por decisão sua. Ela nasceu `no_menu` porque
+    # estava pela metade, e meia tela nas mãos de quem trabalha é pior que tela
+    # nenhuma. Hoje o fluxo fecha de ponta a ponta -- termo, cliente, placas,
+    # OS e a rotina que termina o que ficou pendente -- então o motivo caducou.
+    #
+    # ⚠️ A PERMISSÃO NÃO MUDOU, e não era ela que escondia. O owner sempre
+    # alcançou (`pode_acessar` devolve True para owner); quem tirava do menu era
+    # a flag `no_menu`, que o `do_usuario` filtra para TODO MUNDO. Continua
+    # exigindo a permissão `operacoes` para as outras contas -- conceder é
+    # decisão de quem administra, uma conta por vez.
     #
     # Escopo, regras e fases: `docs/fpsl/28_Operacoes.md`.
     {
@@ -42,12 +49,15 @@ TELAS = [
         "descricao": "Termo, cliente, placas e OS numa tela só. Substitui Cadastro de Placas e Gerar OS.",
         "permissao": "operacoes",
         "fase": 1,
-        "no_menu": True,
     },
     # ---- CAD: cadastro de placas ----
-    # 🚨 PRIMEIRA DA LISTA DE PROPÓSITO. É a ordem do trabalho real: o termo
-    # assinado vira placa na WESO e no Harmonit, e só depois vira OS. A sidebar
-    # segue esta ordem, e o login manda para a primeira tela DO PERFIL.
+    # 🚨 A ORDEM DA LISTA É A ORDEM DO MENU, e ela segue o trabalho real: o
+    # termo assinado vira placa na WESO e no Harmonit, e só depois vira OS. O
+    # login manda para a primeira tela DO PERFIL.
+    #
+    # ⚠️ Desde 20/08 a primeira é `OPR_1.1` (Operações), que saiu de `no_menu`.
+    # Ela vem antes porque FAZ as duas coisas abaixo numa tela só -- e é para
+    # ela que a pessoa com a permissão nova cai ao entrar.
     {
         "codigo": "CAD_1.1",
         "titulo": "Cadastro de Placas",

@@ -15,7 +15,14 @@ O que a F1 prende:
      os três valores conhecidos.
 
   3. **A tela está registrada e trancada.** Código `OPR_1.1`, permissão
-     `operacoes`, fora do menu. Rota sem token dá 401.
+     `operacoes`. Rota sem token dá 401.
+
+     🆕 **Entrou no MENU em 20/08, por decisão do usuário.** Nasceu
+     `no_menu` porque estava pela metade — meia tela nas mãos de quem
+     trabalha é pior que tela nenhuma. Com o fluxo fechando de ponta a
+     ponta, o motivo caducou. ⚠️ **A permissão não mudou**, e não era ela
+     que escondia: o owner sempre alcançou, e quem tirava do menu era a
+     flag.
 
   4. **O contrato com a TELA.** O `operacoes.html` lê campos de
      `/painel/api/operacoes/perfis`; este teste LÊ O HTML e exige que a rota
@@ -137,7 +144,21 @@ t = telas.por_codigo("OPR_1.1")
 checar("código OPR_1.1 existe", t is not None)
 checar("permissão própria", t["permissao"] == "operacoes")
 checar("rota própria", t["rota"] == "/painel/operacoes")
-checar("fora do menu", bool(t.get("no_menu")))
+# 🆕 NO MENU desde 20/08 (decisão do usuário). A trava não sumiu: mudou de
+# lado, para reprovar se alguém a esconder de novo sem decidir.
+checar("está no menu", not t.get("no_menu"))
+checar("e o owner a vê no menu",
+       any(m["id"] == "operacoes"
+           for m in telas.do_usuario({"owner": True, "abas": []})))
+# 🚨 O QUE IMPORTA CONTINUAR TRANCADO: quem não tem a permissão não a vê.
+checar("quem não tem a permissão NÃO a vê",
+       not any(m["id"] == "operacoes"
+               for m in telas.do_usuario({"owner": False,
+                                          "abas": ["gerar_os"]})))
+checar("e quem tem, vê",
+       any(m["id"] == "operacoes"
+           for m in telas.do_usuario({"owner": False,
+                                      "abas": ["operacoes"]})))
 checar("está ativa (fase 1)", t in telas.ativas())
 
 

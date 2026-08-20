@@ -60,7 +60,14 @@ async def main():
         # em 18/08 saiu de `no_menu` e virou "Histórico de Placas", item próprio
         # logo abaixo do Histórico de OS -- a pedido seu. O número é fixo de
         # propósito: tela que aparece no menu sem ninguém pedir é defeito.
-        checar("owner enxerga as 9 telas", len(me.get("abas", [])) == 9, str(len(me.get("abas", []))))
+        # 10 desde 20/08: a aba Operações saiu de `no_menu` por decisão do
+        # usuário. O número fica explícito de propósito -- tela nova no menu
+        # tem de passar por aqui e ser deliberada.
+        checar("owner enxerga as 10 telas do menu",
+               len(me.get("abas", [])) == 10, str(len(me.get("abas", []))))
+        checar("e Operações é uma delas",
+               any(a.get("id") == "operacoes" for a in me.get("abas", [])),
+               str([a.get("id") for a in me.get("abas", [])]))
 
         r = await c.get("/painel/api/usuarios/abas", headers=h_owner)
         catalogo = r.json()
