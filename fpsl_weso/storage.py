@@ -775,6 +775,29 @@ def produto_do_modelo(modelo: str) -> dict | None:
     return {"harmonit_id": row[0], "descricao": row[1], "valor": row[2] or 0.0}
 
 
+def listar_modelos_produto() -> list[dict]:
+    """O de-para inteiro, ordenado por modelo -- é o seletor da regra 9.
+
+    🚨 A LISTA VEM DAQUI, NUNCA ESCRITA NA TELA. Duplicá-la no navegador criaria
+    duas verdades, e a que o operador vê seria a errada. É a mesma família do
+    defeito de 17/08, em que a sidebar lia um contrato de JSON que o servidor
+    tinha deixado de cumprir.
+
+    Devolve TODOS, inclusive os que não têm produto no Harmonit: o operador
+    precisa ver que o modelo existe e não tem produto, em vez de achar que o
+    modelo não existe. Quem decide o que fazer com `harmonit_id` nulo é quem
+    monta a OS -- lacuna é melhor que apagar.
+    """
+    with _connect() as conn:
+        linhas = conn.execute(
+            "SELECT modelo_weso, harmonit_produto_id, harmonit_descricao, "
+            "valor_patrimonial FROM painel_modelos_produto "
+            "ORDER BY modelo_weso COLLATE NOCASE").fetchall()
+    return [{"modelo": r[0], "harmonit_id": r[1], "descricao": r[2],
+             "valor_patrimonial": r[3] or 0.0, "tem_produto": bool(r[1])}
+            for r in linhas]
+
+
 # ── cadastro_placas_log (registro do cadastro por termo) ─────────────────────
 #
 # 🚨 POR QUE ISTO EXISTE, E POR QUE VEIO ANTES DA ESCRITA. O cadastro grava em

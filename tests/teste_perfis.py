@@ -65,7 +65,9 @@ async def main():
         r = await c.get("/painel/api/usuarios/abas", headers=h_owner)
         catalogo = r.json()
         ids = [a["id"] for a in catalogo]
-        checar("catalogo tem 5 abas concediveis", len(catalogo) == 5, str(ids))
+        # 6 desde a F1 (19/08), quando a permissao `operacoes` nasceu.
+        checar("catalogo tem 6 abas concediveis", len(catalogo) == 6, str(ids))
+        checar("operacoes e concedivel", "operacoes" in ids, str(ids))
         checar("cadastro_placas e concedivel", "cadastro_placas" in ids, str(ids))
         # a aba `placas` saiu do catalogo em 14/08 -- ver abas.py
         checar("placas NAO e mais concedivel", "placas" not in ids, str(ids))
@@ -143,4 +145,8 @@ async def main():
             print("  -", f)
 
 
+# 🚨 SAI COM O CODIGO CERTO. Ate 20/08 este arquivo imprimia FALHA e
+# terminava em 0, entao quem media pelo exit code via verde -- e foi
+# assim que a contagem de abas ficou errada desde 19/08 sem ninguem ver.
 asyncio.run(main())
+sys.exit(1 if falhas else 0)

@@ -308,7 +308,7 @@ WESO**: só diz à OS qual produto do Harmonit anexar.
 | **F1** | Registro de tela, rota, permissão, esqueleto das 4 etapas, clone dos 11 perfis | ✅ **ENTREGUE** `feb24d6` |
 | **F2** | Etapas 1 e 2 — documento e cliente | ✅ **ENTREGUE** `7b21e8b` |
 | **F3** | Etapa 3 — placas, com lote retomável | ✅ **ENTREGUE** `df875a0` |
-| **F4** | Etapa 4 — OS, com as 14 regras | falta — a mais densa |
+| **F4** | Etapa 4 — OS, com as 14 regras | ✅ **ENTREGUE** |
 | **F5** | A rotina, com os 4 casos e teto de tentativas | falta |
 | **F6** | Registro cobrindo o fluxo novo | falta |
 | **F7** | Substituição: as duas velhas saem, o `os_router` parte em dois | falta — depende de uso real aprovado |
@@ -372,3 +372,57 @@ placa cadastrada de verdade.
 
 Ver também: `23_Manutencao.md` · `24_Desempenho_e_Timeout.md` ·
 `26_Cadastro_de_Placas.md` · `27_Registro_Telas.md`.
+
+
+---
+
+## 🚨 O que a construção da F4 achou (2026-08-20)
+
+**1. A alocação por placa roda só sobre os itens que vão na OPERACIONAL.** Eu
+aloquei todos os itens resolvidos, e isso faria item de cobrança aparecer nas
+duas OS — desfazendo a **regra 7 por outro caminho**, logo depois de ela ter
+tirado o `nas_duas`. Não apareceu em teste: apareceu ao ler o ramo de
+`gerar_os` do `os_router` antes de escrever o teste. É a regra M6 pagando o
+aluguel — "já é assim" se mede.
+
+**2. A regra 4 muda o CORTE, não só a listagem.** Antes, o operacional levava
+tudo que não tinha `cobrar` marcado, e um item não-comodato de valor zero caía
+lá. Agora o corte é por **natureza**: comodato é da operacional, o resto é do
+lado financeiro — listado sempre, com `cobrar` dependendo do valor. Sem isso a
+regra 4 seria só cosmética, porque o item de valor zero continuaria do lado
+errado.
+
+**3. 🚨 `teste_perfis.py` REPROVAVA DESDE 19/08 E NINGUÉM VIA.** Ele imprimia
+`FALHA` e terminava com `asyncio.run(main())`, **sem `sys.exit`** — então quem
+mede pelo código de saída via verde. A falha era a contagem de abas
+concedíveis, que ficou em 5 quando a própria F1 criou a sexta (`operacoes`).
+
+Duas consequências: o número "838 verificações, ZERO reprovações" de 19/08
+estava medido por um placar que não conseguia ficar vermelho nesse arquivo; e
+**era o único teste mudo da suíte** — os outros 27 já saíam com o código certo.
+Corrigido nos dois pontos. Um teste que reprova e sai 0 é pior que um teste que
+não existe, porque dá a garantia sem prestá-la.
+
+**4. O valor da substituição vem do termo, e o serviço continua parado.** A
+`financeira_substituicao` aceita o valor que a etapa 1 leu do documento
+(`taxa_local_diferente` 299,90, `taxa_mesmo_local` 199,90) e só cai para o
+número da regra 12 quando o termo não trouxe. O **id do serviço** continua
+`None` e faz a geração PARAR com mensagem: são dois registros com nome idêntico
+(`6967` e `54845`) e resolver por nome pegaria um no chute. É a decisão 0.A,
+sua, ainda aberta.
+
+### O que a F4 entregou
+
+| Arquivo | O que é |
+|---|---|
+| `painel/operacoes_os.py` | a montagem, com as 6 regras que mudaram |
+| `painel/operacoes_equipamentos.py` | clone de `equipamentos.py` + `chave()` e `serie_que_entra()` |
+| `painel/routers/operacoes_router.py` | `/modelos`, `/os/previa` e `/os/gerar` |
+| `storage.listar_modelos_produto()` | o de-para inteiro, para o seletor da regra 9 |
+| `tests/teste_operacoes_f4.py` | **63 verificações**, com dublês, sem rede |
+
+**Suíte do FPSL: 968 verificações em 28 arquivos, zero reprovações.**
+
+⚠️ **A F4 não tem tela ainda.** As três rotas existem e estão testadas; o
+`operacoes.html` continua com a etapa 4 em esqueleto. Ligar a tela é o primeiro
+item da F5.
