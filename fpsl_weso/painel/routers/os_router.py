@@ -956,6 +956,11 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
                         "serie": serie_de(seriais, pt)
                         if serie_de(seriais, pt) != MARCADOR_NAO_LOCALIZADO else None,
                     }
+        # 🚨 PLACA FORA DO CACHE VAI AO VIVO. O cache atualiza as 04:15 e
+        # envelhece dentro do dia: em 20/08 um veiculo nasceu as 09:10 e a OS
+        # foi gerada as 13:35, e o modelo vinha vazio -- OS sem equipamento.
+        dados_ao_vivo = await completar_do_vivo(
+            [p.placa for p in body.placas], dados_ao_vivo, falhas_weso)
         avisos += falhas_weso
         recipientes, avisos_rec = _conferir_recipientes(body, perfil, recipientes)
         avisos += avisos_rec

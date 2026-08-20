@@ -763,6 +763,11 @@ async def _ler_weso(body: "oos.MontarInput", perfil: dict) -> dict:
                 "serie": None if serie == eqp.MARCADOR_NAO_LOCALIZADO else serie,
             }
 
+    # 🚨 PLACA FORA DO CACHE VAI AO VIVO, uma a uma. O cache atualiza as 04:15
+    # e envelhece dentro do dia -- a etapa 3 acabou de criar a placa, e sem isto
+    # a etapa 4 diria "sem equipamento" para um veiculo que tem.
+    dados = await eqp.completar_do_vivo(todas, dados, falhas)
+
     return {"seriais": seriais, "dados": dados, "recipientes": recipientes,
             "falhas": falhas}
 

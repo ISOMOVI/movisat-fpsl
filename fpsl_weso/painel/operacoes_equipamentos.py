@@ -772,3 +772,37 @@ def serie_que_entra(perfil: dict, recipientes: dict, placa: str) -> str:
         return ""
     d = (recipientes or {}).get(_chave(placa)) or {}
     return d.get("serie") or MARCADOR_SERIE_A_PREENCHER
+
+
+async def completar_do_vivo(placas: list[str], dados: dict,
+                            falhas: list[str] | None = None) -> dict:
+    """Consulta ao vivo SO as placas que o cache nao conhece.
+
+    🚨 O CACHE ENVELHECE DENTRO DO PROPRIO DIA. Ele atualiza as 04:15, e em
+    20/08 um veiculo nasceu na WESO as 09:10 e a OS foi gerada as 13:35: o
+    modelo vinha vazio, nao havia produto no de-para, e a OS sairia sem a linha
+    do equipamento nos materiais -- o defeito do termo 8820 por outro caminho.
+
+    ⚠️ NAO TROCA O CACHE PELA REDE. Placa que o cache conhece nao gera chamada
+    nenhuma; so a desconhecida vai, e por consulta EXATA (0,2s medido).
+
+    ⚠️ E NAO DISPARA EM FROTA INTEIRA. Acima de `LIMIAR_PLACA_A_PLACA`
+    desconhecidas a consulta uma-a-uma perde para a base inteira -- e num
+    contrato novo elas nem existem la ainda, entao custaria 16s para nao achar
+    nada.
+    """
+    faltam = [p for p in placas
+              if str(p or "").strip()
+              and not (dados or {}).get(_chave(p))
+              and not modelo_da_placa(p)]
+    if not faltam or len(faltam) > LIMIAR_PLACA_A_PLACA:
+        return dados or {}
+
+    log.info("equipamentos: %d placa(s) fora do cache, indo ao vivo: %s",
+             len(faltam), ", ".join(faltam))
+    lidos = await dados_das_placas(faltam, falhas)
+    saida = dict(dados or {})
+    for chave, valor in (lidos or {}).items():
+        if valor:
+            saida[chave] = valor
+    return saida
