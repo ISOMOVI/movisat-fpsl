@@ -426,3 +426,58 @@ sua, ainda aberta.
 ⚠️ **A F4 não tem tela ainda.** As três rotas existem e estão testadas; o
 `operacoes.html` continua com a etapa 4 em esqueleto. Ligar a tela é o primeiro
 item da F5.
+
+
+---
+
+## 🚨 A AUDITORIA DA F4 (2026-08-20) — nove decisões vivas que não vieram junto
+
+A primeira passada da F4 implementou as seis regras que MUDARAM e passou nos 63
+testes. A auditoria comparou a etapa 4 com a geração que já existe no
+`os_router` — que é **a regra que faltou em 17/08: tela nova se compara com a
+tela que já existe** — e achou que o clone tinha deixado para trás decisões que
+a tela velha carrega. Nenhuma delas apareceria em teste, porque o teste era meu
+e media o que eu tinha pensado em testar.
+
+| # | O que faltava | Decisão que ficava desfeita |
+|---|---|---|
+| 1 | **Tipo e Problema por NOME** contra a lista viva | 14/08 — das 14 OS de manutenção abertas na mão, 7 usam `tipo = 55`, que não existe mais. Eu usava o id do perfil direto |
+| 2 | **Conferência do recipiente** | 14/08 — "sem *entrará* plausível, não inventa". Recipiente ausente, ambíguo, de outra rodada ou sem série tem de ser descartado COM AVISO |
+| 3 | **Leitura ao vivo só nos perfis sem termo** | 14/08 — eu lia ao vivo em todos, e em DUAS chamadas. Cada uma que não achasse pela consulta exata cai na base inteira (16,65s). Era o caminho de volta para os 43s que quase estouraram o nginx |
+| 4 | **No upgrade o recipiente vem do CACHE** | o recipiente nasce junto com o termo; ler ao vivo ali é pagar rede à toa |
+| 5 | **`numero_na_descricao`** | 14/08 — a manutenção grava `\| O.S: nnnnn` na própria descrição, igual às 14 abertas à mão |
+| 6 | **Fase dupla na geração** | 24/07 — operacionais primeiro, colhendo os números; a financeira depois, citando-os na solução técnica. É o que torna a cobrança conferível placa a placa |
+| 7 | **Uma linha de equipamento POR PLACA nas OS agregadas** | 13/08 — o vínculo traz UM item com a quantidade do termo, e todas as placas viravam o mesmo ST310U |
+| 8 | **Aviso de cobrança zerada sem motivo** | vale nos dois caminhos; na rescisão a lista financeira é vazia por construção, então checá-la não serve — olha-se o valor dos itens de cobrança |
+| 9 | **`problema_id` da tela só vence nos perfis SEM TERMO** | num contrato o problema é ditado pelo documento; eu deixava quem digita trocá-lo em qualquer perfil |
+
+**E uma décima, achada ao corrigir:** aplicar o cabeçalho resolvido a TODAS as
+operações sobrescreveria o Problema FINANCEIRO da OS financeira, transformando-a
+noutra coisa. A financeira fica de fora, e há teste prendendo isso.
+
+### O que isso ensina, e vale para a F5
+
+**Passar nos meus próprios testes não é evidência de completude.** Os 63 testes
+da primeira passada estavam certos — eles mediam as seis regras novas, e as seis
+estavam certas. O que faltava era tudo o que a tela velha já sabia e eu não
+tinha perguntado. A auditoria não achou bug no que eu escrevi: achou o que eu
+**não** escrevi.
+
+Na F5 o mesmo se aplica ao `_liberar_series` e ao varredor de OS: a rotina nova
+tem de ser comparada com o que a geração velha já faz ao fim, não desenhada do
+zero a partir da tabela da spec.
+
+### Depois da auditoria
+
+**`tests/teste_operacoes_f4.py`: 63 → 88 verificações.** As 25 novas prendem os
+quatro motivos de descarte de recipiente (inclusive o caso do acento, que quase
+derrubou a manutenção inteira), a resolução de cabeçalho por nome nos três
+desfechos (resolve / lista muda / nome sumiu) e o aviso de cobrança sem motivo.
+
+**Suíte do FPSL: 993 verificações em 28 arquivos, zero reprovações.**
+
+⚠️ **`teste_auditoria_placas.py` oscilou uma vez** durante a auditoria e passou
+nas quatro rodadas seguintes. Ele fala com o serviço vivo por HTTP
+(`httpx` na 8004), então depende de o serviço estar no ar e responsivo — não é
+hermético como os da aba nova. Não foi investigado além disso; fica registrado
+porque teste que oscila treina a equipe a ignorar o placar.

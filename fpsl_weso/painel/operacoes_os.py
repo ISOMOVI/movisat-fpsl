@@ -32,6 +32,8 @@ O que muda em relação à montagem velha, e por quê:
   regra 12 substituição ganha financeira.
 """
 import logging
+import re
+import unicodedata
 from collections import Counter
 from datetime import datetime
 
@@ -316,6 +318,82 @@ def modelo_da_operacao(perfil: dict, placa: PlacaOS, materiais: list[dict],
     return eqp.modelo_efetivo(bruto, eqp.tem_leitor_rfid(materiais))
 
 
+# ── o recipiente: sem "entrará" plausível, não inventa ───────────────────────
+
+def norm_desc(t: str) -> str:
+    """Texto comparável: espaço colapsado, caixa alta e SEM ACENTO.
+
+    🚨 O ACENTO QUASE DERRUBOU A MANUTENÇÃO INTEIRA. Os recipientes `-MANUT` da
+    WESO estão gravados `MANUTENCAO`, sem cedilha e sem til; o usuário
+    padroniza escrevendo `MANUTENÇÃO`. Sem dobrar acento aqui, os dois nunca
+    casariam e TODA geração de manutenção morreria em HTTP 400 -- com uma
+    mensagem falando de upgrade anterior, que não tem nada a ver.
+    """
+    t = unicodedata.normalize("NFKD", str(t or ""))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", t).strip().upper()
+
+
+def conferir_recipientes(body: MontarInput, perfil: dict,
+                         recipientes: dict) -> tuple[dict, list[str]]:
+    """Separa os recipientes CONFIÁVEIS dos demais, e avisa sobre cada descarte.
+
+    🚨 SEM "ENTRARÁ" PLAUSÍVEL, NÃO INVENTA (decisão do usuário, 14/08). Até
+    aquela data o upgrade derrubava a geração com HTTP 400 quando o recipiente
+    não batia. Agora o duvidoso é DESCARTADO: a descrição sai com
+    `NUMERO DE SERIE` para o técnico preencher e o equipamento NÃO entra nos
+    materiais. Nenhum dado errado entra, sem travar quem está trabalhando.
+
+    ⚠️ TODO DESCARTE VIRA AVISO NA TELA. Recipiente ignorado em silêncio seria
+    pior que o 400: a OS pareceria completa e sairia sem o equipamento -- que é
+    exatamente o defeito achado auditando o termo 8820.
+
+    Quatro motivos, cada um com o seu texto: ausente, ambíguo, divergente
+    (recipiente de uma rodada anterior) e sem série.
+    """
+    sufixo = perfil.get("placa_teste_sufixo")
+    if not sufixo:
+        return {}, []
+    modelo = perfil.get("placa_teste_descricao") or "TERMO {termo}"
+    esperado = modelo.format(termo=body.termo or "")
+    bons: dict[str, dict] = {}
+    avisos: list[str] = []
+    for p in body.placas:
+        ch = eqp.chave(p.placa)
+        pt = eqp.placa_teste(p.placa, sufixo)
+        dado = recipientes.get(ch)
+        if not dado:
+            avisos.append(
+                f"Placa {p.placa}: o recipiente {pt} não existe na WESO. A OS "
+                f"sai com '{eqp.MARCADOR_SERIE_A_PREENCHER}' e SEM o "
+                "equipamento nos materiais — peça ao setor de configuração "
+                "para vincular.")
+            continue
+        if dado.get("ambiguo"):
+            achados = ", ".join(str(x) for x in dado["ambiguo"])
+            avisos.append(
+                f"Placa {p.placa}: mais de um recipiente na WESO casa com {pt} "
+                f"({achados}). Ambiguidade não se resolve por escolha "
+                "automática — a OS sai sem o equipamento.")
+            continue
+        achado = dado.get("descricao")
+        if achado is not None and norm_desc(achado) != norm_desc(esperado):
+            avisos.append(
+                f"Placa {p.placa}: o recipiente {pt} está descrito como "
+                f"{achado!r}, e o esperado é {esperado!r} — provavelmente é o "
+                "recipiente de uma rodada ANTERIOR desta placa. A OS sai sem o "
+                "equipamento.")
+            continue
+        if not dado.get("serie"):
+            avisos.append(
+                f"Placa {p.placa}: o recipiente {pt} existe mas não tem "
+                f"rastreador vinculado. A OS sai com "
+                f"'{eqp.MARCADOR_SERIE_A_PREENCHER}'.")
+            continue
+        bons[ch] = dado
+    return bons, avisos
+
+
 _MARCA_RASTREADOR = ("RASTREADOR", "EQUIPAMENTO RASTREADOR")
 
 
@@ -507,6 +585,50 @@ def financeira_substituicao(body: MontarInput, perfil: dict) -> dict:
 
 # ── REGRA 10: novo titular vira DUAS OS ──────────────────────────────────────
 
+def equipamentos_agregados(body: MontarInput, perfil: dict, itens: list[dict],
+                           dados: dict | None = None) -> list[dict]:
+    """Na OS agregada (titularidade), UMA linha de equipamento POR PLACA.
+
+    🚨 O VÍNCULO TRAZIA UM ÚNICO ITEM COM A QUANTIDADE DO TERMO -- 28 unidades
+    de "RASTREADOR" para 28 veículos -- e todas viravam o mesmo ST310U, porque
+    o vínculo mapeia TEXTO para produto fixo. Aqui cada veículo entra com o
+    modelo que a WESO diz que ele tem.
+
+    ⚠️ Sem nenhum equipamento resolvido, devolve a lista como estava: apagar o
+    item do contrato e não pôr nada no lugar é pior que a imprecisão.
+    """
+    achados = []
+    for p in body.placas:
+        e = material_do_equipamento(perfil, p, itens, None, dados)
+        if e:
+            achados.append(e)
+    if not achados:
+        return list(itens)
+    return [m for m in itens if not eh_rastreador(m)] + achados
+
+
+def aviso_cobranca_sem_motivo(body: MontarInput, perfil: dict,
+                              resolvidos: list[dict]) -> list[str]:
+    """Cobrança zerada exige motivo, e vale nos DOIS caminhos.
+
+    🚨 Com a financeira embutida (rescisão) a lista de cobrança separada fica
+    sempre vazia por construção, então checar "não há itens financeiros"
+    deixaria de valer justamente onde mais importa: no termo 8788 a TAXA DE
+    RETIRADA vem riscada, valendo R$ 0,00. Por isso olha os itens de cobrança
+    de verdade e o VALOR deles.
+    """
+    if perfil.get("sem_financeira"):
+        return []
+    cobrancas = [i for i in resolvidos if i.get("cobrar")]
+    sem_valor = (not cobrancas) or all(
+        float(i.get("valor_unitario") or 0) == 0 for i in cobrancas)
+    if sem_valor and not body.motivo_financeira_zero.strip():
+        return ["Cobrança sem valor (saldo 0) e sem motivo informado — "
+                "preencha o motivo (mudança de gestão, acordo interno, etc.) "
+                "antes de gerar."]
+    return []
+
+
 def descricao_titularidade(perfil: dict, body: MontarInput,
                            dados: dict | None = None) -> str:
     """Aponta o termo do OUTRO lado (novo titular cita o anterior; antigo, o
@@ -536,7 +658,8 @@ def montar_novo_titular(body: MontarInput, perfil: dict, resolvidos: list[dict],
     cobrança + oficina, sem nenhum item de comodato -- por isso não esbarra na
     regra 7. São compatíveis e não são a mesma coisa.
     """
-    comodato = [i for i in resolvidos if i.get("comodato")]
+    comodato = equipamentos_agregados(
+        body, perfil, [i for i in resolvidos if i.get("comodato")], dados)
     descricao = descricao_titularidade(perfil, body, dados)
     placas_txt = ", ".join(p.placa for p in body.placas)
     operacional = {
@@ -565,7 +688,13 @@ def montar_antigo_titular(body: MontarInput, perfil: dict,
     comodato e cobrança é o novo titular, na OS dele. Por isso também NÃO tem
     financeira.
     """
-    sem_flag = [{**i, "comodato": False, "cobrar": False} for i in resolvidos]
+    sem_flag = equipamentos_agregados(
+        body, perfil,
+        [{**i, "comodato": False, "cobrar": False} for i in resolvidos], dados)
+    # ⚠️ O equipamento resolvido pela WESO volta com `comodato=True` nos perfis
+    # de contrato; aqui ele também não flega, porque o contrato antigo está
+    # encerrando e quem assume o comodato é o novo titular, na OS dele.
+    sem_flag = [{**i, "comodato": False, "cobrar": False} for i in sem_flag]
     return [{
         "cliente_id": body.cliente_id,
         "placa": ", ".join(p.placa for p in body.placas), "veiculo": "",
@@ -646,7 +775,11 @@ def _op_por_placa(body: MontarInput, perfil: dict, p: PlacaOS,
         "cliente_id": body.cliente_id,
         "placa": p.placa, "veiculo": p.veiculo,
         "tipo_id": perfil["tipo_id"],
-        "problema_id": body.problema_id or perfil["problema_id"],
+        # ⚠️ O `problema_id` da TELA não entra aqui. Ele só vence nos perfis
+        # SEM TERMO -- num contrato o problema é ditado pelo documento, não
+        # escolhido por quem digita. Quem aplica isso é `_aplicar_cabecalho`,
+        # no router, junto com a resolução por nome.
+        "problema_id": perfil["problema_id"],
         "situacao_id": cfg.SITUACAO_NOVA_ID,
         "produto_servico_id": body.produto_servico_id,
         "prioridade_id": body.prioridade_id,

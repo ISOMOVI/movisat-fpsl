@@ -269,10 +269,11 @@ async def teste_dois_estados():
 async def teste_regra_10():
     print("\n6. Regra 10 — novo titular vira DUAS OS")
     instalar_dubles(modelo_na_weso="ST340")
-    body = corpo("transferencia_novo_titular", [placa("AAA 0A00")], [
-        item("RASTREADOR", "1", "480,00", "COMODATO"),
-        item("TAXA DE ADESAO", "1", "150,00", "SERVICO"),
-    ])
+    body = corpo("transferencia_novo_titular",
+                 [placa("AAA 0A00"), placa("BBB 0B00")], [
+                     item("RASTREADOR", "2", "480,00", "COMODATO"),
+                     item("TAXA DE ADESAO", "1", "150,00", "SERVICO"),
+                 ])
     ops, _, _, _ = await montar(body)
     checar("gera exatamente 2 OS", len(ops) == 2, f"veio {len(ops)}")
     operacional = [o for o in ops if not o.get("eh_financeira")]
@@ -280,7 +281,15 @@ async def teste_regra_10():
     checar("uma operacional e uma financeira",
            len(operacional) == 1 and len(financeira) == 1)
     d_op = descricoes(operacional[0]["materiais"])
-    checar("a operacional leva o comodato", "RASTREADOR" in d_op, d_op)
+    # 🚨 UMA LINHA DE EQUIPAMENTO POR PLACA, com o modelo que a WESO diz. O
+    # vínculo trazia UM item com a quantidade do termo, e todas as placas
+    # viravam o mesmo produto -- "RASTREADOR" cai sempre em ST310U.
+    checar("a operacional leva o equipamento resolvido pela WESO",
+           "RASTREADOR ST340" in d_op, d_op)
+    checar("o item genérico do vínculo NÃO sobrevive",
+           "RASTREADOR" not in d_op, d_op)
+    checar("uma linha de equipamento POR PLACA, não uma para o termo",
+           sum(1 for x in d_op if x == "RASTREADOR ST340") == 2, d_op)
     checar("a operacional NÃO leva item de cobrança (regra 7)",
            "TAXA DE ADESAO" not in d_op, d_op)
     d_fin = descricoes(financeira[0]["materiais"])
@@ -433,11 +442,146 @@ async def teste_ordem():
     checar("os itens alocados ficam no meio", "RASTREADOR" in d[1:-1], d)
 
 
+# ── 12. o recipiente duvidoso é descartado, com aviso ────────────────────────
+
+async def teste_conferir_recipientes():
+    print("\n12. Sem 'entrará' plausível, não inventa (14/08)")
+    instalar_dubles()
+    p = dict(cfg.PERFIS["upgrade"])
+    body = corpo("upgrade", [placa("OOM 4131")], [])
+
+    bons, avisos = oos.conferir_recipientes(body, p, {})
+    checar("recipiente ausente é descartado", bons == {})
+    checar("e vira aviso citando a placa derivada",
+           avisos and "OOM4131-UPGRADE" in avisos[0], str(avisos))
+
+    ch = oos.eqp.chave("OOM 4131")
+    bons, avisos = oos.conferir_recipientes(
+        body, p, {ch: {"ambiguo": ["OOM4131-UPGRADE", "OOM 4131-UPGRADE"],
+                       "serie": "123"}})
+    checar("recipiente ambíguo é descartado", bons == {})
+    checar("e o aviso diz que ambiguidade não se resolve sozinha",
+           avisos and "automática" in avisos[0], str(avisos))
+
+    bons, avisos = oos.conferir_recipientes(
+        body, p, {ch: {"descricao": "TERMO 7777", "serie": "123"}})
+    checar("recipiente de OUTRA rodada é descartado", bons == {})
+    checar("e o aviso diz que é de rodada anterior",
+           avisos and "ANTERIOR" in avisos[0], str(avisos))
+
+    bons, avisos = oos.conferir_recipientes(
+        body, p, {ch: {"descricao": "TERMO 8800", "serie": None}})
+    checar("recipiente sem série é descartado", bons == {})
+
+    bons, avisos = oos.conferir_recipientes(
+        body, p, {ch: {"descricao": "TERMO 8800", "serie": "007933914"}})
+    checar("recipiente bom passa", ch in bons, str(bons))
+    checar("e não gera aviso", avisos == [], str(avisos))
+
+    # 🚨 O ACENTO. Os recipientes `-MANUT` da WESO estão gravados MANUTENCAO,
+    # sem cedilha; o perfil escreve MANUTENCAO. Sem dobrar acento, TODA geração
+    # de manutenção morreria.
+    pm = dict(cfg.PERFIS["manutencao_troca"])
+    bodym = corpo("manutencao_troca", [placa("OOM 4131")], [])
+    bons, _ = oos.conferir_recipientes(
+        bodym, pm, {ch: {"descricao": "MANUTENÇÃO", "serie": "1"}})
+    checar("descrição com acento casa com a sem acento", ch in bons, str(bons))
+
+
+# ── 13. cobrança zerada exige motivo ─────────────────────────────────────────
+
+async def teste_aviso_cobranca():
+    print("\n13. Cobrança sem valor exige motivo — nos dois caminhos")
+    instalar_dubles()
+    zerado = [{"descricao": "TAXA DE RETIRADA", "harmonit_id": 1,
+               "quantidade": 1, "valor_unitario": 0.0, "comodato": False,
+               "cobrar": True}]
+    body = corpo("rescisao", [placa("AAA 0A00")], [])
+    avisos = oos.aviso_cobranca_sem_motivo(body, cfg.PERFIS["rescisao"], zerado)
+    checar("avisa na RESCISÃO, onde a financeira é embutida",
+           len(avisos) == 1, str(avisos))
+    com_motivo = corpo("rescisao", [placa("AAA 0A00")], [],
+                       motivo_financeira_zero="acordo interno")
+    checar("com motivo informado, não avisa",
+           oos.aviso_cobranca_sem_motivo(
+               com_motivo, cfg.PERFIS["rescisao"], zerado) == [])
+    checar("manutenção não avisa, porque não tem financeira",
+           oos.aviso_cobranca_sem_motivo(
+               body, cfg.PERFIS["manutencao_local"], zerado) == [])
+
+
+# ── 14. Tipo e Problema por NOME, não por id ─────────────────────────────────
+
+async def teste_cabecalho_por_nome():
+    print("\n14. Tipo e Problema por NOME contra a lista viva (14/08)")
+    from fpsl_weso.painel.routers import operacoes_router as opr
+
+    lista = {"/TipoOrdemServico/ObterListaTipoOrdemServico":
+             [{"id": 4242, "descricao": "Solicitação de Cliente"}],
+             "/Problema/ObterProblemas":
+             [{"id": 5151, "descricao": "MANUTENCAO"}]}
+
+    async def _ok(path):
+        return lista[path]
+
+    opr._lista_do_harmonit = _ok
+    cab, avisos = await opr._resolver_cabecalho_por_nome(
+        cfg.PERFIS["manutencao_local"])
+    checar("resolve o Tipo pelo nome, ignorando o id do perfil",
+           cab.get("tipo_id") == 4242, str(cab))
+    checar("resolve o Problema pelo nome mesmo sem acento",
+           cab.get("problema_id") == 5151, str(cab))
+    checar("e não avisa quando resolveu", avisos == [], str(avisos))
+
+    async def _mudo(path):
+        return None
+
+    opr._lista_do_harmonit = _mudo
+    cab, avisos = await opr._resolver_cabecalho_por_nome(
+        cfg.PERFIS["manutencao_local"])
+    checar("lista muda NÃO trava a geração — usa o último id conhecido",
+           cab.get("tipo_id") == cfg.PERFIS["manutencao_local"]["tipo_id"],
+           str(cab))
+    checar("mas avisa que usou o id velho", len(avisos) == 2, str(avisos))
+
+    async def _sumiu(path):
+        return [{"id": 1, "descricao": "OUTRA COISA"}]
+
+    opr._lista_do_harmonit = _sumiu
+    estourou = None
+    try:
+        await opr._resolver_cabecalho_por_nome(cfg.PERFIS["manutencao_local"])
+    except HTTPException as exc:
+        estourou = exc
+    checar("nome que SUMIU da lista recusa a geração",
+           estourou is not None and estourou.status_code == 400, f"{estourou}")
+
+    # A financeira traz o próprio cabeçalho e não pode ser sobrescrita.
+    ops = [{"eh_financeira": True, "problema_id": cfg.FINANCEIRO_PROBLEMA_ID,
+            "tipo_id": cfg.TIPO_CONTRATO_ID},
+           {"problema_id": 1, "tipo_id": 1}]
+    body = corpo("manutencao_local", [placa("AAA 0A00")], [], problema_id=999)
+    opr._aplicar_cabecalho(ops, cfg.PERFIS["manutencao_local"],
+                           {"tipo_id": 4242, "problema_id": 5151}, body)
+    checar("a financeira NÃO é tocada pelo cabeçalho",
+           ops[0]["problema_id"] == cfg.FINANCEIRO_PROBLEMA_ID, str(ops[0]))
+    checar("a operacional recebe o Tipo resolvido", ops[1]["tipo_id"] == 4242)
+    checar("a escolha da tela vence nos perfis SEM TERMO",
+           ops[1]["problema_id"] == 999, str(ops[1]))
+
+    ops2 = [{"problema_id": 7457, "tipo_id": 76}]
+    body2 = corpo("contrato_novo", [placa("AAA 0A00")], [], problema_id=999)
+    opr._aplicar_cabecalho(ops2, cfg.PERFIS["contrato_novo"], {}, body2)
+    checar("num CONTRATO a escolha da tela NÃO vence — manda o documento",
+           ops2[0]["problema_id"] == 7457, str(ops2))
+
+
 async def main():
     for t in (teste_regra_4, teste_regra_7, teste_separa_antes_de_alocar,
               teste_regra_9, teste_dois_estados, teste_regra_10,
               teste_regra_11, teste_regra_12, teste_rescisao,
-              teste_manutencao, teste_ordem):
+              teste_manutencao, teste_ordem, teste_conferir_recipientes,
+              teste_aviso_cobranca, teste_cabecalho_por_nome):
         await t()
     print(f"\n{'=' * 62}")
     print(f"{ok} verificações OK, {len(falhas)} falhas")

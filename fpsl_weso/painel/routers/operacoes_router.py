@@ -24,6 +24,7 @@ desta aba muda de endereço.
 """
 import io
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
@@ -586,9 +587,10 @@ async def criar_uma_placa(body: PlacaInput,
 #
 # 🚨 MOSTRA O QUE VAI SER GRAVADO, NÃO O QUE FOI DIGITADO. A prévia monta
 # exatamente as mesmas operações que a gravação usa -- a montagem é uma função
-# só, em `operacoes_os.montar`. Prévia que reconstrói o resultado por conta
-# própria é prévia que mente, e o operador confia nela justamente por ser a
-# última coisa que ele vê antes de escrever em dois sistemas.
+# só, em `operacoes_os.montar`, e o cabeçalho é aplicado pela mesma função nos
+# dois caminhos. Prévia que reconstrói o resultado por conta própria é prévia
+# que mente, e o operador confia nela justamente por ser a última coisa que ele
+# vê antes de escrever em dois sistemas.
 
 
 @router.get("/modelos")
@@ -612,12 +614,159 @@ async def _nascidas_no_lote(lote: str | None) -> set[str]:
             if p["acao"] == "criado" and p["placa_gravada"]}
 
 
-async def _preparar(body: "oos.MontarInput"):
-    """Tudo que a montagem precisa: vínculos, alocação e o que a WESO diz.
+# ── Tipo e Problema por NOME, não por id ────────────────────────────────────
 
-    Devolve (perfil, alocacao, resolvidos, contexto, avisos, pendentes,
-    descartados). Não escreve em lugar nenhum.
+async def _lista_do_harmonit(path: str) -> list[dict] | None:
+    """Lista do Harmonit, ou None quando a chamada não respondeu.
+
+    🚨 None É "NÃO SEI", e não autoriza recusar nada. É a diferença entre a rede
+    ter falhado e o item ter sumido do cadastro -- só a segunda justifica parar
+    a geração.
     """
+    try:
+        r = await harmonit_get(path, params={"empresaId": 98})
+    except Exception as exc:
+        log.warning("operacoes: lista %s indisponivel: %s", path, exc)
+        return None
+    d = r.get("data", r) if isinstance(r, dict) else r
+    if isinstance(d, dict):
+        d = d.get("lista") or d.get("itens") or []
+    return list(d or [])
+
+
+def _achar_por_nome(lista: list[dict], nome: str) -> int | None:
+    alvo = oos.norm_desc(nome)
+    for x in lista:
+        for campo in ("descricao", "nome", "titulo"):
+            if x.get(campo) and oos.norm_desc(x[campo]) == alvo:
+                return x.get("id")
+    return None
+
+
+async def _resolver_cabecalho_por_nome(perfil: dict) -> tuple[dict, list[str]]:
+    """{tipo_id, problema_id} resolvidos pelo NOME contra a lista viva.
+
+    🚨 ID FIXO EM CÓDIGO APODRECE EM SILÊNCIO. Medido em 14/08: das 14 OS de
+    manutenção que a casa abriu na mão, 7 usam `tipo = 55` -- que não está mais
+    na lista de tipos do Harmonit. Se o painel tivesse nascido com aquele
+    número, hoje estaria gravando um tipo morto sem ninguém perceber.
+
+    Política: nome sumiu da lista => RECUSA, porque é apodrecimento e precisa de
+    decisão humana. Lista não respondeu => usa o `*_id` do perfil e avisa,
+    porque é transiente e travar a geração por causa de rede seria pior.
+    """
+    alvos = (("tipo_nome", "tipo_id",
+              "/TipoOrdemServico/ObterListaTipoOrdemServico", "Tipo"),
+             ("problema_nome", "problema_id", "/Problema/ObterProblemas",
+              "Problema"))
+    resolvido: dict[str, int] = {}
+    avisos: list[str] = []
+    for chave_nome, chave_id, path, rotulo in alvos:
+        nome = perfil.get(chave_nome)
+        if not nome:
+            continue
+        lista = await _lista_do_harmonit(path)
+        if lista is None:
+            resolvido[chave_id] = perfil.get(chave_id)
+            avisos.append(
+                f"A lista de {rotulo} do Harmonit não respondeu — usei o último "
+                f"id conhecido para {nome!r}. Confira a OS gerada.")
+            continue
+        achado = _achar_por_nome(lista, nome)
+        if achado is None:
+            raise HTTPException(400,
+                f"{rotulo} {nome!r} não existe mais na lista do Harmonit. "
+                "Alguém renomeou ou removeu o cadastro — escolha o novo antes "
+                "de gerar, em vez de eu mandar um id velho.")
+        resolvido[chave_id] = achado
+    return resolvido, avisos
+
+
+def _aplicar_cabecalho(operacoes: list[dict], perfil: dict, cabecalho: dict,
+                       body: "oos.MontarInput") -> None:
+    """Aplica Tipo/Problema resolvidos, e a escolha da tela onde ela vale.
+
+    ⚠️ A FINANCEIRA FICA DE FORA. Ela traz o próprio cabeçalho (Problema
+    FINANCEIRO, situação Financeiro, técnico Karla) e sobrescrevê-lo com o
+    Tipo/Problema da operação a transformaria noutra coisa.
+    """
+    for op in operacoes:
+        if op.get("eh_financeira"):
+            continue
+        if cabecalho.get("tipo_id"):
+            op["tipo_id"] = cabecalho["tipo_id"]
+        if cabecalho.get("problema_id"):
+            op["problema_id"] = cabecalho["problema_id"]
+        # 🚨 A ESCOLHA DA TELA SÓ VENCE NOS PERFIS SEM TERMO. Num contrato o
+        # problema é ditado pelo documento; deixar quem digita trocá-lo faria a
+        # OS divergir do papel assinado.
+        if body.problema_id and perfil.get("sem_termo"):
+            op["problema_id"] = body.problema_id
+
+
+# ── a leitura da WESO ────────────────────────────────────────────────────────
+
+async def _ler_weso(body: "oos.MontarInput", perfil: dict) -> dict:
+    """Séries, dados e recipientes -- com o custo que cada perfil justifica.
+
+    🚨 AO VIVO SÓ NOS PERFIS SEM TERMO. O recipiente da manutenção nasce
+    minutos antes da OS e o cache local só atualiza às 04:15 -- ler do cache ali
+    devolveria "modelo nao localizado" para equipamento que existe. Nos perfis
+    de contrato o cache basta: o termo demora dias, e pagar rede a cada geração
+    não se justifica.
+
+    🚨 UMA LEITURA SÓ, para a placa real E o recipiente juntos. Antes eram duas
+    chamadas independentes, e cada uma que não achasse pela consulta exata caía
+    na base inteira -- 16,65s cada. Uma geração de manutenção com recipiente
+    ainda não criado levava 43s, perto do teto do nginx. Foi o erro visto em
+    14/08.
+
+    ⚠️ E POR ISSO O RECIPIENTE NÃO ENTRA NO `buscar_seriais` DA MANUTENÇÃO: a
+    leitura ao vivo abaixo já traz série e modelo dele. No upgrade continua
+    entrando, porque lá não há leitura ao vivo.
+    """
+    falhas: list[str] = []
+    sufixo = perfil.get("placa_teste_sufixo")
+
+    todas = [p.placa for p in body.placas]
+    todas += [p.placa_entrada for p in body.placas if p.placa_entrada]
+    if sufixo and not perfil.get("sem_termo"):
+        todas += [eqp.placa_teste(p.placa, sufixo) for p in body.placas]
+    seriais = await eqp.buscar_seriais(todas, falhas)
+
+    dados: dict = {}
+    recipientes: dict = {}
+    if perfil.get("sem_termo"):
+        alvos = [p.placa for p in body.placas]
+        if sufixo:
+            alvos += [eqp.placa_teste(p.placa, sufixo) for p in body.placas]
+        lidos = await eqp.dados_das_placas(alvos, falhas)
+        for p in body.placas:
+            ch = eqp.chave(p.placa)
+            if lidos.get(ch):
+                dados[ch] = lidos[ch]
+            if sufixo:
+                rec = lidos.get(eqp.chave_recipiente(p.placa, sufixo))
+                if rec:
+                    recipientes[ch] = rec
+    elif sufixo:
+        # Upgrade: o recipiente é criado junto com o termo, então o cache basta
+        # -- monta o mesmo formato a partir dele.
+        for p in body.placas:
+            pt = eqp.placa_teste(p.placa, sufixo)
+            serie = eqp.serie_de(seriais, pt)
+            recipientes[eqp.chave(p.placa)] = {
+                "descricao": eqp.descricao_da_placa(pt),
+                "modelo": eqp.modelo_da_placa(pt),
+                "serie": None if serie == eqp.MARCADOR_NAO_LOCALIZADO else serie,
+            }
+
+    return {"seriais": seriais, "dados": dados, "recipientes": recipientes,
+            "falhas": falhas}
+
+
+async def _preparar(body: "oos.MontarInput"):
+    """Tudo que a montagem precisa. Não escreve em lugar nenhum."""
     if body.perfil not in cfg.PERFIS:
         raise HTTPException(400, f"Tipo de operação desconhecido: {body.perfil}")
     perfil = cfg.PERFIS[body.perfil]
@@ -627,10 +776,10 @@ async def _preparar(body: "oos.MontarInput"):
     body.placas, avisos = oos.dedup_placas(body.placas)
     resolvidos, pendentes, descartados = await oos.resolver_vinculos(body.itens)
 
-    # 🚨 SEPARA ANTES DE ALOCAR. A alocação por placa vale só para o que
-    # vai na OS operacional; distribuir item de cobrança pelas placas o
-    # faria aparecer nas DUAS OS -- que é o que a regra 7 acabou de
-    # proibir ao tirar o `nas_duas`.
+    # 🚨 SEPARA ANTES DE ALOCAR. A alocação por placa vale só para o que vai na
+    # OS operacional; distribuir item de cobrança pelas placas o faria aparecer
+    # nas DUAS OS -- que é o que a regra 7 acabou de proibir ao tirar o
+    # `nas_duas`.
     itens_operacional, itens_financeiro = oos.separar_itens(perfil, resolvidos)
     alocacao, avisos_aloc = oos.alocar_itens_por_placa(
         itens_operacional, body.placas)
@@ -639,35 +788,47 @@ async def _preparar(body: "oos.MontarInput"):
         avisos.append("Itens marcados NÃO CONTRATADO no termo, fora da OS: "
                       + "; ".join(descartados))
 
-    # 🚨 A FALHA DE LEITURA VIRA AVISO NA TELA, NÃO SUMIÇO NO LOG. As cinco
-    # funções de `equipamentos` anotam nesta lista; o que estiver aqui aparece
-    # ANTES do botão Gerar. Não bloqueia -- continua valendo "lacuna é melhor
-    # que apagar" -- mas a pessoa vê.
-    falhas: list[str] = []
-    placas_txt = [p.placa for p in body.placas]
-    entradas = [p.placa_entrada for p in body.placas if p.placa_entrada]
+    ctx = await _ler_weso(body, perfil)
+    # 🚨 A FALHA DE LEITURA VIRA AVISO NA TELA, NÃO SUMIÇO NO LOG. Não bloqueia
+    # -- continua valendo "lacuna é melhor que apagar" -- mas a pessoa vê antes
+    # de clicar em Gerar.
+    avisos.extend(ctx["falhas"])
 
-    seriais = await eqp.buscar_seriais(placas_txt + entradas, falhas)
-    dados = await eqp.dados_das_placas(placas_txt + entradas, falhas)
-    recipientes = {}
-    if perfil.get("placa_teste_sufixo"):
-        recipientes = await eqp.buscar_recipientes(
-            placas_txt, perfil["placa_teste_sufixo"])
+    # Sem "entrará" plausível, não inventa: o recipiente duvidoso é descartado
+    # com aviso, e a OS sai sem o equipamento em vez de com um errado.
+    ctx["recipientes"], avisos_rec = oos.conferir_recipientes(
+        body, perfil, ctx["recipientes"])
+    avisos.extend(avisos_rec)
+    avisos.extend(oos.aviso_cobranca_sem_motivo(body, perfil, resolvidos))
 
-    contexto = {"seriais": seriais, "dados": dados, "recipientes": recipientes,
-                "falhas": falhas}
-    return (perfil, alocacao, itens_financeiro, resolvidos, contexto,
-            avisos, pendentes, descartados)
+    cabecalho, avisos_cab = {}, []
+    if perfil.get("tipo_nome") or perfil.get("problema_nome"):
+        cabecalho, avisos_cab = await _resolver_cabecalho_por_nome(perfil)
+        avisos.extend(avisos_cab)
+
+    return {"perfil": perfil, "alocacao": alocacao,
+            "itens_financeiro": itens_financeiro, "resolvidos": resolvidos,
+            "ctx": ctx, "avisos": avisos, "pendentes": pendentes,
+            "descartados": descartados, "cabecalho": cabecalho}
 
 
-async def _estado_das_placas(body: "oos.MontarInput", perfil: dict,
-                             contexto: dict) -> list[dict]:
+def _montar_tudo(body: "oos.MontarInput", pre: dict) -> list[dict]:
+    """A montagem, idêntica na prévia e na gravação."""
+    operacoes = oos.montar(body, pre["perfil"], pre["alocacao"],
+                           pre["itens_financeiro"], pre["resolvidos"],
+                           pre["ctx"]["seriais"], pre["ctx"]["recipientes"],
+                           pre["ctx"]["dados"])
+    _aplicar_cabecalho(operacoes, pre["perfil"], pre["cabecalho"], body)
+    return operacoes
+
+
+async def _estado_das_placas(body: "oos.MontarInput", ctx: dict) -> list[dict]:
     """Por placa: tem modelo? se não, POR QUÊ, e precisa de seletor?"""
     nascidas = await _nascidas_no_lote(body.lote)
-    houve_falha = bool(contexto["falhas"])
+    houve_falha = bool(ctx["falhas"])
     saida = []
     for p in body.placas:
-        d = contexto["dados"].get(eqp.chave(p.placa)) or {}
+        d = ctx["dados"].get(eqp.chave(p.placa)) or {}
         modelo = d.get("modelo") or eqp.modelo_da_placa(p.placa)
         linha = {"placa": p.placa, "veiculo": p.veiculo,
                  "modelo_na_weso": modelo,
@@ -688,29 +849,27 @@ async def _estado_das_placas(body: "oos.MontarInput", perfil: dict,
 @router.post("/os/previa")
 async def previa_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
     """O que SERÁ gravado. Não escreve nada."""
-    (perfil, alocacao, itens_financeiro, resolvidos, ctx, avisos,
-     pendentes, descartados) = await _preparar(body)
-
-    estado = await _estado_das_placas(body, perfil, ctx)
-    operacoes = oos.montar(body, perfil, alocacao, itens_financeiro,
-                           resolvidos, ctx["seriais"], ctx["recipientes"],
-                           ctx["dados"])
-
+    pre = await _preparar(body)
+    estado = await _estado_das_placas(body, pre["ctx"])
+    operacoes = _montar_tudo(body, pre)
     return {
-        "perfil": body.perfil, "label": perfil["label"],
+        "perfil": body.perfil, "label": pre["perfil"]["label"],
         "operacoes": operacoes,
         "placas": estado,
-        "avisos": avisos,
-        # ⚠️ VÍNCULO PENDENTE NÃO É AVISO, É BLOQUEIO. Item do termo sem
-        # vínculo viraria OS sem o item, em silêncio.
-        "pendentes": pendentes,
-        "descartados": descartados,
-        "falhas_de_leitura": ctx["falhas"],
-        "pode_gerar": not pendentes,
+        "avisos": pre["avisos"],
+        # ⚠️ VÍNCULO PENDENTE NÃO É AVISO, É BLOQUEIO: item do termo sem vínculo
+        # viraria OS sem o item, em silêncio.
+        "pendentes": pre["pendentes"],
+        "descartados": pre["descartados"],
+        "falhas_de_leitura": pre["ctx"]["falhas"],
+        "solucao_tecnica_preview": oos.formatar_solucao_tecnica(
+            body.solucao_tecnica, body.observacao),
+        "pode_gerar": not pre["pendentes"],
     }
 
 
-async def _criar_uma_os(op: dict, solucao: str) -> dict:
+async def _criar_uma_os(op: dict, solucao: str,
+                        numero_na_descricao: bool = False) -> tuple[dict, int | None]:
     """Cria UMA OS no Harmonit: cabeçalho, materiais e técnico.
 
     ⚠️ NÃO LEVANTA. Erro vira campo do resultado, para uma OS que falha não
@@ -727,9 +886,28 @@ async def _criar_uma_os(op: dict, solucao: str) -> dict:
     try:
         r = await harmonit_post("/OrdemServico/SalvarOrdemServico", payload)
     except HTTPException as exc:
-        return {"placa": op["placa"], "rotulo": op.get("rotulo"),
-                "ok": False, "erro": exc.detail}
+        return ({"placa": op["placa"], "rotulo": op.get("rotulo"),
+                 "ok": False, "erro": exc.detail}, None)
     os_id, numero = r.get("id"), r.get("numeroOrdem")
+
+    # 🚨 O NÚMERO DA PRÓPRIA OS NA DESCRIÇÃO custa uma SEGUNDA chamada -- por
+    # isso não se faz nos perfis de contrato. Na manutenção o usuário pediu
+    # igual à mão (as 14 OS abertas manualmente terminam com `O.S: nnnnn`),
+    # aceitando a demora com a caixa de progresso.
+    #
+    # ⚠️ Regravar com `id` ATUALIZA, não duplica -- medido em 14/08 na OS de
+    # teste 16755. É um save COMPLETO, então o payload vai inteiro: mandar só a
+    # descrição limparia o resto.
+    if numero_na_descricao and os_id and numero:
+        nova = f"{op['descricao']} | O.S: {numero}"
+        try:
+            await harmonit_post("/OrdemServico/SalvarOrdemServico",
+                                {**payload, "id": os_id, "numeroOrdem": numero,
+                                 "descricaoDetalhada": nova})
+            op["descricao"] = nova
+        except HTTPException as exc:
+            log.warning("operacoes: OS %s -- nao gravei o numero na descricao: %s",
+                        numero, exc.detail)
 
     materiais_ok, materiais_erro = [], []
     for mat in op["materiais"]:
@@ -754,49 +932,63 @@ async def _criar_uma_os(op: dict, solucao: str) -> dict:
         except HTTPException as exc:
             materiais_erro.append(f"técnico {op['tecnico_id']}: {exc.detail}")
 
-    return {"placa": op["placa"], "rotulo": op.get("rotulo"),
-            "os_id": os_id, "numero_ordem": numero, "ok": True,
-            "materiais_ok": materiais_ok, "materiais_erro": materiais_erro,
-            "tecnico": tecnico}
+    return ({"placa": op["placa"], "rotulo": op.get("rotulo"),
+             "os_id": os_id, "numero_ordem": numero, "ok": True,
+             "materiais_ok": materiais_ok, "materiais_erro": materiais_erro,
+             "tecnico": tecnico}, numero)
 
 
 @router.post("/os/gerar")
-async def gerar_os(body: oos.MontarInput, usuario=Depends(requer_aba("operacoes"))):
+async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
     """Grava as OS no Harmonit. ESCREVE."""
     if not body.confirmar:
         raise HTTPException(400,
             "A geração exige confirmação explícita. Use a prévia para conferir "
             "e mande `confirmar` quando for gravar.")
 
-    (perfil, alocacao, itens_financeiro, resolvidos, ctx, avisos,
-     pendentes, descartados) = await _preparar(body)
-
+    pre = await _preparar(body)
     # ⚠️ PENDENTE BLOQUEIA. Item do termo sem vínculo sairia da OS em silêncio,
     # e OS incompleta ninguém percebe até a cobrança não bater.
-    if pendentes:
+    if pre["pendentes"]:
         raise HTTPException(422,
             "Há itens do termo sem vínculo no catálogo do Harmonit — a OS "
-            "sairia sem eles, e ninguém veria: " + "; ".join(pendentes))
+            "sairia sem eles, e ninguém veria: " + "; ".join(pre["pendentes"]))
 
-    operacoes = oos.montar(body, perfil, alocacao, itens_financeiro,
-                           resolvidos, ctx["seriais"], ctx["recipientes"],
-                           ctx["dados"])
+    operacoes = _montar_tudo(body, pre)
     solucao = oos.formatar_solucao_tecnica(body.solucao_tecnica, body.observacao)
+    numero_na_desc = bool(pre["perfil"].get("numero_na_descricao"))
 
-    criadas = []
-    for op in operacoes:
-        criadas.append(await _criar_uma_os(op, solucao))
+    # 🚨 FASE DUPLA. Operacionais primeiro, colhendo os números; a financeira
+    # depois, citando esses números na solução técnica. Assim ela aponta as OS
+    # de instalação/serviço geradas pelo mesmo termo -- que é o que faz a
+    # cobrança ser conferível placa a placa.
+    operacionais = [o for o in operacoes if not o.get("eh_financeira")]
+    financeiras = [o for o in operacoes if o.get("eh_financeira")]
+
+    criadas, numeros = [], []
+    for op in operacionais:
+        resultado, numero = await _criar_uma_os(op, solucao, numero_na_desc)
+        criadas.append(resultado)
+        if numero:
+            numeros.append(str(numero))
+
+    for fin in financeiras:
+        nums = ", ".join(f"nº {n}" for n in numeros) or "(nenhuma)"
+        agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+        solucao_fin = (f"[{agora}] {len(numeros)} OS de instalação/serviço "
+                       f"geradas neste termo: {nums}")
+        resultado, _n = await _criar_uma_os(fin, solucao_fin)
+        criadas.append(resultado)
 
     if body.lote:
         for r in criadas:
             await reg.registrar(
                 body.lote, 4, "harmonit",
                 "criado" if r.get("ok") else "falhou",
-                placa_gravada=r.get("placa"),
-                descricao=r.get("rotulo"),
+                placa_gravada=r.get("placa"), descricao=r.get("rotulo"),
                 id_externo=r.get("os_id"), erro=r.get("erro"))
 
-    return {"criadas": criadas, "avisos": avisos,
-            "falhas_de_leitura": ctx["falhas"],
+    return {"criadas": criadas, "avisos": pre["avisos"],
+            "falhas_de_leitura": pre["ctx"]["falhas"],
             "total": len(criadas),
             "com_erro": sum(1 for r in criadas if not r.get("ok"))}
