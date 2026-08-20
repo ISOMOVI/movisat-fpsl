@@ -309,7 +309,7 @@ WESO**: só diz à OS qual produto do Harmonit anexar.
 | **F2** | Etapas 1 e 2 — documento e cliente | ✅ **ENTREGUE** `7b21e8b` |
 | **F3** | Etapa 3 — placas, com lote retomável | ✅ **ENTREGUE** `df875a0` |
 | **F4** | Etapa 4 — OS, com as 14 regras | ✅ **ENTREGUE** |
-| **F5** | A rotina, com os 4 casos e teto de tentativas | falta |
+| **F5** | A rotina, com os 4 casos e teto de tentativas | ✅ **ENTREGUE** |
 | **F6** | Registro cobrindo o fluxo novo | falta |
 | **F7** | Substituição: as duas velhas saem, o `os_router` parte em dois | falta — depende de uso real aprovado |
 
@@ -481,3 +481,88 @@ nas quatro rodadas seguintes. Ele fala com o serviço vivo por HTTP
 (`httpx` na 8004), então depende de o serviço estar no ar e responsivo — não é
 hermético como os da aba nova. Não foi investigado além disso; fica registrado
 porque teste que oscila treina a equipe a ignorar o placar.
+
+
+---
+
+## A F5 (2026-08-20) — a rotina, e o que ela obrigou a decidir
+
+### 🚨 O `status` da oficina: medido, e o que ele NÃO prova
+
+`os_historico` tem só dois valores de `status` (medido em 20/08: **1** com 87
+ocorrências, **2** com 99) e o significado não está em nenhum lugar do código.
+A investigação de agosto em
+`backups/scripts_avulsos_2026-08/testar_hipotese_os.py` identifica os dois —
+**2 é desinstalação, 1 é instalação** — e levanta uma hipótese que muda o
+desenho desta rotina:
+
+> "o registro de oficina numa OS é uma **INTENÇÃO**. Quem executa (fecha a
+> instalação e vira o 'instalado' do rastreador) é a **FINALIZAÇÃO** da OS."
+
+Não há registro de que ela tenha sido confirmada. Se valer, agir só porque a
+oficina existe seria agir **antes de o trabalho acontecer** — e esta rotina
+mexe em equipamento de cliente.
+
+**Decisão:** a rotina não age sobre o registro. A oficina é o **gatilho para ir
+olhar**; quem decide é o estado que ela mesma relê na WESO. Já em `Estoque`,
+conclui sem escrever. Ainda `Instalado`, faz e confere relendo. O desenho vale
+com a hipótese verdadeira e com ela falsa — que é o único possível enquanto
+ninguém mediu.
+
+⏸️ **Fica em aberto para você:** medir se a hipótese vale. Se valer, o gatilho
+certo pode ser a OS finalizada, e não a oficina — o que tornaria a rotina mais
+cedo ou mais tarde, não mais certa ou errada.
+
+### Os três riscos da rotina, e como ficaram
+
+| Risco da spec | Como ficou |
+|---|---|
+| Precisa de um vínculo OS ↔ recipiente que não existe | Tabela `operacoes_espera`, gravada **na geração**. Quem sabe é quem gerou; a rotina, 6 h depois, não |
+| Vai reescrever OS já criada, e é save completo | Relê a OS inteira, troca só o marcador da série no texto e devolve o payload todo. Confere relendo |
+| Precisa de teto de tentativas | `TETO_TENTATIVAS`; `desistiu` sai da fila mas **fica** na tabela com o último erro |
+
+### 🚨 A AUDITORIA DA F5 — a terceira prova tinha ficado para trás
+
+O `_liberar_series` da geração velha exige **três provas** antes de soltar a
+série: a OS foi criada, a série está na descrição, e **o equipamento foi mesmo
+anexado aos materiais**.
+
+A F5 nasceu cobrindo as duas primeiras e não a terceira. E o caso dela é
+justamente o inverso do caso velho: quando o recipiente não estava pronto na
+geração, `conferir_recipientes` o descartou, não houve modelo, e **a OS nasceu
+sem a linha do equipamento nos materiais**. Completar só a descrição deixaria a
+OS parecendo pronta, com a série no texto e sem o equipamento — que é
+exatamente o defeito achado auditando o termo 8820.
+
+**Corrigido:** a rotina anexa o equipamento aos materiais antes de liberar, e
+confere relendo `ObterMateriaisOrdemServico`. Modelo sem produto no de-para
+(TK-100, ST500, NT2x, Concox) **não libera**: vira pendência visível no
+Registro em vez de série solta numa OS incompleta.
+
+### Uma distinção que o código faz e o teste prende
+
+**"A OS ainda não foi varrida" não é "não há oficina".** As duas esperam, com
+mensagens diferentes. Tratar como a mesma coisa faria a rotina desistir de
+trabalho que só não tinha sido lido ainda — a OS pode ter nascido minutos antes
+e o varredor ainda não ter chegado nela.
+
+### O que a F5 entregou
+
+| Arquivo | O que é |
+|---|---|
+| `painel/operacoes_espera.py` | a tabela `operacoes_espera` e a API dela |
+| `painel/operacoes_rotina.py` | os quatro casos e o laço de 6 h |
+| `main.py` | o laço no lifespan, **depois** do varredor que a alimenta |
+| rotas | `/pendencias` e `/rotina/rodar` (a mesma função do laço) |
+| `tests/teste_operacoes_f5.py` | 29 verificações — o vínculo |
+| `tests/teste_operacoes_f5b.py` | 38 verificações — a rotina |
+
+**Suíte do FPSL: 1.103 verificações em 31 arquivos, zero reprovações.**
+
+⚠️ **A rotina está inerte hoje**, e isso é fato e não suposição: ela só age
+sobre pendências criadas pela etapa 4, e a etapa 4 ainda não tem tela. Nenhuma
+pendência existe. O laço acorda, encontra a fila vazia e volta a dormir.
+
+⏸️ **`TETO_TENTATIVAS = 28`** (7 dias a cada 6 h) — escolhido para o laço não
+ser infinito, **não** por saber que 7 dias é o prazo certo. Teto, limite e filtro
+são decisão sua; o teste prende o número de propósito.
