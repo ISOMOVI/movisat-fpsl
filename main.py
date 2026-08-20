@@ -14,6 +14,7 @@ from fpsl_weso.painel.routers import harmonit_hist_router as painel_harmonit_his
 from fpsl_weso.painel.routers import clientes_router as painel_clientes_router
 from fpsl_weso.painel.routers import usuarios_router as painel_usuarios_router
 from fpsl_weso.painel.routers import os_scan_router as painel_os_scan_router
+from fpsl_weso.painel import operacoes_rotina as painel_operacoes_rotina
 from fpsl_weso.painel.routers import placas_router as painel_placas_router
 # Aba Operações (OPR_1.1) — router próprio, sem depender dos dois que
 # vão ser desmontados. Ver docs/fpsl/28_Operacoes.md.
@@ -103,6 +104,10 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(loop_inadimplencia())
     asyncio.create_task(painel_os_scan_router.loop_scan_os())
     asyncio.create_task(painel_os_scan_router.loop_resync_os())
+    # A rotina da aba Operacoes: os quatro casos que terminam o
+    # que a etapa 4 deixou pendente. Ela LE o que o varredor
+    # acima ja guardou -- por isso entra depois dele.
+    asyncio.create_task(painel_operacoes_rotina.loop_rotina())
     yield
     await stop_harmonit_client()
     await stop_client()

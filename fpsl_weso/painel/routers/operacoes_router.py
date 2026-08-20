@@ -34,6 +34,7 @@ from .. import operacoes_config as cfg
 from ..pdf_extractor import extrair_campos
 from .. import operacoes_espera as esp
 from .. import operacoes_registro as reg
+from .. import operacoes_rotina as rot
 from ...client import weso_get, weso_post
 from ...harmonit_client import harmonit_get, harmonit_post
 from ... import placas as regra_placa
@@ -1066,3 +1067,15 @@ async def listar_pendencias(caso: str | None = Query(None),
     """O que a rotina ainda deve, e o que ela desistiu de tentar."""
     return {"pendentes": await esp.pendentes(caso), "resumo": await esp.resumo(),
             "teto_tentativas": esp.TETO_TENTATIVAS}
+
+
+@router.post("/rotina/rodar")
+async def rodar_rotina(caso: str | None = Query(None),
+                       _=Depends(requer_aba("operacoes"))):
+    """Roda uma passada da rotina agora, sem esperar as 6 h.
+
+    ⚠️ MESMA FUNÇÃO DO LAÇO. Um caminho manual que faça algo diferente do
+    automático é um caminho que ninguém testa de verdade -- e o que se prova
+    clicando deixa de valer para o que roda de madrugada.
+    """
+    return await rot.rodar(caso)
