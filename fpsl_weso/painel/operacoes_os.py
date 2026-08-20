@@ -435,14 +435,34 @@ def material_do_equipamento(perfil: dict, placa: PlacaOS, materiais: list[dict],
     if not produto:
         # None é "não há de-para", e NUNCA bloqueia: a OS sai com o equipamento
         # apenas na descrição. TK-100, ST500, NT2x e Concox são esse caso.
+        log.info("operacoes: modelo %r sem produto no de-para — fica só na "
+                 "descrição", modelo)
         return None
-    if perfil.get("sem_flags"):
-        comodato, valor = False, 0.0
-    else:
-        comodato, valor = True, float(produto.get("valor") or 0.0)
+
+    # ⚠️ O DE-PARA SÓ TEM VALOR PATRIMONIAL NOS MODELOS 4G; nos 2G é vazio. Ao
+    # substituir, herda o valor do item do contrato que está saindo — senão a OS
+    # trocaria um valor patrimonial real por nada.
+    #
+    # 🚨 ZERO AQUI É "NÃO SEI", NÃO "VALE NADA". `produto_do_modelo` devolve
+    # `row[2] or 0.0`, então o de-para sem valor chega como 0.0 e não como
+    # None — testar `is not None` nunca herdaria nada, e o comodato sairia
+    # zerado. Medido em 14/08 ensaiando a Substituição: o ST310U saiu com
+    # R$ 0,00 enquanto o contrato dizia R$ 1.100,00.
+    substituidos = [m for m in materiais or [] if eh_rastreador(m)]
+    herdado = next((m.get("valor_unitario") for m in substituidos
+                    if m.get("valor_unitario")), 0.0)
+    valor = produto["valor"] or herdado
+
+    sem_flags = bool(perfil.get("sem_flags"))
     return {"harmonit_id": produto["harmonit_id"], "quantidade": 1,
-            "valor_unitario": valor, "comodato": comodato, "cobrar": False,
-            "descricao": produto["descricao"]}
+            "valor_unitario": 0.0 if sem_flags else (valor or 0.0),
+            "comodato": not sem_flags, "cobrar": False,
+            "descricao": produto["descricao"],
+            # 🚨 MARCA INTERNA, e a F5 depende dela: é por ela que a liberação
+            # da série confirma que o equipamento REALMENTE foi anexado antes
+            # de apagar o recipiente. `_criar_uma_os` só lê as chaves que o
+            # Harmonit espera, então esta sobra não viaja no payload.
+            "_equipamento": True}
 
 
 # ── Materiais ────────────────────────────────────────────────────────────────

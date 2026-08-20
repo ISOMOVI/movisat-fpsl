@@ -81,6 +81,11 @@ CATALOGO = {
 
 PRODUTO_ST340 = {"harmonit_id": 9001, "descricao": "RASTREADOR ST340",
                  "valor": 480.0}
+# 🚨 O 2G NÃO TEM VALOR PATRIMONIAL NO DE-PARA, e chega como 0.0 -- não como
+# None. É esse detalhe que fez o ST310U sair com R$ 0,00 em 14/08 contra
+# R$ 1.100,00 no contrato.
+PRODUTO_ST310U = {"harmonit_id": 9002, "descricao": "RASTREADOR ST310U",
+                  "valor": 0.0}
 
 
 async def _vinculo(nome):
@@ -88,7 +93,12 @@ async def _vinculo(nome):
 
 
 def _produto(modelo):
-    return PRODUTO_ST340 if str(modelo or "").upper().startswith("ST340") else None
+    m = str(modelo or "").upper()
+    if m.startswith("ST340"):
+        return PRODUTO_ST340
+    if m.startswith("ST310U"):
+        return PRODUTO_ST310U
+    return None
 
 
 def instalar_dubles(modelo_na_weso=None):
@@ -442,6 +452,50 @@ async def teste_ordem():
     checar("os itens alocados ficam no meio", "RASTREADOR" in d[1:-1], d)
 
 
+# ── 11b. o valor patrimonial se herda, e zero é "não sei" ────────────────────
+
+async def teste_valor_patrimonial():
+    print("\n11b. O valor patrimonial se herda quando o de-para não tem")
+    instalar_dubles(modelo_na_weso="ST310U")
+    body = corpo("contrato_novo", [placa("AAA 0A00")],
+                 [item("RASTREADOR", "1", "1.100,00", "COMODATO")])
+    ops, _, _, _ = await montar(body)
+    mats = ops[0]["materiais"]
+    equip = [m for m in mats if m["descricao"] == "RASTREADOR ST310U"]
+    checar("o equipamento do de-para entra", len(equip) == 1, descricoes(mats))
+    # 🚨 Testar `is not None` nunca herdaria: o de-para devolve `row[2] or 0.0`,
+    # entao vazio chega como 0.0. Foi assim que o ST310U saiu R$ 0,00 em 14/08.
+    checar("de-para sem valor HERDA o valor do item do contrato",
+           equip and equip[0]["valor_unitario"] == 1100.0, str(equip))
+    checar("e continua comodato, sem cobrar",
+           equip and equip[0]["comodato"] is True and equip[0]["cobrar"] is False)
+
+    instalar_dubles(modelo_na_weso="ST340")
+    body2 = corpo("contrato_novo", [placa("AAA 0A00")],
+                  [item("RASTREADOR", "1", "1.100,00", "COMODATO")])
+    ops2, _, _, _ = await montar(body2)
+    e2 = [m for m in ops2[0]["materiais"] if m["descricao"] == "RASTREADOR ST340"]
+    checar("quando o de-para TEM valor, ele vence o do contrato",
+           e2 and e2[0]["valor_unitario"] == 480.0, str(e2))
+
+    # 🚨 A F5 DEPENDE DESTA MARCA. É por ela que a liberação da série confirma
+    # que o equipamento foi mesmo anexado antes de apagar o recipiente.
+    checar("o equipamento carrega a marca interna `_equipamento`",
+           e2 and e2[0].get("_equipamento") is True, str(e2))
+    checar("e a marca NÃO está nos itens que vieram do vínculo",
+           all(not m.get("_equipamento") for m in ops2[0]["materiais"]
+               if m["descricao"] != "RASTREADOR ST340"))
+
+    instalar_dubles(modelo_na_weso="ST310U")
+    body3 = corpo("manutencao_local", [placa("AAA 0A00")],
+                  [item("RASTREADOR", "1", "1.100,00", "COMODATO")])
+    ops3, _, _, _ = await montar(body3)
+    e3 = [m for m in ops3[0]["materiais"] if m["descricao"] == "RASTREADOR ST310U"]
+    checar("na manutenção o equipamento vai com valor ZERO e sem flag",
+           e3 and e3[0]["valor_unitario"] == 0.0
+           and e3[0]["comodato"] is False, str(e3))
+
+
 # ── 12. o recipiente duvidoso é descartado, com aviso ────────────────────────
 
 async def teste_conferir_recipientes():
@@ -580,7 +634,8 @@ async def main():
     for t in (teste_regra_4, teste_regra_7, teste_separa_antes_de_alocar,
               teste_regra_9, teste_dois_estados, teste_regra_10,
               teste_regra_11, teste_regra_12, teste_rescisao,
-              teste_manutencao, teste_ordem, teste_conferir_recipientes,
+              teste_manutencao, teste_ordem, teste_valor_patrimonial,
+              teste_conferir_recipientes,
               teste_aviso_cobranca, teste_cabecalho_por_nome):
         await t()
     print(f"\n{'=' * 62}")
