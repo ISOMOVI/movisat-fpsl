@@ -28,7 +28,7 @@ A tela única não é conveniência. É o que torna a ordem obrigatória.
 | Título | Operações |
 | Rota | `/painel/operacoes` |
 | Permissão | `operacoes` (nova, ninguém tem) |
-| Menu | **fora**, até o usuário mandar entrar |
+| Menu | **dentro desde 20/08** (decisão sua). Nasceu fora porque estava pela metade |
 
 🚨 **NASCE AO LADO, NÃO POR CIMA.** As duas telas atuais continuam no ar e
 intactas. A substituição é a última fase, e só depois de uso real. É o oposto
@@ -310,7 +310,7 @@ WESO**: só diz à OS qual produto do Harmonit anexar.
 | **F3** | Etapa 3 — placas, com lote retomável | ✅ **ENTREGUE** `df875a0` |
 | **F4** | Etapa 4 — OS, com as 14 regras | ✅ **ENTREGUE** |
 | **F5** | A rotina, com os 4 casos e teto de tentativas | ✅ **ENTREGUE** |
-| **F6** | Registro cobrindo o fluxo novo | falta |
+| **F6** | Histórico de Operações (`HST_4.1`) | ✅ **ENTREGUE** |
 | **F7** | Substituição: as duas velhas saem, o `os_router` parte em dois | falta — depende de uso real aprovado |
 
 **Dentro da F4, nesta ordem:** as 6 regras que mudaram (4, 7, 9, 10, 11, 12) ·
@@ -566,3 +566,83 @@ pendência existe. O laço acorda, encontra a fila vazia e volta a dormir.
 ⏸️ **`TETO_TENTATIVAS = 28`** (7 dias a cada 6 h) — escolhido para o laço não
 ser infinito, **não** por saber que 7 dias é o prazo certo. Teto, limite e filtro
 são decisão sua; o teste prende o número de propósito.
+
+
+---
+
+## A tela da etapa 4, o menu e a F6 (2026-08-20)
+
+### 🚨 Dois defeitos que só apareceram ao LIGAR a tela
+
+**1. As três rotas de apoio exigiam `gerar_os`.** Problemas, prioridades e
+busca de serviço vivem no `os_router` com `requer_aba("gerar_os")` — quem tem
+só `operacoes` tomaria **403 nas três**. Resolvido pelo que esta spec já
+mandava: prefixo próprio. Nasceram sob `/painel/api/operacoes/`, e quando as
+telas velhas saírem nenhuma rota da aba muda de endereço.
+
+**2. O `/extrair` não devolvia os itens do CONTRATO.** O campo `itens` dele são
+os **veículos** — colisão de nome dentro da própria resposta. Sem os itens do
+contrato não há vínculo, sem vínculo não há material, e a OS sairia só com o
+serviço do cabeçalho e o ENTREGA OS: **completa na aparência e vazia no
+conteúdo**. Agora vai `itens_contrato`, com nome próprio.
+
+Os dois só apareceriam ao usar. O teste que ficou (`teste_tela_operacoes.py`)
+lê o fonte da tela e o do router e cruza os dois — a lição de 18/08 aplicada:
+**contrato de JSON se testa pelo lado de quem consome**.
+
+### A aba entrou no MENU
+
+Decisão do usuário, 20/08. Ela nasceu `no_menu` com motivo escrito aqui —
+estava pela metade — e o motivo caducou quando o fluxo passou a fechar de ponta
+a ponta.
+
+⚠️ **A permissão não mudou, e não era ela que escondia.** `pode_acessar`
+devolve `True` para owner **sempre**; quem tirava do menu era a flag `no_menu`,
+que o `do_usuario` filtra para todo mundo. Conferido: quem tem só `operacoes`
+vê só ela; quem não tem, não vê.
+
+Ela é a **primeira** do menu, e isso é coerente: faz numa tela só o que Cadastro
+de Placas e Gerar OS fazem em duas, e o login manda para a primeira tela do
+perfil.
+
+### 🚨 A F6 NÃO se chama "Registro"
+
+Já existe **`CFG_9.1 Registro de telas` no menu**, e `operacoes_registro.py` é o
+registro de lote e passos da própria aba. "Registro" seria a terceira coisa com
+o mesmo nome, e a primeira é um item que a pessoa vê.
+
+**`HST_4.1 — Histórico de Operações`**, na família que já existe: Histórico de
+OS, Histórico de Placas. ⚠️ `HST_3.1` continua **queimado** (era a Aderência,
+apagada em 19/08). Há teste prendendo que nenhum título e nenhum código se
+repetem — é o que teria pegado a colisão antes de ela existir.
+
+**Mesma permissão da aba principal**, como `CAD_1.1`/`CAD_1.2` já fazem: quem
+opera precisa ver o que operou.
+
+**O que ela mostra, e a ordem importa:** as pendências da rotina vêm PRIMEIRO.
+`desistiu` significa que a rotina tentou até o teto e parou — há recipiente
+preso ou equipamento que não voltou ao estoque, e ninguém descobre sozinho. Sem
+esta tela é linha morta numa tabela que ninguém abre. Abaixo, cada rodada e o
+passo a passo dela.
+
+⚠️ **`ignorado` não é pintado de vermelho.** Descartar de propósito é
+comportamento certo; pintar de vermelho ensinaria a equipe a ignorar o vermelho.
+
+### Dois achados menores da construção
+
+`listar_lotes` nasceu com `ORDER BY l.id` e **a tabela de lote não tem `id`** —
+a chave é o `lote`, texto. E é **uma consulta só**: o resumo sai do próprio SQL,
+senão seriam 101 idas ao banco para desenhar 100 linhas.
+
+O banner da aba principal ainda dizia "Em construção (F3)" com a aba completa.
+
+### Estado
+
+**F1 a F6 no ar. Falta a F7.**
+
+🚨 **A F7 tem condição escrita e ela não é minha:** *"depende de uso real
+aprovado por você"*. Apagar Cadastro de Placas e Gerar OS antes de alguém rodar
+um termo de verdade pela aba nova é o erro de 19/08 outra vez, quando o
+interruptor foi removido antes da garantia do que dependia dele.
+
+**Suíte do FPSL: 1.227 verificações em 34 arquivos, zero reprovações.**
