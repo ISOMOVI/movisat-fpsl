@@ -63,8 +63,8 @@ async def main():
         # 10 desde 20/08: a aba Operações saiu de `no_menu` por decisão do
         # usuário. O número fica explícito de propósito -- tela nova no menu
         # tem de passar por aqui e ser deliberada.
-        checar("owner enxerga as 10 telas do menu",
-               len(me.get("abas", [])) == 10, str(len(me.get("abas", []))))
+        checar("owner enxerga as 11 telas do menu",
+               len(me.get("abas", [])) == 11, str(len(me.get("abas", []))))
         checar("e Operações é uma delas",
                any(a.get("id") == "operacoes" for a in me.get("abas", [])),
                str([a.get("id") for a in me.get("abas", [])]))

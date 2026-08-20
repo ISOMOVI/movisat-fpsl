@@ -1140,3 +1140,18 @@ async def listar_problemas(_=Depends(requer_aba("operacoes"))):
         raise HTTPException(502, "A lista de Problemas do Harmonit não respondeu.")
     return {"problemas": [{"id": p.get("id"), "descricao": p.get("descricao")}
                           for p in lista if p.get("id")]}
+
+
+@router.get("/historico")
+async def historico(limite: int = Query(100, le=500),
+                    _=Depends(requer_aba("operacoes"))):
+    """O que esta aba fez, e o que a rotina ainda deve.
+
+    🚨 AS PENDENCIAS VEM JUNTO, E NAO NUMA TELA A PARTE. Pendencia que
+    `desistiu` e o unico jeito de alguem saber que um recipiente ficou preso ou
+    que uma oficina nunca chegou -- se ela morar noutro lugar, ninguem abre.
+    """
+    return {"lotes": await reg.listar_lotes(limite),
+            "pendentes": await esp.pendentes(),
+            "resumo_pendencias": await esp.resumo(),
+            "teto_tentativas": esp.TETO_TENTATIVAS}

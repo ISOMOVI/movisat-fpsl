@@ -180,3 +180,32 @@ async def resumo(lote: str) -> dict:
     for p in linhas:
         por_acao[p["acao"]] = por_acao.get(p["acao"], 0) + 1
     return {"passos": len(linhas), "por_acao": por_acao}
+
+
+async def listar_lotes(limite: int = 100) -> list[dict]:
+    """Os lotes mais recentes, com o resumo de cada um.
+
+    🚨 UMA CONSULTA SO, NAO UMA POR LOTE. Ler o cabecalho e depois pedir o
+    resumo de cada um seria N+1 -- com 100 lotes na tela, 101 idas ao banco
+    para desenhar uma lista. O agregado sai do proprio SQL.
+    """
+    def _run():
+        _criar()
+        with storage._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            linhas = conn.execute("""
+                SELECT l.*,
+                       (SELECT COUNT(*) FROM operacoes_passo p
+                         WHERE p.lote = l.lote) AS passos,
+                       (SELECT COUNT(*) FROM operacoes_passo p
+                         WHERE p.lote = l.lote AND p.etapa = 4
+                           AND p.acao = 'criado') AS os_criadas,
+                       (SELECT COUNT(*) FROM operacoes_passo p
+                         WHERE p.lote = l.lote AND p.acao = 'falhou') AS falhas
+                  FROM operacoes_lote l
+                 -- A chave e o  (texto), nao ha uid=197609(Lenovo) gid=197121 groups=197121: ordena pelo
+                 -- carimbo, que e o que a pessoa procura de qualquer jeito.
+                 ORDER BY l.criado_em DESC LIMIT ?
+            """, (int(limite),)).fetchall()
+            return [dict(r) for r in linhas]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)

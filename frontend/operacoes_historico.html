@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Histórico de Operações — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/painel/static/barra_status.css">
+<link rel="stylesheet" href="/painel/static/operacoes.css">
+<style>
+  .bloco-titulo { font-size:.95rem; font-weight:700; margin-bottom:2px; }
+  .bloco-sub { font-size:.8rem; color:var(--text2); margin-bottom:14px; }
+  tr.clicavel { cursor:pointer; }
+  tr.clicavel:hover { background:var(--bg2); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom">
+      <button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <h1>Histórico de Operações</h1>
+
+    <!-- 🚨 AS PENDÊNCIAS VÊM PRIMEIRO, e não numa tela à parte. Pendência que
+         `desistiu` é o único jeito de alguém saber que um recipiente ficou
+         preso ou que uma oficina nunca chegou. Se ela morar embaixo, ninguém
+         rola até lá. -->
+    <div class="card" style="margin-top:16px">
+      <div class="bloco-titulo">O que a rotina ainda deve</div>
+      <div class="bloco-sub">A rotina roda de 6 em 6 horas e termina o que a
+        etapa 4 deixou pendente: a série do recipiente, a devolução ao estoque,
+        o vínculo da substituição.</div>
+      <div id="avisoDesistiu"></div>
+      <div id="resumoPendencias"></div>
+      <table id="tabelaPendencias"><thead></thead><tbody></tbody></table>
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+        <button class="btn btn-ghost" onclick="rodarRotina()" id="btnRotina">
+          Rodar a rotina agora</button>
+        <span id="progressoRotina" style="font-size:.8rem;color:var(--text2)"></span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="bloco-titulo">As rodadas</div>
+      <div class="bloco-sub">Cada linha é um termo que passou pela aba. Clique
+        para ver passo a passo o que foi escrito em cada sistema.</div>
+      <div class="msg" id="msg" style="display:none"></div>
+      <table id="tabelaLotes"><thead></thead><tbody></tbody></table>
+    </div>
+
+    <div class="card" style="margin-top:16px;display:none" id="cardDetalhe">
+      <div class="bloco-titulo" id="detalheTitulo"></div>
+      <div class="bloco-sub" id="detalheSub"></div>
+      <table id="tabelaPassos"><thead></thead><tbody></tbody></table>
+    </div>
+  </main>
+</div>
+
+<script src="/painel/static/barra_status.js"></script>
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('operacoes');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+
+/* 🚨 ESCAPA TUDO QUE VEM DE FORA -- mesma regra da tela principal. Aqui o
+   conteúdo é ainda mais externo: descrição de veículo do termo, mensagem de
+   erro do Harmonit e da WESO. */
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+/* Nem toda resposta é JSON: 502 e 504 vêm como página HTML. */
+async function lerResposta(res) {
+  const bruto = await res.text();
+  let corpo = null;
+  try { corpo = JSON.parse(bruto); } catch (e) { corpo = null; }
+  if (res.ok) return corpo;
+  if (res.status === 401) { logout(); throw new Error('sessão expirada'); }
+  if (res.status === 403) throw new Error('sem permissão para esta aba');
+  if (res.status === 502 || res.status === 504) {
+    throw new Error('o servidor passou do tempo. Tente de novo.');
+  }
+  throw new Error((corpo && corpo.detail) || `erro HTTP ${res.status}`);
+}
+
+function msg(texto, classe) {
+  const el = document.getElementById('msg');
+  el.className = 'msg ' + (classe || '');
+  el.innerHTML = texto;
+  el.style.display = texto ? 'block' : 'none';
+}
+
+function quando(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return isNaN(d) ? String(iso).slice(0, 16)
+                  : d.toLocaleString('pt-BR', { dateStyle: 'short',
+                                                timeStyle: 'short' });
+}
+
+let dados = null;
+
+async function carregar() {
+  msg('Carregando… <span class="spinner"></span>', '');
+  try {
+    const res = await fetch('/painel/api/operacoes/historico', { headers: auth() });
+    dados = await lerResposta(res);
+    desenharPendencias(dados);
+    desenharLotes(dados.lotes || []);
+    msg('', '');
+  } catch (e) {
+    msg(escapeHtml(e.message), 'msg-erro');
+  }
+}
+
+/* ── as pendências ──────────────────────────────────────────────────────────
+   🚨 `desistiu` É O ESTADO QUE PRECISA GRITAR. Ele significa que a rotina
+   tentou até o teto e parou: há um recipiente preso na WESO, ou um equipamento
+   que nunca voltou ao estoque, e ninguém vai descobrir sozinho. Sem esta tela,
+   `desistiu` é uma linha morta numa tabela que ninguém abre. */
+function desenharPendencias(d) {
+  const r = d.resumo_pendencias || {};
+  const porEstado = r.por_estado || {};
+  const desistiu = r.desistiu || 0;
+
+  document.getElementById('avisoDesistiu').innerHTML = desistiu
+    ? `<div class="msg msg-erro" style="display:block">
+         <strong>${desistiu} pendência(s) que a rotina DESISTIU de tentar.</strong>
+         Ela tentou ${d.teto_tentativas} vezes e parou. Isso significa
+         equipamento parado num estado que ninguém pediu — confira uma a uma.
+       </div>`
+    : '';
+
+  const partes = Object.entries(porEstado)
+    .map(([e, n]) => `<span class="badge ${e === 'desistiu' ? 'badge-red'
+        : e === 'concluido' ? 'badge-green' : 'badge-blue'}">${escapeHtml(e)}: ${n}</span>`)
+    .join(' ');
+  document.getElementById('resumoPendencias').innerHTML = partes
+    || '<span style="color:var(--text2);font-size:.82rem">Nenhuma pendência registrada.</span>';
+
+  const lista = d.pendentes || [];
+  document.querySelector('#tabelaPendencias thead').innerHTML = lista.length
+    ? `<tr><th>OS</th><th>Placa</th><th>Caso</th><th>Tentativas</th>
+       <th>Último erro</th></tr>` : '';
+  document.querySelector('#tabelaPendencias tbody').innerHTML = lista.map((p) => `
+    <tr>
+      <td>${escapeHtml(String(p.numero_os || '—'))}</td>
+      <td>${escapeHtml(p.placa || '')}${p.placa_entrada
+          ? ' → ' + escapeHtml(p.placa_entrada) : ''}</td>
+      <td><span class="badge badge-blue">${escapeHtml(p.caso || '')}</span></td>
+      <td>${p.tentativas} de ${d.teto_tentativas}</td>
+      <td style="font-size:.74rem">${escapeHtml(p.ultimo_erro || '')}</td>
+    </tr>`).join('');
+}
+
+async function rodarRotina() {
+  const btn = document.getElementById('btnRotina');
+  const prog = document.getElementById('progressoRotina');
+  btn.disabled = true;
+  prog.innerHTML = 'Rodando… <span class="spinner"></span>';
+  try {
+    const res = await fetch('/painel/api/operacoes/rotina/rodar',
+                            { method: 'POST', headers: auth() });
+    const r = await lerResposta(res);
+    prog.textContent = `${r.lidas} lida(s), ${r.concluidas} concluída(s).`;
+    await carregar();
+  } catch (e) {
+    prog.textContent = '';
+    msg(escapeHtml(e.message), 'msg-erro');
+  }
+  btn.disabled = false;
+}
+
+/* ── as rodadas ─────────────────────────────────────────────────────────── */
+function desenharLotes(lotes) {
+  document.querySelector('#tabelaLotes thead').innerHTML = `<tr>
+    <th>Quando</th><th>Tipo</th><th>Termo</th><th>Quem</th>
+    <th>Passos</th><th>OS</th><th>Falhas</th></tr>`;
+  document.querySelector('#tabelaLotes tbody').innerHTML = lotes.length
+    ? lotes.map((l) => `<tr class="clicavel" onclick="abrirLote('${escapeHtml(l.lote)}')">
+        <td>${escapeHtml(quando(l.criado_em))}</td>
+        <td>${escapeHtml(l.perfil || '')}</td>
+        <td>${escapeHtml(l.termo || '—')}</td>
+        <td>${escapeHtml(l.usuario || '—')}</td>
+        <td>${l.passos}</td>
+        <td>${l.os_criadas}</td>
+        <td>${l.falhas ? `<span class="badge badge-red">${l.falhas}</span>` : '0'}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="7" style="color:var(--text2);font-size:.82rem">
+         Nenhuma rodada ainda. Elas aparecem aqui assim que alguém subir um
+         termo na aba Operações.</td></tr>`;
+}
+
+async function abrirLote(lote) {
+  const card = document.getElementById('cardDetalhe');
+  card.style.display = '';
+  document.getElementById('detalheTitulo').textContent = 'Rodada ' + lote;
+  document.getElementById('detalheSub').innerHTML = 'Carregando… <span class="spinner"></span>';
+  try {
+    const res = await fetch('/painel/api/operacoes/lote/' + encodeURIComponent(lote),
+                            { headers: auth() });
+    const d = await lerResposta(res);
+    const cab = d.lote || {};
+    document.getElementById('detalheSub').innerHTML =
+      `${escapeHtml(cab.perfil || '')} · termo ${escapeHtml(cab.termo || '—')} · ` +
+      `${escapeHtml(quando(cab.criado_em))} · ${escapeHtml(cab.usuario || '—')}`;
+
+    /* 🚨 `ignorado` NÃO É ERRO, e a cor tem de dizer isso. Descartar de
+       propósito (recipiente que não entra no Harmonit) é comportamento certo;
+       pintar de vermelho ensinaria a equipe a ignorar o vermelho. */
+    const cor = { criado: 'badge-green', ja_existia: 'badge-blue',
+                  confere_ok: 'badge-green', confere_falta: 'badge-red',
+                  falhou: 'badge-red', ignorado: 'badge-blue' };
+    document.querySelector('#tabelaPassos thead').innerHTML = `<tr>
+      <th>Quando</th><th>Etapa</th><th>Sistema</th><th>Ação</th>
+      <th>Placa</th><th>Id externo</th><th>Detalhe</th></tr>`;
+    document.querySelector('#tabelaPassos tbody').innerHTML =
+      (d.passos || []).map((p) => `<tr>
+        <td>${escapeHtml(quando(p.criado_em))}</td>
+        <td>${p.etapa}</td>
+        <td>${escapeHtml(p.sistema || '')}</td>
+        <td><span class="badge ${cor[p.acao] || 'badge-blue'}">${escapeHtml(p.acao || '')}</span></td>
+        <td>${escapeHtml(p.placa_gravada || p.placa_digitada || '')}</td>
+        <td>${escapeHtml(String(p.id_externo || ''))}</td>
+        <td style="font-size:.74rem">${escapeHtml(p.erro || p.descricao || '')}</td>
+      </tr>`).join('') || `<tr><td colspan="7" style="color:var(--text2)">
+        Sem passos registrados nesta rodada.</td></tr>`;
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (e) {
+    document.getElementById('detalheSub').innerHTML =
+      `<span style="color:var(--danger)">${escapeHtml(e.message)}</span>`;
+  }
+}
+
+carregar();
+</script>
+</body>
+</html>

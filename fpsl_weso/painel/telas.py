@@ -127,6 +127,28 @@ TELAS = [
         "permissao": "harmonit_historico",
         "fase": 1,
     },
+    # 🆕 F6 (20/08). O histórico da aba Operações.
+    #
+    # 🚨 NÃO SE CHAMA "Registro", e o nome foi escolhido para não colidir: já
+    # existe `CFG_9.1 Registro de telas` NO MENU, e `operacoes_registro.py` é o
+    # registro de lote e passos da aba. Três coisas com o mesmo nome, e a
+    # primeira é um item que a pessoa vê. `HST_4.1` entra na família que já
+    # existe -- Histórico de OS, Histórico de Placas.
+    #
+    # ⚠️ `HST_3.1` está QUEIMADO: era a tela de Aderência, apagada em 19/08
+    # porque a premissa dela era minha. Código aposentado não se reaproveita.
+    #
+    # ⚠️ MESMA PERMISSÃO da aba principal, como `CAD_1.1`/`CAD_1.2` já fazem:
+    # quem opera precisa ver o que operou.
+    {
+        "codigo": "HST_4.1",
+        "titulo": "Histórico de Operações",
+        "rota": "/painel/operacoes-historico",
+        "icone": "bi-list-check",
+        "descricao": "O que a aba Operações fez, e o que a rotina ainda deve terminar.",
+        "permissao": "operacoes",
+        "fase": 1,
+    },
     # ---- CFG: configuração ----
     {
         "codigo": "CFG_1.1",

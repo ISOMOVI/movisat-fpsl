@@ -74,7 +74,7 @@ async def main():
     # ⚠️ ESTE NUMERO CRESCE COM CADA TELA NOVA, e e de proposito: ele existe
     # para o laco acima nao passar em silencio se o glob nao achar nada. Foi
     # 9 ate 19/08; a aba Operacoes (OPR_1.1) fez 10.
-    checar("achou as 10 paginas do painel", paginas == 10, f"achou {paginas}")
+    checar("achou as 11 paginas do painel", paginas == 11, f"achou {paginas}")
 
     print("\n[3] o servidor devolve o req id")
     u = await storage.buscar_usuario_painel("admin")

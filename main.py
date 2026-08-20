@@ -221,6 +221,13 @@ async def painel_os_historico_page():
     return FileResponse("frontend/os_historico.html")
 
 
+# ⚠️ MESMA ABA da aba Operações, de propósito -- quem opera precisa ver o que
+# operou. Mesmo raciocínio do histórico do Cadastro de Placas acima.
+@app.get("/painel/operacoes-historico")
+async def painel_operacoes_historico_page():
+    return FileResponse("frontend/operacoes_historico.html")
+
+
 @app.get("/painel/config/telas")
 async def painel_registro_telas_page():
     return FileResponse("frontend/registro_telas.html")
