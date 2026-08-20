@@ -393,8 +393,19 @@ def _identificador_nao_convencional(celula: str) -> tuple[str | None, str, list[
 # Guarda medida nos 14 fixtures em 20/08. Nao e "conservadorismo": cada limite
 # abaixo existe por causa de uma linha real que a medicao mostrou.
 _POS_TRACO_MAX_TOKENS = 2      # 'RZL H405' tem 2; texto corrido tem 6+
-_POS_TRACO_MIN_CHARS = 5       # abaixo disso e sobra de pontuacao
-_POS_TRACO_MAX_CHARS = 12      # chassi (17) tem caminho proprio, com rotulo
+_POS_TRACO_MIN_CHARS = 3       # abaixo disso é sobra de pontuação
+_POS_TRACO_MAX_CHARS = 15      # cobre 'RZ.LH40.5' (9); chassi tem via própria
+
+# 🚨 PONTUAÇÃO DE PLACA É BEM-VINDA, e é aqui que a placa estrangeira entra. A
+# do termo 8846 é CHILENA -- 4 letras + 2 dígitos, escrita `RZ.LH40.5` -- e foi
+# adaptada à força para o Mercosul por quem escreveu o termo. Exigir
+# alfanumérico puro reprovaria a grafia original, que é restringir o FORMATO
+# justamente onde a regra manda não restringir.
+#
+# ⚠️ Vírgula e parêntese ficam de fora porque são marca de fragmento de prosa,
+# não de identificador de veículo.
+_POS_TRACO_PONTUACAO = set(".-/")
+_POS_TRACO_PROIBIDOS = set(",;()[]{}:\"'")
 
 
 def _placa_pos_traco(celula: str) -> tuple[str | None, str]:
@@ -423,24 +434,44 @@ def _placa_pos_traco(celula: str) -> tuple[str | None, str]:
     blocos e pelo acento; sobra de pontuacao reprova pelo tamanho.
     """
     texto = " ".join(str(celula or "").split())
-    if "-" not in texto:
+
+    # 🚨 O SEPARADOR É O TRAÇO COM ESPAÇO DOS DOIS LADOS, não qualquer traço.
+    # Cortando no último traço, `VEICULO - AB-123-CD` devolvia `CD`: placa
+    # estrangeira com hífen interno se parte no meio. O espaço é o que separa o
+    # traço-separador do hífen que pertence ao texto:
+    #
+    #     `NISSAN, 2022, DIESEL - RZL H405`  separador, espaço dos dois lados
+    #     `SR/FACCHINI SEMI- REBOQUE`        palavra quebrada, espaço só depois
+    #     `AB-123-CD`                        hífen da própria placa, sem espaço
+    if " - " not in texto:
         return None, ""
 
-    cabeca, _, cauda = texto.rpartition("-")
-    cauda = cauda.strip(" ,;.*")
+    cabeca, _, cauda = texto.rpartition(" - ")
+    cauda = cauda.strip(" ,;*")
+    # ⚠️ O ponto NÃO é removido da ponta: `RZ.LH40.5` termina em dígito, mas uma
+    # placa chilena escrita `RZ.LH40.5.` perderia o formato. Só some ponto que
+    # sobra sozinho no fim, depois de já haver conteúdo.
+    while cauda.endswith(".") and cauda[:-1] and not cauda[:-1].endswith("."):
+        if cauda[:-1][-1].isalnum():
+            break
+        cauda = cauda[:-1]
     if not cauda:
         return None, ""
 
     blocos = cauda.split()
     if len(blocos) > _POS_TRACO_MAX_TOKENS:
         return None, ""
-    # `isalnum` do Python aceita acentuada; aqui a exigencia e ASCII, que e o
-    # que separa identificador de palavra em portugues.
-    if not all(b.isascii() and b.isalnum() for b in blocos):
-        return None, ""
     junto = "".join(blocos)
     if not (_POS_TRACO_MIN_CHARS <= len(junto) <= _POS_TRACO_MAX_CHARS):
         return None, ""
+    # Só letras, dígitos e pontuação de placa. Vírgula e parêntese reprovam.
+    if any(c in _POS_TRACO_PROIBIDOS for c in junto):
+        return None, ""
+    if not all(c.isalnum() or c in _POS_TRACO_PONTUACAO for c in junto):
+        return None, ""
+    # 🚨 O DÍGITO É O QUE REPROVA `também`. Identificador de veículo tem número;
+    # palavra solta em português, não. Sem esta linha, a frase do
+    # `transferencia_novo.pdf` volta a virar placa.
     if not any(c.isdigit() for c in junto):
         return None, ""
     if not any(c.isalpha() for c in junto):

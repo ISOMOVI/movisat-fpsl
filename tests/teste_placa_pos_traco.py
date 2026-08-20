@@ -112,10 +112,18 @@ def teste_nao_rouba():
 
 def teste_limites():
     print("\n4. Cada limite da guarda, com o caso que o justifica")
+    # 🚨 PLACA ESTRANGEIRA É O MOTIVO DA REGRA. A do 8846 é CHILENA — 4 letras
+    # + 2 dígitos, escrita `RZ.LH40.5` — e foi adaptada à força ao Mercosul por
+    # quem escreveu o termo. Exigir formato brasileiro, ou mesmo alfanumérico
+    # puro, reprovaria a grafia original.
     aceita = [
+        ("NISSAN, 2022, DIESEL - RZ.LH40.5", "RZ.LH40.5",
+         "a chilena com pontos, a grafia de verdade"),
         ("NISSAN, 2022, DIESEL - RZL H405", "RZL H405",
-         "o caso do 8846: dois blocos, com dígito"),
-        ("FORD CARGO - ABC1D23", "ABC1D23", "um bloco Mercosul colado"),
+         "a mesma, adaptada ao Mercosul no termo"),
+        ("VEICULO - BCDF.12", "BCDF.12", "chilena atual, 4 letras + 2 dígitos"),
+        ("VEICULO - AB-123-CD", "AB-123-CD", "estrangeira com hífen interno"),
+        ("FORD CARGO - ABC1D23", "ABC1D23", "Mercosul colado"),
     ]
     for celula, esperado, porque in aceita:
         ident, _ = ex._placa_pos_traco(celula)
@@ -126,8 +134,10 @@ def teste_limites():
         ("...registrá-la também no contrato principal de", "6 blocos: frase"),
         ("VEICULO - de", "curto demais e sem dígito"),
         ("VEICULO - SEMI REBOQUE", "sem dígito nenhum"),
-        ("VEICULO - também", "acento: é palavra, não identificador"),
+        ("VEICULO - também", "palavra: não tem dígito"),
         ("VEICULO - 1BM6115JJMD002601", "17 caracteres: chassi tem via própria"),
+        ("VEICULO - (Veiculo transferido do contrato 8665)",
+         "parênteses são marca de prosa"),
         ("SEM TRACO NENHUM", "não há traço"),
         ("VEICULO -", "nada depois do traço"),
         ("VEICULO - 12345678", "só dígitos, sem letra"),
@@ -135,6 +145,35 @@ def teste_limites():
     for celula, porque in recusa:
         ident, _ = ex._placa_pos_traco(celula)
         checar(f"recusa — {porque}", ident is None, f"{celula!r} -> {ident!r}")
+
+
+# ── 5. o separador é o traço COM ESPAÇO dos dois lados ──────────────────────
+
+def teste_separador():
+    print("\n5. O separador é ` - `, não qualquer traço")
+    # Achado ao testar placa com hífen interno: cortando no último traço,
+    # `AB-123-CD` virava `CD`.
+    ident, veic = ex._placa_pos_traco("VEICULO IMPORTADO - AB-123-CD")
+    checar("hífen DENTRO da placa não parte a placa",
+           ident == "AB-123-CD", repr(ident))
+    checar("e a descrição do veículo fica inteira",
+           veic == "VEICULO IMPORTADO", repr(veic))
+
+    # `SR/FACCHINI SEMI- REBOQUE` tem traço de palavra quebrada, com espaço só
+    # de um lado. Não é separador.
+    ident, _ = ex._placa_pos_traco("SR/FACCHINI SEMI- REBOQUE, DIESEL, 2015")
+    checar("traço de palavra quebrada não é separador", ident is None,
+           repr(ident))
+
+    # ⚠️ CASO PERMISSIVO CONHECIDO, e é assim de propósito. A sua regra é
+    # "depois do veículo e do traço, é placa, não importa o que tiver ali".
+    # Então `- Aditivo 8782` numa linha SEM placa reconhecida entra como
+    # identificador. Na prática essa linha já tem placa e nunca chega aqui; e o
+    # que entra vem marcado como não convencional, para a tela destacar e
+    # alguém confirmar — que é o que a regra 13 pede.
+    ident, _ = ex._placa_pos_traco("SCANIA/P 340 - Aditivo 8782")
+    checar("permissivo assumido: aceita o que vier depois do separador",
+           ident == "ADITIVO 8782", repr(ident))
 
     # 🚨 A que mais importa, escrita por extenso: sem esta linha o `RFD 2447`
     # volta por outra porta.
@@ -147,7 +186,8 @@ def teste_limites():
 
 
 def main():
-    for t in (teste_8846, teste_nao_inventa, teste_nao_rouba, teste_limites):
+    for t in (teste_8846, teste_nao_inventa, teste_nao_rouba, teste_limites,
+              teste_separador):
         t()
     print(f"\n{'=' * 62}")
     print(f"{ok} verificações OK, {len(falhas)} falhas")
