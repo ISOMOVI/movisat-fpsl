@@ -443,7 +443,11 @@ function registrarCelulas(quantas) {
 
     // gravar e chegar na etapa 4
     registrarCelulas(estado().linhasPlacas.length);
+    const _antesConf = global.__confirms.length;
     await processarPlacas();
+    r.st_confirm_manut = global.__confirms.slice(_antesConf)[0] || "";
+    r.st_linhas_reais = estado().linhasPlacas.filter((l) => !l.recipiente).length;
+    r.st_linhas_recipiente = estado().linhasPlacas.filter((l) => l.recipiente).length;
     await espera(30);
     irPara(4);
     await espera(60);

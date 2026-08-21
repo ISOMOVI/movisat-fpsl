@@ -336,7 +336,12 @@ PERFIS = {
         "tecnico_id": FINANCEIRO_TECNICO_ID,
         # Valor nasce zero e o operador digita. Zero mantém `cobrar`
         # DESMARCADO, pela regra 4 -- sem exceção (usuário, 19/08).
-        "servico_valor_inicial": 0.0,
+        # 🚨 0,01 POR DECISAO DELE (21/08). O ressarcimento sem termo nao
+        # nasce de documento, entao nao ha item de onde tirar valor -- e com
+        # 0,00 a OS saia "SEM CUSTO", com `cobrar` desmarcado, para uma
+        # operacao que por definicao e um reembolso. O centavo faz a linha de
+        # cobranca existir e ser corrigida no Harmonit depois.
+        "servico_valor_inicial": 0.01,
         "desativa_apos_oficina": True,
         "modelo_origem": "placa",
         "descricao_prefixo": "RESSARCIMENTO",

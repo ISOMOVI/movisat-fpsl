@@ -82,6 +82,11 @@
   .badge-blue { background:var(--blue-dim); color:var(--blue); }
   .badge-green { background:var(--green-dim); color:var(--green); }
   .badge-red { background:var(--red-dim); color:var(--red); }
+  /* 🚨 AMBAR = "olhe para isto", e nao bloqueia. Ate 21/08 o azul significava
+     bancada, entra, ja existia e ignorado ao mesmo tempo -- quatro coisas numa
+     cor so, e ninguem aprende isso. Agora: verde aconteceu e esta certo, azul
+     ja estava assim, ambar precisa de olho, vermelho impede a OS. */
+  .badge-ambar { background:var(--yellow-dim); color:var(--yellow); }
   .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; }
   .msg-erro { background:var(--red-dim); color:var(--red); }
   .msg-ok { background:var(--green-dim); color:var(--green); }

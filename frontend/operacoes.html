@@ -108,7 +108,8 @@
           <div class="campo-com-botao">
             <input type="text" id="clienteCampo" readonly
                    placeholder="Nenhum cliente confirmado">
-            <button class="btn btn-ghost" onclick="abrirModalCliente()">Buscar</button>
+            <button class="btn btn-ghost" id="btnBuscarCliente"
+                    onclick="abrirModalCliente()">Buscar</button>
           </div>
         </div>
         <div id="cliente" style="display:none">
@@ -164,6 +165,20 @@
           <div class="campo" id="campoProblema" hidden>
             <label for="problemaId">Problema</label>
             <select id="problemaId"></select>
+          </div>
+        </div>
+
+        <!-- Só no ressarcimento: o valor e, quando ele é zero, o motivo.
+             Os dois já eram esperados pelo servidor e a tela não os tinha. -->
+        <div class="linha-campos" id="blocoRessarcimento" hidden>
+          <div class="campo">
+            <label for="valorRessarcimento">Valor do ressarcimento</label>
+            <input type="text" id="valorRessarcimento" value="0,01">
+          </div>
+          <div class="campo campo-largo">
+            <label for="motivoZero">Motivo, se o valor for zero</label>
+            <input type="text" id="motivoZero"
+                   placeholder="mudança de gestão, acordo interno…">
           </div>
         </div>
 
@@ -401,6 +416,13 @@ function mostrarPerfil(perfis) {
   if (!p) return;
   /* Campo de PDF só existe para quem nasce de documento. */
   document.getElementById('anexoWrap').style.display = p.sem_termo ? 'none' : 'block';
+
+  /* 🚨 COM TERMO, O DOCUMENTO MANDA E O CLIENTE NAO SE TROCA (decisao dele,
+     21/08). Sem termo nao ha documento: a busca e a unica forma de ter
+     cliente, e tirar o botao la mataria manutencao e ressarcimento sem termo
+     de novo. */
+  document.getElementById('btnBuscarCliente').style.display =
+    p.sem_termo ? '' : 'none';
   atualizarAvancar();
 }
 
@@ -412,7 +434,6 @@ function mostrarPerfil(perfis) {
 function zerarRodada() {
   extraido = null;
   cliente = null;
-  clienteTrocadoNaMao = false;
   lote = null;
   linhasPlacas = [];
   previa = null;
@@ -586,11 +607,9 @@ function desenharLeitura(d) {
    é `Velasco Leite Pastelaria ME` no Harmonit e `PASTELARIA VELASCO LTDA` na
    WESO -- mostrar um só faz parecer que achou o cliente errado. */
 let cliente = null;
-/* 🚨 ESTADO DE TELA É VARIÁVEL DE TELA. Isto já morou em
-   `extraido.trocado_na_mao`, e o teste de contrato reprovou na hora: ele exige
-   que todo `extraido.<campo>` lido aqui venha do `/extrair`. Enfiar flag da
-   interface no payload do servidor é como o contrato apodrece. */
-let clienteTrocadoNaMao = false;
+/* A marca "trocado na mao" saiu em 21/08 junto com a troca em perfil com
+   termo: onde ela ainda acontece -- perfis sem termo -- nao ha nada de que se
+   desviar, porque nao havia cliente antes. */
 
 function abrirModal(id) { document.getElementById(id).classList.add('open'); }
 function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -665,7 +684,6 @@ function escolherCliente(c) {
   fecharModal('modalCliente');
   if (!extraido) extraido = {};
   extraido.documento = doc;
-  clienteTrocadoNaMao = true;
   conferirCliente();
 }
 
@@ -723,10 +741,6 @@ function desenharCliente(d) {
   const nome = (d.harmonit && d.harmonit.nome) || (d.weso && d.weso.nome) || '';
   const idh = (d.harmonit && d.harmonit.id) ? ` (#${d.harmonit.id})` : '';
   document.getElementById('clienteCampo').value = nome ? nome + idh : '';
-  if (clienteTrocadoNaMao) {
-    document.getElementById('clienteCampo').value += '  · trocado na mão';
-  }
-
   const classe = { ok: 'msg-ok', falta_na_weso: 'aviso', sem_harmonit: 'msg msg-erro' }[d.situacao];
   document.getElementById('clienteRecado').innerHTML =
     `<div class="${classe}">${escapeHtml(d.recado)}</div>`;
@@ -1082,8 +1096,9 @@ function desenharPlacas() {
     <th class="col-troca">⇄</th><th class="col-situacao">Situação</th></tr>`;
   document.querySelector('#tabelaPlacas tbody').innerHTML = linhasPlacas
     .map((l, n) => `<tr>
-      <td>${n + 1}${l.recipiente ? ' <span class="badge badge-blue">bancada</span>' : ''}${
-        l.entrada ? ' <span class="badge badge-green">entra</span>' : ''}</td>
+      <td>${n + 1}${l.recipiente
+        ? ' <span class="badge badge-ambar">bancada · só WESO</span>' : ''}${
+        l.entrada ? ' <span class="badge badge-ambar">entra</span>' : ''}</td>
       <td><input type="text" data-campo="veiculo" data-linha="${n}"
                  value="${escapeHtml(l.veiculo || '')}"></td>
       <td><input type="text" data-campo="placa" data-linha="${n}"
@@ -1139,11 +1154,23 @@ async function processarPlacas() {
        e contar so `!l.situacao` fazia a funcao voltar sem fazer nada -- sem
        poder repetir justamente a que precisa. O servidor ja diz isso no
        `ja_resolvidas`: "falhou nao entra, a graca e tentar de novo". */
-    const novas = linhasPlacas.filter(
-      (l) => !l.situacao || placaFalhou(l.situacao)).length;
-    if (!novas) return;
+    const pendentes = linhasPlacas.filter(
+      (l) => !l.situacao || placaFalhou(l.situacao));
+    if (!pendentes.length) return;
+
+    /* 🚨 OS DOIS DESTINOS SAO DIFERENTES, e a caixa tem de dizer qual e qual.
+       O recipiente (`-MANUT`, `-UPGRADE`) e bancada do setor de configuracao,
+       nao veiculo do cliente: ele nasce SO na WESO. Ate hoje esta caixa dizia
+       "N registro(s) no Harmonit e na WESO" contando os dois tipos juntos --
+       e foi o que fez parecer que a manutencao ia criar recipiente no
+       Harmonit. */
+    const veiculos = pendentes.filter((l) => !l.recipiente).length;
+    const bancadas = pendentes.filter((l) => l.recipiente).length;
+    const partes = [];
+    if (veiculos) partes.push(`${veiculos} veículo(s) no Harmonit e na WESO`);
+    if (bancadas) partes.push(`${bancadas} recipiente(s) SÓ na WESO`);
     if (!confirm(
-        `Criar ${novas} registro(s) no Harmonit e na WESO?\n\n` +
+        `Criar ${partes.join('\ne ')}?\n\n` +
         `O Harmonit nao tem exclusao de veiculo: o que for criado por engano fica.`)) {
       return;
     }
@@ -1227,6 +1254,9 @@ async function carregarApoio() {
     document.getElementById('prioridadeId').innerHTML = '<option value="382">Normal</option>';
   }
 
+  /* `hibrida` é o que marca os dois ressarcimentos, com e sem termo. */
+  document.getElementById('blocoRessarcimento').hidden = !perfilAtual().hibrida;
+
   if (perfilAtual().sem_termo) {
     document.getElementById('campoProblema').style.display = '';
     try {
@@ -1296,6 +1326,15 @@ function buscarServico(q) {
 
 /* O corpo e montado UMA vez e serve a previa e a gravacao -- se cada uma
    montasse o seu, elas poderiam divergir sem ninguem ver. */
+/* Aceita `1.234,56` e `1234.56`: o operador digita como fala. Vazio devolve
+   null, e aí vale o padrão do perfil. */
+function valorRessarcimento() {
+  const cru = (document.getElementById('valorRessarcimento') || {}).value || '';
+  const limpo = cru.trim().replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(limpo);
+  return Number.isFinite(n) ? n : null;
+}
+
 function corpoOS(confirmar) {
   lerCampos();
   const linhas = linhasPlacas.filter((l) => !l.recipiente && !l.entrada);
@@ -1306,6 +1345,12 @@ function corpoOS(confirmar) {
     lote: lote,
     termo: (extraido && extraido.termo) || '',
     observacao: document.getElementById('observacao').value,
+    /* 🚨 OS DOIS CAMPOS QUE O SERVIDOR SEMPRE ESPEROU. `valor_ressarcimento` e
+       `motivo_financeira_zero` existem no `MontarInput` desde sempre e a tela
+       nunca os mandava -- entao o ressarcimento saía R$ 0,00 e o servidor
+       pedia um motivo que não havia onde preencher. */
+    valor_ressarcimento: valorRessarcimento(),
+    motivo_financeira_zero: (document.getElementById('motivoZero') || {}).value || '',
     problema_id: problema && problema.value ? +problema.value : null,
     produto_servico_id: (servicoSelecionado && servicoSelecionado.id) || 0,
     prioridade_id: +document.getElementById('prioridadeId').value || 382,

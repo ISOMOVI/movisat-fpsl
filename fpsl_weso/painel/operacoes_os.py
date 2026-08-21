@@ -639,6 +639,18 @@ def aviso_cobranca_sem_motivo(body: MontarInput, perfil: dict,
     """
     if perfil.get("sem_financeira"):
         return []
+    # 🚨 O PERFIL PODE TRAZER O PROPRIO VALOR, e ate 21/08 isto nao era
+    # olhado. `resolvidos` sao os itens do TERMO; num perfil SEM TERMO a lista
+    # e vazia por construcao, entao `not cobrancas` dava True e o aviso
+    # disparava mesmo com o perfil carregando valor. O operador lia "preencha o
+    # motivo" com a cobranca ja preenchida -- e aviso falso treina a equipe a
+    # ignorar aviso, que e a regra escrita em 19/08.
+    # Espelha a linha que monta a hibrida: o valor e o DIGITADO, e o padrao do
+    # perfil so entra quando ninguem digitou.
+    _valor = (body.valor_ressarcimento if body.valor_ressarcimento is not None
+              else perfil.get("servico_valor_inicial"))
+    if float(_valor or 0) > 0:
+        return []
     cobrancas = [i for i in resolvidos if i.get("cobrar")]
     sem_valor = (not cobrancas) or all(
         float(i.get("valor_unitario") or 0) == 0 for i in cobrancas)
@@ -750,8 +762,13 @@ def montar_ressarcimento(body: MontarInput, perfil: dict,
     """
     corpo = itens_de_cobranca(resolvidos)
     if perfil.get("produto_servico_id"):
-        valor = float(body.valor_ressarcimento or
-                      perfil.get("servico_valor_inicial") or 0.0)
+        # 🚨 `is None`, NAO `or`: `or` nao distingue "nao informou" de
+        # "informou zero", e zero e um valor legitimo -- o ramo "SEM CUSTO —
+        # motivo" existe exatamente para ele. Enquanto o padrao do perfil era
+        # 0,00 dava na mesma; com 0,01 passaria a ser impossivel digitar zero.
+        valor = float(body.valor_ressarcimento
+                      if body.valor_ressarcimento is not None
+                      else (perfil.get("servico_valor_inicial") or 0.0))
         corpo.append({"harmonit_id": perfil["produto_servico_id"],
                       "quantidade": 1, "valor_unitario": valor,
                       "comodato": False, "cobrar": valor > 0,

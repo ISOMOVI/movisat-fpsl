@@ -336,13 +336,39 @@ async def teste_regra_11():
     checar("e com cobrar marcado, porque tem valor",
            ress and ress[0]["cobrar"] is True)
 
-    zero = corpo("ressarcimento_sem_termo", [placa("AAA 0A00")], [])
+    # 🚨 O ZERO AGORA E DITO, NAO PRESUMIDO. Ate 21/08 este caso nao informava
+    # valor e contava com o padrao 0,00 do perfil. O padrao virou 0,01 (decisao
+    # dele), entao "nao informar" deixou de significar zero -- e a regra 4
+    # continua valendo para quem digitar zero de verdade.
+    zero = corpo("ressarcimento_sem_termo", [placa("AAA 0A00")], [],
+                 valor_ressarcimento=0.0)
     ops0, _, _, _ = await montar(zero)
     r0 = [m for m in ops0[0]["materiais"] if m["descricao"] == "RESSARCIMENTO"]
     checar("valor zero mantém cobrar DESMARCADO (regra 4, sem exceção)",
            r0 and r0[0]["cobrar"] is False, str(r0))
     checar("e a descrição diz SEM CUSTO com o motivo",
            "SEM CUSTO" in ops0[0]["descricao"], ops0[0]["descricao"])
+
+    # 🆕 E SEM DIGITAR NADA, sai o padrao de 0,01 -- que e o que impede o
+    # ressarcimento de nascer "SEM CUSTO" por esquecimento.
+    padrao = corpo("ressarcimento_sem_termo", [placa("AAA 0A00")], [])
+    opsp, _, _, _ = await montar(padrao)
+    rp = [m for m in opsp[0]["materiais"] if m["descricao"] == "RESSARCIMENTO"]
+    checar("sem digitar nada, o valor cai no padrão de 0,01",
+           rp and rp[0]["valor_unitario"] == 0.01, str(rp))
+    checar("e com `cobrar` marcado, porque tem valor",
+           rp and rp[0]["cobrar"] is True)
+    checar("a descrição NÃO diz SEM CUSTO",
+           "SEM CUSTO" not in opsp[0]["descricao"], opsp[0]["descricao"])
+
+    # 🚨 E O AVISO DEIXA DE SER FALSO. Ele olhava so os itens do TERMO, e num
+    # perfil sem termo essa lista e vazia por construcao -- entao disparava
+    # "preencha o motivo" com a cobranca ja preenchida. Aviso falso treina a
+    # equipe a ignorar aviso.
+    checar("com valor, nenhum aviso de motivo",
+           not oos.aviso_cobranca_sem_motivo(padrao, cfg.PERFIS["ressarcimento_sem_termo"], []))
+    checar("com zero e sem motivo, o aviso VOLTA",
+           bool(oos.aviso_cobranca_sem_motivo(zero, cfg.PERFIS["ressarcimento_sem_termo"], [])))
 
 
 # ── 8. regra 12: a substituição ──────────────────────────────────────────────

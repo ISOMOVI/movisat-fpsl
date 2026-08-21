@@ -879,6 +879,87 @@ Outras decisões dele no mesmo dia:
 
 ---
 
+## 🚨 21/08, segunda rodada de uso — e um defeito meu, de horas antes
+
+### O recipiente parecia ir para o Harmonit. Era a minha caixa de diálogo
+
+Ele avançou para a etapa 3 numa manutenção e viu a tela dizendo que ia criar o
+`-MANUT` **no Harmonit também**. Perguntou se estava certo.
+
+**Não estava, e ele tem razão: recipiente `-MANUT` e `-UPGRADE` vão SÓ para a
+WESO.** É bancada do setor de configuração, não veículo do cliente.
+
+🚨 **E o servidor sempre esteve certo** — para linha de recipiente ele registra
+o Harmonit como `ignorado`, com o motivo *"recipiente é bancada, não veículo do
+cliente"*. Nada foi criado lá.
+
+Quem mentia era a **confirmação que eu acrescentei horas antes**. Ela contava
+todas as linhas pendentes e dizia *"Criar 2 registro(s) no Harmonit e na
+WESO"* — numa manutenção com troca são **1 veículo** (nos dois sistemas) e
+**1 recipiente** (só na WESO). Medido: `linhas_reais: 1`,
+`linhas_recipiente: 1`.
+
+Agora a caixa separa os dois destinos, e o badge da tabela diz
+**`bancada · só WESO`** *antes* de gravar — antes ele dizia só `bancada`, que
+não diz para onde a linha vai, e o operador só descobria depois, lendo
+`harmonit ignorado` na coluna Situação.
+
+⚠️ **A lição: trava que eu acrescento também precisa ser medida.** Eu escrevi a
+confirmação para proteger produção e ela passou a afirmar uma coisa falsa sobre
+o que ia acontecer.
+
+### Trocar o cliente sai — mas só onde há termo
+
+Decisão dele: *"não vamos usar essa regra de trocar o cliente, pode manter
+travado"*.
+
+⚠️ **Não sai inteiro, e a razão é medida.** Nos três perfis SEM TERMO não há
+documento de onde tirar o cliente: a busca é a única forma de ter um. Tirar o
+botão deles mataria os três de novo — o defeito consertado no mesmo dia. Então:
+**com termo o documento manda e o campo é só leitura; sem termo o operador
+escolhe.**
+
+Isso fecha de quebra um risco que estava aberto: com a troca livre, dava para
+trocar o cliente na etapa 2 de um perfil com termo e a etapa 3 criaria as placas
+do documento **sob o cliente escolhido à mão**.
+
+### O ressarcimento: o campo existia e a tela nunca teve
+
+Ele perguntou se 0,01 resolveria o ressarcimento sem termo sair R$ 0,00.
+
+🚨 **EU TINHA RESOLVIDO PELO LADO ERRADO.** Fixei 0,01 no perfil porque parecia
+não haver de onde tirar valor. Havia: o `MontarInput` tem `valor_ressarcimento`
+desde sempre, e a docstring de `montar_hibrida` diz com todas as letras:
+
+> *"O valor: no perfil COM termo ele vem do documento; no perfil SEM termo **o
+> operador digita**."*
+
+**A tela é que nunca teve o campo** — mesmo buraco do `motivo_financeira_zero`,
+que o servidor exige e a interface não deixava preencher. O operador lia
+*"preencha o motivo antes de gerar"* e não havia onde.
+
+Agora os dois campos existem, e **o 0,01 dele fica como padrão**: quem não
+digitar nada gera 0,01 em vez de 0,00, que era o que ele queria evitar.
+
+🚨 **E o aviso deixou de ser falso.** Ele olhava só os itens do TERMO, e num
+perfil sem termo essa lista é vazia por construção — então disparava mesmo com
+a cobrança preenchida. Conferido com controle: **cobrança zerada vinda do termo
+continua avisando.**
+
+🚨 **`or` ENGOLE O ZERO, e o padrão novo transformou isso em defeito.**
+
+```python
+valor = float(body.valor_ressarcimento or perfil["servico_valor_inicial"] or 0.0)
+```
+
+Com o padrão em 0,00 era inofensivo. Com 0,01, `0.0 or 0.01` devolve `0.01` — e
+o operador **não conseguiria mais digitar zero**, que é caso legítimo (o ramo
+`SEM CUSTO — motivo` existe para ele). Corrigido com `is None`.
+**Um padrão nunca pode tornar impossível o valor que ele substitui.**
+Achado pelo teste da regra 4, que é onde tinha de ser achado.
+
+---
+
 ### Estado
 
 **F1 a F6 no ar. Falta a F7.**
