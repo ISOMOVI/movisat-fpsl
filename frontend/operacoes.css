@@ -90,6 +90,56 @@
              border-radius:50%; animation:girar .7s linear infinite; }
   @keyframes girar { to { transform:rotate(360deg); } }
 
+  /* ── campos e linhas ──────────────────────────────────────────────────────
+     🚨 A GEOMETRIA MORA AQUI, NÃO NO HTML. Em 21/08 esta tela tinha 57
+     `style="` inline contra 26 do `gerar_os.html` e 13 do
+     `cadastro_placas.html` -- o dobro da tela mais parecida. O efeito é o que
+     o usuário chamou de "está tudo torto": cada bloco escolhia o seu tamanho e
+     nenhum combinava com o vizinho. */
+  .linha-campos { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .campo { flex:1; min-width:170px; }
+  .campo-largo { flex:2; min-width:260px; }
+  .campo.bloco { flex:none; width:100%; margin-bottom:12px; }
+  .campo label { display:block; font-size:.78rem; color:var(--text2);
+                 margin-bottom:4px; }
+  .campo select, .campo input[type="text"] { width:100%; }
+  .campo .ajuda { font-size:.7rem; color:var(--text2); margin-top:2px; }
+  .campo-cliente { margin-bottom:14px; }
+  .campo-cliente label { display:block; font-size:.78rem; color:var(--text2);
+                         margin-bottom:4px; }
+  .bloco-acima { margin-top:12px; }
+  .col-sistema { width:110px; }
+  .col-id { width:110px; }
+  .dim { color:var(--text2); }
+  /* `hidden` é atributo do HTML e vale mais que display:flex do .campo --
+     sem isto o bloco do Problema apareceria mesmo escondido. */
+  [hidden] { display:none !important; }
+
+  .acoes { margin-top:14px; display:flex; gap:8px; align-items:center; }
+  .dim-pequeno { font-size:.8rem; color:var(--text2); }
+  .mini { font-size:.72rem; }
+  .rotulo-bloco { font-size:.82rem; font-weight:600; margin-bottom:4px; }
+  .bloco { margin-bottom:12px; }
+  .btn-mini { padding:4px 8px; }
+  .col-num { width:34px; }
+  .col-troca { width:56px; }
+  .col-situacao { width:200px; }
+
+  .steps { margin-top:20px; }
+  .cartao-previa { margin-top:10px; padding:12px; }
+  .linha-entre { display:flex; justify-content:space-between; align-items:center; }
+  .sub-previa { font-size:.78rem; color:var(--text2); margin:6px 0; }
+  .col-modelo { width:280px; }
+  .col-qtd { width:70px; }
+  .col-valor { width:100px; }
+  .col-flags { width:120px; }
+
+  /* espera: contador ate 15s, barra depois */
+  .espera { background:var(--blue-dim); color:var(--text); }
+  .barra { height:6px; border-radius:999px; background:var(--border);
+           overflow:hidden; margin:8px 0 4px; }
+  .barra-cheia { height:100%; background:var(--blue); transition:width .4s linear; }
+
   /* modal */
   .modal-bg { display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100;
               align-items:center; justify-content:center; }

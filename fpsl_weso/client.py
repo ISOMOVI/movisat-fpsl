@@ -9,7 +9,16 @@ _client: httpx.AsyncClient | None = None
 
 async def start_client():
     global _client
-    _client = httpx.AsyncClient(base_url=settings.weso_base_url, timeout=30)
+    # 🚨 60 s, AUTORIZADO PELO USUÁRIO EM 21/08. Eram 30 s, calibrados quando a
+    # base levava 2,3 s -- e a documentação da própria WESO registra resposta
+    # normal de 30 a 90 s no `UltimaPosicao`. Medido em 18/08: base inteira de
+    # 6,0 s a 30,7 s, mediana 23,8 s. O teto cortava o que o fornecedor chama
+    # de normal, e foi ele que gerou a OS 16775 sem equipamento.
+    #
+    # ⚠️ ISTO SÓ VALE ATÉ O NGINX. O `location /` está em 35 s nos dois server
+    # blocks: passando disso, quem corta é ele, com uma PÁGINA HTML de 504 que
+    # a tela lê como JSON. Subir o nginx exige root e está pendente.
+    _client = httpx.AsyncClient(base_url=settings.weso_base_url, timeout=60)
 
 
 async def stop_client():

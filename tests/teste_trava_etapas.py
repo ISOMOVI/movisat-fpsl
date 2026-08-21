@@ -152,6 +152,59 @@ checar("Avançar fica livre no perfil sem termo",
        v("avancar_liberado_sem_termo_perfil") is True)
 
 print()
+print("== 🚨 os TRÊS PERFIS SEM TERMO, que morriam na etapa 3 ==")
+# Manutenção no local, manutenção com troca e ressarcimento sem termo -- 3 dos
+# 11 perfis. A etapa 1 prometia na tela que "a entrada digitada entra na F3", e
+# a F3 montava `linhasPlacas` SÓ a partir de `extraido.itens`: sem PDF a lista
+# nascia vazia, a tabela renderizava sem corpo e não havia botão de adicionar
+# linha em lugar nenhum. Promessa escrita na interface que o código não cumpria.
+checar("a etapa 2 abre mesmo sem termo", v("st_etapa2") == 2)
+checar("e diz para escolher o cliente, em vez de ficar em branco",
+       v("st_recado_pede_cliente") is True)
+checar("sem cliente escolhido, não avança",
+       v("st_avancar_travado_sem_cliente") is True)
+checar("escolher pelo modal resolve o cliente",
+       v("st_cliente_resolvido") is True)
+checar("e o campo mostra quem é, com o id",
+       "998063" in (v("st_campo_cliente") or ""), v("st_campo_cliente"))
+checar("a etapa 3 abre", v("st_etapa3") == 3)
+checar("o bloco de adicionar placa aparece",
+       v("st_bloco_adicionar") == "block")
+checar("a lista traz os veículos do cliente, da base local",
+       v("st_placas_do_cliente") == 2)
+checar("a etapa 3 começa vazia e travada",
+       v("st_linhas_antes") == 0 and v("st_avancar_travado_sem_placa") is True)
+
+print()
+print("== adicionar placa, e o recipiente que vem junto ==")
+# 🚨 O recipiente `-MANUT` acompanha a placa, igual ao caminho do termo. Ele
+# nasce NA TELA desde 19/08 -- é o que tirou a leitura ao vivo da WESO do
+# caminho crítico da manutenção.
+checar("adicionar 1 placa gera 2 linhas (placa + bancada)",
+       v("st_linhas_apos_1") == 2)
+checar("a linha de bancada existe", v("st_tem_recipiente") is True)
+checar("e leva o sufixo do perfil",
+       v("st_sufixo_recipiente") == "TST0E55-MANUT", v("st_sufixo_recipiente"))
+checar("a mesma placa de novo NÃO duplica",
+       v("st_linhas_apos_repetida") == 2)
+# "mesmo adicionando mais de uma" -- pedido do usuário, 21/08.
+checar("dá para adicionar mais de uma", v("st_linhas_apos_2") == 4)
+checar("remover a placa leva o recipiente dela junto",
+       v("st_linhas_apos_remover") == 2,
+       "o recipiente não existe sozinho")
+checar("gravadas, a etapa 4 abre", v("st_etapa_final") == 4)
+checar("e o lote foi aberto mesmo sem termo", v("st_lote_aberto") is True)
+
+print()
+print("== o serviço se ESCOLHE, e o id aparece ==")
+# 🚨 Dois serviços do Harmonit têm o nome IDÊNTICO (6967 e 54845). Sem o número
+# na tela o operador não tem como saber qual pegou -- e era esse o defeito do
+# `<select>` repovoado a cada tecla, em que ninguém selecionava nada.
+checar("o campo mostra nome e id",
+       "(#6967)" in (v("sv_campo") or ""), v("sv_campo"))
+checar("e o que vai para a OS é o selecionado", v("sv_selecionado") == 6967)
+
+print()
 print(f"== {ok} verificações OK, {len(falhas)} falha(s) ==")
 if falhas:
     for f in falhas:

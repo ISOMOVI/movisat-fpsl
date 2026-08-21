@@ -43,7 +43,7 @@
       <a href="/painel/operacoes-historico">Historico de Operacoes</a>.
     </div>
 
-    <div class="steps" style="margin-top:20px">
+    <div class="steps">
       <div class="step-dot active" id="dot-1">1</div>
       <div class="step-line"></div>
       <div class="step-dot locked" id="dot-2">2</div>
@@ -100,23 +100,36 @@
              diferente nos dois sistemas. Então quem informa é gente, com o
              nome do termo à vista para conferir. -->
         <div id="docWrap" style="display:none">
-          <div class="aviso" style="margin-bottom:12px">
+          <div class="aviso bloco">
             <strong>Este termo não traz o CNPJ/CPF.</strong> No termo o cliente
             é <strong id="nomeNoTermo"></strong>. Informe o documento — o
             cruzamento é sempre por documento, nunca por nome.
           </div>
           <div class="campo-com-botao">
             <input type="text" id="docDigitado" placeholder="CNPJ ou CPF do cliente do termo">
-            <button class="btn btn-primary" onclick="usarDocDigitado()">Conferir</button>
+            <button class="btn btn-primary" onclick="usarDocDigitado()">Usar este documento</button>
           </div>
         </div>
         <div class="msg" id="msgEtapa2" style="display:none"></div>
+        <!-- 🚨 O CAMPO CLONADO DO GERAR OS, e FORA do bloco escondido. Até
+             21/08 a etapa 2 era só a tabela de conferência, que só aparece
+             depois de o cruzamento voltar -- então nos perfis SEM TERMO, que
+             não têm documento para cruzar, a etapa inteira ficava em branco.
+             O campo é a âncora do passo: existe antes de haver resposta. -->
+        <div class="campo-cliente">
+          <label for="clienteCampo">Cliente da operação</label>
+          <div class="campo-com-botao">
+            <input type="text" id="clienteCampo" readonly
+                   placeholder="Nenhum cliente confirmado">
+            <button class="btn btn-ghost" onclick="abrirModalCliente()">Buscar</button>
+          </div>
+        </div>
         <div id="cliente" style="display:none">
           <table><thead><tr>
-            <th style="width:110px">Sistema</th><th>Nome</th><th style="width:110px">Id</th>
+            <th class="col-sistema">Sistema</th><th>Nome</th><th class="col-id">Id</th>
           </tr></thead><tbody id="clienteCorpo"></tbody></table>
-          <div id="clienteRecado" style="margin-top:12px"></div>
-          <div id="clienteAcao" style="margin-top:12px"></div>
+          <div id="clienteRecado" class="bloco-acima"></div>
+          <div id="clienteAcao" class="bloco-acima"></div>
         </div>
       </div>
 
@@ -129,10 +142,22 @@
         </div>
         <div class="aviso-info" id="placasInfo"></div>
         <div class="msg" id="msgEtapa3" style="display:none"></div>
+
+        <!-- 🚨 SÓ NOS PERFIS SEM TERMO (decisão do usuário, 21/08). Nos outros
+             a placa vem do documento, e oferecer uma lista ao lado convidaria a
+             operar em placa que o termo não menciona. -->
+        <div id="addPlacaWrap" class="bloco" style="display:none">
+          <div class="campo-com-botao">
+            <select id="placaDoCliente"></select>
+            <button class="btn btn-ghost" onclick="adicionarPlaca()">Adicionar</button>
+          </div>
+          <div class="ajuda" id="addPlacaAjuda"></div>
+        </div>
+
         <table id="tabelaPlacas"><thead id="cabPlacas"></thead><tbody></tbody></table>
-        <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+        <div class="acoes">
           <button class="btn btn-primary" id="btnPlacas" onclick="processarPlacas()"></button>
-          <span id="progressoPlacas" style="font-size:.8rem;color:var(--text2)"></span>
+          <span id="progressoPlacas" class="dim-pequeno"></span>
         </div>
       </div>
 
@@ -146,43 +171,46 @@
         <div class="aviso-info" id="osInfo"></div>
         <div class="msg" id="msgEtapa4" style="display:none"></div>
 
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-          <div style="flex:2;min-width:260px">
-            <label style="font-size:.78rem;color:var(--text2)">Produto/Serviço do cabeçalho</label>
-            <input type="text" id="buscaServico" placeholder="digite parte do nome e aguarde"
-                   oninput="buscarServico()" style="width:100%">
-            <select id="servicoId" style="width:100%;margin-top:4px"></select>
+        <div class="linha-campos">
+          <div class="campo campo-largo">
+            <label for="servicoCampo">Produto/Serviço do cabeçalho</label>
+            <div class="campo-com-botao">
+              <input type="text" id="servicoCampo" readonly
+                     placeholder="Nenhum serviço selecionado">
+              <button class="btn btn-ghost" onclick="abrirModalServico()">Buscar</button>
+            </div>
           </div>
-          <div style="flex:1;min-width:160px">
-            <label style="font-size:.78rem;color:var(--text2)">Prioridade</label>
-            <select id="prioridadeId" style="width:100%"></select>
-            <div style="font-size:.7rem;color:var(--text2);margin-top:2px">
-              Só nas operacionais — a financeira é sempre Normal.</div>
+          <div class="campo">
+            <label for="prioridadeId">Prioridade</label>
+            <select id="prioridadeId"></select>
+            <div class="ajuda">Só nas operacionais — a financeira é sempre Normal.</div>
           </div>
-          <div style="flex:1;min-width:160px;display:none" id="campoProblema">
-            <label style="font-size:.78rem;color:var(--text2)">Problema</label>
-            <select id="problemaId" style="width:100%"></select>
+          <div class="campo" id="campoProblema" hidden>
+            <label for="problemaId">Problema</label>
+            <select id="problemaId"></select>
           </div>
         </div>
 
-        <div style="margin-bottom:12px">
-          <label style="font-size:.78rem;color:var(--text2)">Observação (vai para a OBS da OS)</label>
-          <input type="text" id="observacao" style="width:100%">
+        <div class="campo bloco">
+          <label for="observacao">Observação (vai para a OBS da OS)</label>
+          <input type="text" id="observacao">
         </div>
 
-        <div id="blocoModelos" style="display:none;margin-bottom:12px">
-          <div style="font-size:.82rem;font-weight:600;margin-bottom:4px">
+        <div id="blocoModelos" class="bloco" style="display:none">
+          <div class="rotulo-bloco">
             Equipamento por placa</div>
           <table id="tabelaModelos"><thead></thead><tbody></tbody></table>
         </div>
 
         <div id="previaOS"></div>
 
-        <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
-          <button class="btn btn-ghost" onclick="conferirOS()">Conferir o que será gravado</button>
+        <div class="acoes">
+          <button class="btn btn-ghost" onclick="conferirOS()">Ver prévia</button>
           <button class="btn btn-primary" id="btnGerar" onclick="gerarOS()" disabled>
             Gerar as OS</button>
-          <span id="progressoOS" style="font-size:.8rem;color:var(--text2)"></span>
+          <span class="dim-pequeno" id="dicaPrevia">A prévia monta as OS sem
+            gravar nada — é ela que libera o Gerar.</span>
+          <span id="progressoOS" class="dim-pequeno"></span>
         </div>
       </div>
 
@@ -196,6 +224,32 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- Modal: trocar o cliente. Clonado do `gerar_os.html`: mesma marcação,
+     mesmas classes, mesmo comportamento de 3 caracteres e 400 ms. -->
+<div class="modal-bg" id="modalCliente"
+     onclick="if(event.target===this)fecharModal('modalCliente')">
+  <div class="modal">
+    <div class="modal-header"><h3>Buscar cliente no Harmonit</h3>
+      <button onclick="fecharModal('modalCliente')">&#10005;</button></div>
+    <input type="text" id="buscaCliente"
+           placeholder="Nome, CNPJ ou CPF (mín. 3 caracteres)">
+    <div class="modal-lista" id="clientesResultado"></div>
+  </div>
+</div>
+
+<!-- Modal: buscar serviço. Também clonado -- o que existia aqui era um
+     `<select>` repovoado a cada tecla, em que ninguém escolhia nada: o valor
+     era o que calhasse de ficar em primeiro, e o id não aparecia. -->
+<div class="modal-bg" id="modalServico"
+     onclick="if(event.target===this)fecharModal('modalServico')">
+  <div class="modal">
+    <div class="modal-header"><h3>Buscar serviço no Harmonit</h3>
+      <button onclick="fecharModal('modalServico')">&#10005;</button></div>
+    <input type="text" id="buscaServico" placeholder="Nome do serviço">
+    <div class="modal-lista" id="servicosResultado"></div>
+  </div>
 </div>
 
 <script src="/painel/static/barra_status.js"></script>
@@ -306,7 +360,17 @@ function irPara(n) {
     }
   }
   pintarEtapa(n);
-  if (n === 2 && extraido && !cliente) conferirCliente();
+  if (n === 2 && !cliente) {
+    /* Perfil sem termo não tem documento para cruzar sozinho -- quem escolhe é
+       gente, pelo botão Buscar. Sem este recado a etapa 2 ficava em branco e
+       parecia quebrada. */
+    if (perfilAtual().sem_termo) {
+      msg('msgEtapa2', 'Este tipo não nasce de documento: use <strong>Buscar</strong> '
+          + 'para escolher o cliente da operação.', '');
+    } else if (extraido) {
+      conferirCliente();
+    }
+  }
   if (n === 3) prepararPlacas();
   if (n === 4) carregarApoio();
   atualizarAvancar();
@@ -390,6 +454,7 @@ function mostrarPerfil(perfis) {
 function zerarRodada() {
   extraido = null;
   cliente = null;
+  clienteTrocadoNaMao = false;
   lote = null;
   linhasPlacas = [];
   previa = null;
@@ -402,6 +467,12 @@ function zerarRodada() {
   ['msgEtapa1', 'msgEtapa2', 'msgEtapa3', 'msgEtapa4'].forEach((id) => msg(id, '', ''));
   document.getElementById('btnGerar').disabled = true;
   document.getElementById('previaOS').innerHTML = '';
+  servicoSelecionado = null;
+  placasDoCliente = [];
+  document.getElementById('addPlacaWrap').style.display = 'none';
+  document.getElementById('servicoCampo').value = '';
+  document.getElementById('clienteCampo').value = '';
+  document.getElementById('buscaCliente').value = '';
 }
 
 /* ── etapa 1: ler o termo ───────────────────────────────────────────────────
@@ -417,6 +488,47 @@ function aoEscolher() {
   if (!f) return;
   document.getElementById('dropLabel').textContent = f.name;
   lerTermo();
+}
+
+/* ── espera com relógio ─────────────────────────────────────────────────────
+   🚨 PEDIDO DO USUÁRIO, 21/08: "passando de 15 precisa ter um ícone indicando
+   ou barra de progresso". A WESO responde entre 6 s e o teto, e sem nada na
+   tela o operador conclui que travou e clica de novo -- que em operação de
+   ESCRITA duplica, porque o pedido anterior continua correndo no servidor.
+
+   Três estados, nesta ordem: nada até 3 s (a maioria das chamadas termina
+   antes e piscar spinner à toa é ruído), contador de 3 s a 15 s, e barra a
+   partir de 15 s. O `gerar_os.html` já tinha o contador de 3 s -- a barra é
+   nova e vale para as duas telas quando o Gerar OS sair.
+
+   ⚠️ A BARRA NÃO MEDE PROGRESSO DE VERDADE, e ela diz isso: ninguém sabe
+   quanto falta numa chamada da WESO. Ela mostra o decorrido contra o teto de
+   60 s. Barra que finge saber o que não sabe mente na última fatia. */
+const TETO_ESPERA_S = 60;
+
+function iniciarEspera(idAlvo, oque) {
+  const el = document.getElementById(idAlvo);
+  if (!el) return () => {};
+  const t0 = Date.now();
+  el.style.display = 'block';
+  el.className = 'msg espera';
+  const tick = () => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    if (s < 3) { el.innerHTML = ''; return; }
+    if (s < 15) {
+      el.innerHTML = `${escapeHtml(oque)}… <strong>${s}s</strong> ` +
+        '<span class="spinner"></span>';
+      return;
+    }
+    const pct = Math.min(100, Math.round((s / TETO_ESPERA_S) * 100));
+    el.innerHTML = `${escapeHtml(oque)}… <strong>${s}s</strong>` +
+      `<div class="barra"><div class="barra-cheia" style="width:${pct}%"></div></div>` +
+      '<div class="ajuda">A WESO responde entre 6s e 60s. Não clique de novo — ' +
+      'o pedido continua correndo no servidor, e repetir uma escrita duplica.</div>';
+  };
+  tick();
+  const timer = setInterval(tick, 1000);
+  return () => { clearInterval(timer); el.innerHTML = ''; el.style.display = 'none'; };
 }
 
 function msg(id, texto, classe) {
@@ -462,7 +574,7 @@ function desenharLeitura(d) {
      de texto solto assim que nasceu a `RFD 2447`, placa que não existe. */
   const naoLidos = d.sem_placa || [];
   document.getElementById('leituraNaoLidos').innerHTML = !naoLidos.length ? '' :
-    `<div class="msg msg-erro" style="margin-bottom:10px">` +
+    `<div class="msg msg-erro bloco">` +
     `<strong>${naoLidos.length} linha(s) sem placa reconhecida.</strong> ` +
     `Nada é inventado a partir delas — você decide na etapa 3:<br>` +
     naoLidos.map((x) => `<code>${escapeHtml(x.texto || x)}</code>`).join(' · ') +
@@ -503,6 +615,88 @@ function desenharLeitura(d) {
    é `Velasco Leite Pastelaria ME` no Harmonit e `PASTELARIA VELASCO LTDA` na
    WESO -- mostrar um só faz parecer que achou o cliente errado. */
 let cliente = null;
+/* 🚨 ESTADO DE TELA É VARIÁVEL DE TELA. Isto já morou em
+   `extraido.trocado_na_mao`, e o teste de contrato reprovou na hora: ele exige
+   que todo `extraido.<campo>` lido aqui venha do `/extrair`. Enfiar flag da
+   interface no payload do servidor é como o contrato apodrece. */
+let clienteTrocadoNaMao = false;
+
+function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ── trocar o cliente ───────────────────────────────────────────────────────
+   🚨 A TROCA VOLTA PELO MESMO CAMINHO DO TERMO. Escolher na lista NÃO grava o
+   cliente direto: grava o DOCUMENTO dele e refaz `conferirCliente()`. Assim a
+   tabela dos dois sistemas continua sendo a única fonte do que a tela mostra,
+   e o cruzamento continua sendo por documento -- cruzar por nome é proibido, e
+   o mesmo CNPJ tem razão social diferente no Harmonit e na WESO. */
+function abrirModalCliente() {
+  abrirModal('modalCliente');
+  const campo = document.getElementById('buscaCliente');
+  if (!campo.value && extraido && extraido.nome_no_termo) {
+    campo.value = extraido.nome_no_termo;
+  }
+  if ((campo.value || '').length >= 3) buscarCliente(campo.value);
+}
+
+let buscaClienteTimer;
+document.getElementById('buscaCliente').addEventListener('input', (e) => {
+  clearTimeout(buscaClienteTimer);
+  buscaClienteTimer = setTimeout(() => buscarCliente(e.target.value), 400);
+});
+
+async function buscarCliente(q) {
+  const div = document.getElementById('clientesResultado');
+  /* Mínimo de 3, igual ao Gerar OS: `search` de uma letra devolve a base
+     inteira com cara de resposta útil. */
+  if ((q || '').trim().length < 3) {
+    div.innerHTML = '<div class="aviso">Digite ao menos 3 caracteres.</div>';
+    return;
+  }
+  div.innerHTML = 'Buscando… <span class="spinner"></span>';
+  try {
+    const res = await fetch(
+      '/painel/api/operacoes/clientes/buscar?q=' + encodeURIComponent(q),
+      { headers: auth() });
+    const d = await lerResposta(res);
+    const achados = d.resultados || [];
+    if (!achados.length) {
+      div.innerHTML = '<div class="aviso">Nenhum cliente encontrado.</div>';
+      return;
+    }
+    div.innerHTML = '';
+    achados.forEach((c) => {
+      const el = document.createElement('div');
+      el.className = 'modal-item';
+      el.innerHTML = `<span>${escapeHtml(c.nome || '(sem nome)')}</span>` +
+        `<span class="dim">${escapeHtml(c.documento || '')} · #${escapeHtml(String(c.id))}</span>`;
+      el.onclick = () => escolherCliente(c);
+      div.appendChild(el);
+    });
+  } catch (e) {
+    div.innerHTML = `<div class="msg msg-erro">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function escolherCliente(c) {
+  /* 🚨 SEM DOCUMENTO NÃO DÁ PARA CRUZAR. O cadastro do Harmonit pode estar sem
+     CNPJ/CPF, e aí não há como procurar na WESO -- e inventar o cruzamento é
+     pior que não fazer. */
+  const doc = (c.documento || '').replace(/\D/g, '');
+  if (!doc) {
+    fecharModal('modalCliente');
+    msg('msgEtapa2',
+        `<strong>${escapeHtml(c.nome || '')}</strong> está no Harmonit sem ` +
+        'CNPJ/CPF no cadastro. Sem documento não há como cruzar com a WESO — ' +
+        'corrija o cadastro lá antes de seguir.', 'msg-erro');
+    return;
+  }
+  fecharModal('modalCliente');
+  if (!extraido) extraido = {};
+  extraido.documento = doc;
+  clienteTrocadoNaMao = true;
+  conferirCliente();
+}
 
 function usarDocDigitado() {
   const v = (document.getElementById('docDigitado').value || '').trim();
@@ -524,17 +718,19 @@ async function conferirCliente() {
   }
   document.getElementById('docWrap').style.display =
     extraido.documento_no_termo ? 'none' : 'block';
-  msg('msgEtapa2', 'Consultando os dois sistemas… <span class="spinner"></span>', '');
+  const pararEspera = iniciarEspera('msgEtapa2', 'Consultando os dois sistemas');
   document.getElementById('cliente').style.display = 'none';
   try {
     const res = await fetch(
       `/painel/api/operacoes/cliente?documento=${encodeURIComponent(extraido.documento)}`,
       { headers: auth() });
     cliente = await lerResposta(res);
+    pararEspera();
     desenharCliente(cliente);
     msg('msgEtapa2', '', '');
   } catch (e) {
     cliente = null;
+    pararEspera();
     msg('msgEtapa2', escapeHtml(e.message), 'msg-erro');
   }
   atualizarAvancar();
@@ -550,6 +746,15 @@ function desenharCliente(d) {
   document.getElementById('clienteCorpo').innerHTML =
     `<tr><td><strong>No termo</strong></td><td>${escapeHtml(extraido.nome_no_termo || '—')}</td><td>—</td></tr>` +
     linha('Harmonit', d.harmonit) + linha('WESO', d.weso);
+
+  /* O campo do topo diz, numa linha, quem é o cliente confirmado -- é o que
+     o operador lê antes de seguir, sem ter de interpretar a tabela. */
+  const nome = (d.harmonit && d.harmonit.nome) || (d.weso && d.weso.nome) || '';
+  const idh = (d.harmonit && d.harmonit.id) ? ` (#${d.harmonit.id})` : '';
+  document.getElementById('clienteCampo').value = nome ? nome + idh : '';
+  if (clienteTrocadoNaMao) {
+    document.getElementById('clienteCampo').value += '  · trocado na mão';
+  }
 
   const classe = { ok: 'msg-ok', falta_na_weso: 'aviso', sem_harmonit: 'msg msg-erro' }[d.situacao];
   document.getElementById('clienteRecado').innerHTML =
@@ -602,6 +807,7 @@ async function criarClienteNaWeso() {
    tomar 409. */
 let lote = null;
 let linhasPlacas = [];
+let placasDoCliente = [];
 
 function perfilAtual() {
   const id = document.getElementById('perfil').value;
@@ -609,12 +815,33 @@ function perfilAtual() {
 }
 
 async function prepararPlacas() {
+  const p = perfilAtual();
+  const cria = p.etapa_placas !== 'confere';
+
+  /* 🚨 PERFIL SEM TERMO NÃO TEM `extraido`, E ISSO NÃO É ERRO. Até 21/08 esta
+     função começava com "Leia o termo na etapa 1 primeiro" e voltava -- o que
+     matava manutenção no local, manutenção com troca e ressarcimento sem
+     termo. A etapa 1 desses perfis prometia, na própria tela, que "a entrada
+     digitada entra na F3"; a F3 nunca construiu a entrada. */
+  if (p.sem_termo) {
+    document.getElementById('addPlacaWrap').style.display = 'block';
+    await carregarPlacasDoCliente();
+    if (!linhasPlacas.length) desenharPlacas();
+    document.getElementById('placasInfo').innerHTML =
+      (cria ? '<strong>Este tipo CRIA as placas</strong> nos dois sistemas.'
+            : '<strong>Este tipo apenas CONFERE.</strong>') +
+      ' Escolha as placas do cliente na lista — pode adicionar mais de uma.';
+    document.getElementById('btnPlacas').textContent = cria ? 'Cadastrar' : 'Conferir';
+    await garantirLote();
+    atualizarAvancar();
+    return;
+  }
+  document.getElementById('addPlacaWrap').style.display = 'none';
+
   if (!extraido) {
     msg('msgEtapa3', 'Leia o termo na etapa 1 primeiro.', 'msg-erro');
     return;
   }
-  const p = perfilAtual();
-  const cria = p.etapa_placas !== 'confere';
 
   /* 🚨 O RECIPIENTE ENTRA COMO LINHA PRÓPRIA, e só na WESO. Ele é bancada do
      setor de configuração, não veículo do cliente. Deixá-lo implícito foi o
@@ -660,10 +887,109 @@ async function prepararPlacas() {
   }
 }
 
+/* ── perfis sem termo: as placas vêm da base local ──────────────────────────
+   🚨 DA BASE LOCAL, NÃO AO VIVO. Nem o Harmonit nem a WESO filtram por cliente
+   -- `ObterVeiculos` ignora `clienteId` e o `Consultar` da WESO ignora
+   `cliente_id`, devolvendo a base inteira com cara de resposta válida. Listar
+   ao vivo custaria a base toda a cada abertura da etapa.
+
+   A decisão de usar a base é do usuário e tem razão dele: estes perfis são
+   manutenção e ressarcimento, "só de placas que já existem na base a mais de 24
+   horas". O sync do Harmonit roda de 12 em 12 h, então é margem dobrada. */
+async function carregarPlacasDoCliente() {
+  const sel = document.getElementById('placaDoCliente');
+  const ajuda = document.getElementById('addPlacaAjuda');
+  const id = (cliente && cliente.harmonit) ? cliente.harmonit.id : null;
+  if (!id) {
+    sel.innerHTML = '<option value="">(escolha o cliente na etapa 2)</option>';
+    ajuda.textContent = '';
+    return;
+  }
+  try {
+    const r = await fetch(
+      '/painel/api/operacoes/placas/do-cliente?cliente_harmonit_id=' + encodeURIComponent(id),
+      { headers: auth() });
+    const d = await lerResposta(r);
+    placasDoCliente = d.veiculos || [];
+    sel.innerHTML = placasDoCliente.length
+      ? placasDoCliente.map((v, n) =>
+          `<option value="${n}">${escapeHtml(v.placa)} — ${escapeHtml(v.veiculo || '')}</option>`).join('')
+      : '<option value="">(este cliente não tem veículo na base)</option>';
+    ajuda.textContent = placasDoCliente.length
+      ? `${placasDoCliente.length} veículo(s) do cliente, da base local (sync a cada 12 h).`
+      : 'Nenhum veículo deste cliente na base local.';
+  } catch (e) {
+    sel.innerHTML = '<option value="">(não consegui ler a base)</option>';
+    ajuda.textContent = e.message;
+  }
+}
+
+/* Adiciona UMA linha. O usuário pediu explicitamente "mesmo adicionando mais de
+   uma", então o botão não some depois do primeiro clique. */
+function adicionarPlaca() {
+  const sel = document.getElementById('placaDoCliente');
+  const v = placasDoCliente[+sel.value];
+  if (!v) {
+    msg('msgEtapa3', 'Escolha um veículo da lista.', 'msg-erro');
+    return;
+  }
+  lerCampos();
+  if (linhasPlacas.some((l) => !l.recipiente && l.placa === v.placa)) {
+    msg('msgEtapa3', `A placa ${escapeHtml(v.placa)} já está na lista.`, 'aviso');
+    return;
+  }
+  linhasPlacas.push({ veiculo: v.veiculo, placa: v.placa,
+                      recipiente: false, situacao: null });
+
+  /* 🚨 O RECIPIENTE ACOMPANHA A PLACA, igual ao caminho do termo. A manutenção
+     com troca tem sufixo `-MANUT`, e ele nasce NA TELA desde 19/08 -- é o que
+     tirou a leitura ao vivo da WESO do caminho crítico. */
+  const p = perfilAtual();
+  if (p.recipiente) {
+    linhasPlacas.push({ veiculo: '(bancada)',
+                        placa: v.placa.replace(/\s+/g, '') + p.recipiente,
+                        recipiente: true, situacao: null });
+  }
+  msg('msgEtapa3', '', '');
+  desenharPlacas();
+  atualizarAvancar();
+}
+
+/* Sem remover, um clique errado só se desfaz trocando o tipo de operação e
+   recomeçando -- que é o que a trava de etapas acabou de tornar caro. */
+function removerPlaca(n) {
+  lerCampos();
+  const alvo = linhasPlacas[n];
+  linhasPlacas = linhasPlacas.filter((l, i) => {
+    if (i === n) return false;
+    /* O recipiente da placa removida vai junto: ele não existe sozinho. */
+    if (alvo && !alvo.recipiente && l.recipiente
+        && l.placa.startsWith(alvo.placa.replace(/\s+/g, ''))) return false;
+    return true;
+  });
+  desenharPlacas();
+  atualizarAvancar();
+}
+
+async function garantirLote() {
+  if (lote) return;
+  const res = await fetch('/painel/api/operacoes/lote', {
+    method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ perfil: document.getElementById('perfil').value,
+                           termo: (extraido && extraido.termo) || null,
+                           documento: (extraido && extraido.documento) || null,
+                           cliente_harmonit_id: (cliente && cliente.harmonit)
+                             ? cliente.harmonit.id : null,
+                           cliente_weso_id: (cliente && cliente.weso)
+                             ? cliente.weso.id : null }),
+  });
+  lote = (await lerResposta(res)).lote;
+}
+
 function desenharPlacas() {
   document.getElementById('cabPlacas').innerHTML = `<tr>
-    <th style="width:34px">#</th><th>Veículo</th><th>Placa</th>
-    <th style="width:56px">⇄</th><th style="width:200px">Situação</th></tr>`;
+    <th class="col-num">#</th><th>Veículo</th><th>Placa</th>
+    <th class="col-troca">⇄</th><th class="col-situacao">Situação</th></tr>`;
   document.querySelector('#tabelaPlacas tbody').innerHTML = linhasPlacas
     .map((l, n) => `<tr>
       <td>${n + 1}${l.recipiente ? ' <span class="badge badge-blue">bancada</span>' : ''}${
@@ -673,7 +999,10 @@ function desenharPlacas() {
       <td><input type="text" data-campo="placa" data-linha="${n}"
                  value="${escapeHtml(l.placa || '')}"></td>
       <td>${l.recipiente ? '' :
-        `<button class="btn btn-ghost" style="padding:4px 8px" onclick="inverter(${n})">⇄</button>`}</td>
+        `<button class="btn btn-ghost btn-mini" onclick="inverter(${n})">⇄</button>` +
+        (perfilAtual().sem_termo
+          ? ` <button class="btn btn-ghost btn-mini" onclick="removerPlaca(${n})">✕</button>`
+          : '')}</td>
       <td id="sit-${n}">${situacaoHtml(l.situacao)}</td>
     </tr>`).join('');
 }
@@ -694,14 +1023,14 @@ function lerCampos() {
 }
 
 function situacaoHtml(s) {
-  if (!s) return '<span style="color:var(--text2)">—</span>';
+  if (!s) return '<span class="dim">—</span>';
   const cor = { criado: 'badge-green', ja_existia: 'badge-blue',
                 confere_ok: 'badge-green', confere_falta: 'badge-red',
                 falhou: 'badge-red', ignorado: 'badge-blue' };
   return ['harmonit', 'weso'].map((sis) => {
     const r = s[sis];
     if (!r) return '';
-    return `<div style="font-size:.72rem"><strong>${sis}</strong> ` +
+    return `<div class="mini"><strong>${sis}</strong> ` +
       `<span class="badge ${cor[r.acao] || 'badge-blue'}">${escapeHtml(r.acao)}</span> ` +
       escapeHtml(r.erro || r.motivo || '') + `</div>`;
   }).join('');
@@ -793,19 +1122,57 @@ async function carregarApoio() {
   buscarServico();
 }
 
+/* ── buscar serviço ─────────────────────────────────────────────────────────
+   🚨 CLONADO DO GERAR OS (pedido seu, 21/08). O que existia aqui era um
+   `<input>` que repovoava um `<select>` a cada tecla: ninguém SELECIONAVA nada
+   -- o valor era o que calhasse de ficar em primeiro, o id nunca aparecia, e a
+   lista mudava sob o dedo de quem estava digitando. */
+let servicoSelecionado = null;
+
+function abrirModalServico() {
+  abrirModal('modalServico');
+  buscarServico(document.getElementById('buscaServico').value || '');
+}
+
 let buscaTimer = null;
-function buscarServico() {
+document.getElementById('buscaServico').addEventListener('input', (e) => {
+  clearTimeout(buscaTimer);
+  buscaTimer = setTimeout(() => buscarServico(e.target.value), 400);
+});
+
+function selecionarServico(s) {
+  servicoSelecionado = s;
+  document.getElementById('servicoCampo').value =
+    `${s.descricao || ''} (#${s.id})`;
+  fecharModal('modalServico');
+}
+
+function buscarServico(q) {
   clearTimeout(buscaTimer);
   buscaTimer = setTimeout(async () => {
-    const q = document.getElementById('buscaServico').value.trim();
+    const div = document.getElementById('servicosResultado');
+    div.innerHTML = 'Buscando… <span class="spinner"></span>';
     try {
-      const r = await fetch('/painel/api/operacoes/servicos/buscar?q=' + encodeURIComponent(q),
+      const r = await fetch('/painel/api/operacoes/servicos/buscar?q=' + encodeURIComponent(q || ''),
                             { headers: auth() });
       const d = await lerResposta(r);
-      document.getElementById('servicoId').innerHTML = (d.resultados || [])
-        .map((s) => `<option value="${s.id}">${escapeHtml(s.descricao || '')}</option>`).join('')
-        || '<option value="">(nada encontrado)</option>';
-    } catch (e) { /* silencioso: o botao Conferir dira o que falta */ }
+      const achados = d.resultados || [];
+      if (!achados.length) {
+        div.innerHTML = '<div class="aviso">Nenhum serviço encontrado.</div>';
+        return;
+      }
+      div.innerHTML = '';
+      achados.forEach((s) => {
+        const el = document.createElement('div');
+        el.className = 'modal-item';
+        el.innerHTML = `<span>${escapeHtml(s.descricao || '')}</span>` +
+          `<span class="dim">#${escapeHtml(String(s.id))}</span>`;
+        el.onclick = () => selecionarServico(s);
+        div.appendChild(el);
+      });
+    } catch (e) {
+      div.innerHTML = `<div class="msg msg-erro">${escapeHtml(e.message)}</div>`;
+    }
   }, 400);
 }
 
@@ -822,7 +1189,7 @@ function corpoOS(confirmar) {
     termo: (extraido && extraido.termo) || '',
     observacao: document.getElementById('observacao').value,
     problema_id: problema && problema.value ? +problema.value : null,
-    produto_servico_id: +document.getElementById('servicoId').value || 0,
+    produto_servico_id: (servicoSelecionado && servicoSelecionado.id) || 0,
     prioridade_id: +document.getElementById('prioridadeId').value || 382,
     placas: linhas.map((l) => {
       const par = linhasPlacas.find((x) => x.entrada && x.veiculo === l.veiculo);
@@ -874,13 +1241,13 @@ function desenharModelos(placas) {
                 `${m.tem_produto ? '' : ' — sem produto no de-para'}</option>`).join('');
 
   document.querySelector('#tabelaModelos thead').innerHTML =
-    '<tr><th>Placa</th><th>Situação</th><th style="width:280px">Modelo</th></tr>';
+    '<tr><th>Placa</th><th>Situação</th><th class="col-modelo">Modelo</th></tr>';
   document.querySelector('#tabelaModelos tbody').innerHTML = precisam.map((p) => {
     const cor = p.motivo === 'weso_nao_respondeu' ? 'badge-red' : 'badge-blue';
     return `<tr>
       <td><strong>${escapeHtml(p.placa)}</strong></td>
       <td><span class="badge ${cor}">${escapeHtml(p.motivo || '')}</span>
-          <div style="font-size:.72rem;color:var(--text2);margin-top:2px">
+          <div class="ajuda">
             ${escapeHtml(p.recado || '')}</div></td>
       <td><select data-placa="${escapeHtml(p.placa)}" onchange="escolherModelo(this)">
             ${opcoes}</select></td></tr>`;
@@ -918,15 +1285,15 @@ function desenharPrevia(d) {
 
   html += (d.operacoes || []).map((op) => {
     const fin = op.eh_financeira;
-    return `<div class="panel" style="margin-top:10px;padding:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+    return `<div class="panel cartao-previa">
+      <div class="linha-entre">
         <strong>${escapeHtml(op.rotulo || '')}</strong>
         <span class="badge ${fin ? 'badge-blue' : 'badge-green'}">
           ${fin ? 'financeira' : 'operacional'}</span></div>
-      <div style="font-size:.78rem;color:var(--text2);margin:6px 0">
+      <div class="sub-previa">
         ${escapeHtml(op.descricao || '')}</div>
-      <table><thead><tr><th>Material</th><th style="width:70px">Qtd</th>
-        <th style="width:100px">Valor</th><th style="width:120px">Flags</th></tr></thead>
+      <table><thead><tr><th>Material</th><th class="col-qtd">Qtd</th>
+        <th class="col-valor">Valor</th><th class="col-flags">Flags</th></tr></thead>
         <tbody>${(op.materiais || []).map((m) => `<tr>
           <td>${escapeHtml(m.descricao || '')}</td>
           <td>${m.quantidade}</td>
@@ -967,7 +1334,7 @@ async function gerarOS() {
                    : '<span class="badge badge-red">falhou</span>'}</td>
         <td>${escapeHtml(r.placa || '')}</td>
         <td>${escapeHtml(r.rotulo || '')}</td>
-        <td style="font-size:.72rem">${escapeHtml(
+        <td class="mini">${escapeHtml(
           r.ok ? (r.materiais_erro || []).join('; ') || 'todos aceitos'
                : (r.erro || ''))}</td></tr>`).join('') + '</tbody></table>';
     msg('msgEtapa4', d.com_erro

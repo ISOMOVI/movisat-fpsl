@@ -172,6 +172,18 @@ global.fetch = async (url, opcoes) => {
     return ok({ harmonit: { acao: "criado", id: 1 },
                 weso: { acao: "criado", id: 2 } });
   }
+  if (u.includes("/operacoes/placas/do-cliente")) {
+    return ok({ veiculos: [
+      { placa: "TST 0E55", veiculo: "FIAT UNO" },
+      { placa: "TST 0G78", veiculo: "VW GOL" },
+    ], total: 2 });
+  }
+  if (u.includes("/operacoes/clientes/buscar")) {
+    return ok({ resultados: [
+      { id: 998063, nome: "Velasco Leite Pastelaria ME",
+        documento: "32020313000106" },
+    ], por_documento: false });
+  }
   if (u.includes("/operacoes/modelos")) return ok({ modelos: [] });
   if (u.includes("/operacoes/prioridades")) {
     return ok({ prioridades: [{ id: 382, descricao: "Normal" }], default: 382 });
@@ -199,7 +211,8 @@ global.fetch = async (url, opcoes) => {
    vai para o escopo que chamou, então `irPara`, `lerTermo` e `processarPlacas`
    já são visíveis aqui -- e declarar `const irPara` faria colisão de nome. */
 const EPILOGO = `
-global.__estado = () => ({ etapaAtual, extraido, cliente, lote, linhasPlacas });
+global.__estado = () => ({ etapaAtual, extraido, cliente, lote, linhasPlacas,
+                           placasDoCliente, servicoSelecionado });
 `;
 const src = html.split("<script>").slice(1)
   .map((p) => p.split("</script>")[0]).join("\n");
@@ -301,6 +314,75 @@ function registrarCelulas(quantas) {
 
     /* ── 9. perfil sem termo não exige PDF na etapa 1 ────────────────────── */
     r.avancar_liberado_sem_termo_perfil = elemento("btnAvancar").disabled === false;
+
+    /* ── 10. 🚨 O CAMINHO SEM TERMO, que até 21/08 morria na etapa 3 ────── */
+    // manutencao_troca ja esta escolhido pelo passo 8. Etapa 1 nao pede PDF.
+    irPara(2);
+    await espera(30);
+    r.st_etapa2 = estado().etapaAtual;
+    r.st_recado_pede_cliente =
+      elemento("msgEtapa2").innerHTML.includes("Buscar");
+    r.st_avancar_travado_sem_cliente = elemento("btnAvancar").disabled;
+
+    // escolher o cliente pelo modal, como gente faz
+    abrirModalCliente();
+    await espera(30);
+    escolherCliente({ id: 998063, nome: "Velasco Leite Pastelaria ME",
+                      documento: "32020313000106" });
+    await espera(60);
+    r.st_cliente_resolvido = !!estado().cliente;
+    r.st_campo_cliente = elemento("clienteCampo").value;
+
+    irPara(3);
+    await espera(60);
+    r.st_etapa3 = estado().etapaAtual;
+    r.st_bloco_adicionar = elemento("addPlacaWrap").style.display;
+    r.st_placas_do_cliente = (estado().placasDoCliente || []).length;
+    r.st_linhas_antes = estado().linhasPlacas.length;
+    r.st_avancar_travado_sem_placa = elemento("btnAvancar").disabled;
+
+    // adicionar a primeira: vem a placa E o recipiente -MANUT
+    elemento("placaDoCliente").value = "0";
+    adicionarPlaca();
+    await espera(10);
+    r.st_linhas_apos_1 = estado().linhasPlacas.length;
+    r.st_tem_recipiente = estado().linhasPlacas.some((l) => l.recipiente);
+    r.st_sufixo_recipiente =
+      (estado().linhasPlacas.find((l) => l.recipiente) || {}).placa;
+
+    // a mesma de novo nao duplica
+    adicionarPlaca();
+    await espera(10);
+    r.st_linhas_apos_repetida = estado().linhasPlacas.length;
+
+    // uma segunda placa: "mesmo adicionando mais de uma"
+    elemento("placaDoCliente").value = "1";
+    adicionarPlaca();
+    await espera(10);
+    r.st_linhas_apos_2 = estado().linhasPlacas.length;
+
+    // remover a segunda leva o recipiente dela junto
+    const iSegunda = estado().linhasPlacas.findIndex(
+      (l) => !l.recipiente && l.placa === "TST 0G78");
+    removerPlaca(iSegunda);
+    await espera(10);
+    r.st_linhas_apos_remover = estado().linhasPlacas.length;
+
+    // gravar e chegar na etapa 4
+    registrarCelulas(estado().linhasPlacas.length);
+    await processarPlacas();
+    await espera(30);
+    irPara(4);
+    await espera(60);
+    r.st_etapa_final = estado().etapaAtual;
+    r.st_lote_aberto = !!estado().lote;
+
+    /* ── 11. o serviço se ESCOLHE, nao se digita ─────────────────────────── */
+    abrirModalServico();
+    await espera(60);
+    selecionarServico({ id: 6967, descricao: "SUBSTITUICAO" });
+    r.sv_campo = elemento("servicoCampo").value;
+    r.sv_selecionado = (estado().servicoSelecionado || {}).id;
 
     r.chamadas = chamadas;
   } catch (e) {

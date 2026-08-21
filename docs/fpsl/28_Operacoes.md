@@ -636,6 +636,134 @@ senão seriam 101 idas ao banco para desenhar 100 linhas.
 
 O banner da aba principal ainda dizia "Em construção (F3)" com a aba completa.
 
+## 🚨 21/08 — A PRIMEIRA RODADA DE USO REAL, E O QUE ELA ACHOU
+
+O usuário abriu a aba e rodou dois termos de verdade. Nenhuma das 1.322
+verificações tinha visto nada disso. **Todos os achados vieram do uso, nenhum
+de teste meu** — pela quarta vez desde 14/08.
+
+O journal do dia, com o IP real:
+
+```
+08:52:42  extrair?perfil=aditivo   200   termo 8800
+08:53:10  cliente?documento=...    200
+08:53:23  lote                     200
+08:56:19  modelos/prioridades      200   <- etapa 4 aberta
+08:58:02  os/previa                400   <- "Nenhuma placa foi informada"
+09:00:26  os/previa                200   (segunda rodada, termo 8840)
+```
+
+Os dois lotes ficaram gravados em `etapa 1`, com **zero passos**.
+
+### 1. A trava de etapas nunca existiu — só o comentário existia
+
+O `irPara(n)` pintava a bolinha de `locked` e trocava o painel. Nada mais. Logo
+acima dela, desde a F1:
+
+> Aqui a etapa N só abre com a N-1 concluída.
+> **Na F1 nada conclui nada, então a trava está solta de propósito.**
+
+A segunda frase sobreviveu a cinco fases. Foi por ela que o operador foi da
+etapa 1 direto para a 4 e a prévia devolveu 400 — **o erro certo, na hora
+errada**, depois de todo o trabalho.
+
+🚨 **Por que nenhum teste pegou:** os testes da aba liam o FONTE da tela, e o
+fonte estava certo — o comentário descrevia o comportamento. Faltava a linha
+que o executa. **Fonte que descreve o comportamento não é o comportamento.**
+Agora há `tests/exercitar_operacoes.js`, que roda o script da página num DOM de
+mentira e CLICA em Avançar.
+
+### 2. O registro nunca acompanhou o fluxo
+
+`guardar_cliente` foi escrita na F3 e **nunca chamada** — `grep` no projeto
+devolvia só a definição. Toda rodada ficava com cliente nulo e `etapa = 1` para
+sempre, e o `HST_4.1` lê essas colunas: ele mostrava toda rodada morrendo no
+começo. Agora `abrir_lote` recebe os ids do cliente, `marcar_etapa` anda com
+`MAX` e `encerrar` fecha quando as OS saem.
+
+### 3. Os três perfis SEM TERMO morriam na etapa 3
+
+A etapa 1 prometia, na própria tela, que *"a entrada digitada entra na F3"*. A
+F3 montava `linhasPlacas` **só** a partir de `extraido.itens`: sem PDF a lista
+nascia vazia, a tabela renderizava sem corpo e **não havia botão de adicionar
+linha em lugar nenhum**. Manutenção no local, manutenção com troca e
+ressarcimento sem termo — 3 dos 11 perfis — não completavam.
+
+Decisão do usuário: lista suspensa da base local, **só nesses perfis**, "só de
+placas que já existem na base a mais de 24 horas", e "mesmo adicionando mais de
+uma". A rota é `/operacoes/placas/do-cliente`, lendo `harmonit_veiculos`.
+
+🚨 **Da base local e não ao vivo porque nenhum dos dois filtra por cliente:**
+`ObterVeiculos` ignora `clienteId` e o `Consultar` da WESO ignora `cliente_id`,
+devolvendo a base inteira com cara de resposta válida.
+
+### 4. A etapa 2 não deixava trocar o cliente, e ficava em branco
+
+Era só a tabela do cruzamento, que só aparece depois de a resposta voltar — nos
+perfis sem termo, nunca. Clonado o bloco do `gerar_os.html`: campo
+somente-leitura, botão, modal com 3 caracteres e 400 ms. **A troca volta pelo
+mesmo caminho do termo** — grava o documento e refaz o cruzamento, para o
+cruzamento continuar sendo por documento.
+
+### 5. A busca de serviço era um `<select>` em que ninguém escolhia
+
+Um `<input>` repovoava um `<select>` a cada tecla: o valor era o que calhasse
+de ficar em primeiro, o id nunca aparecia, e a lista mudava sob o dedo. **O id
+não é enfeite: dois serviços do Harmonit têm o nome idêntico** (6967 e 54845).
+Clonado o modal do Gerar OS.
+
+### 6. "Está tudo torto" — e é medível
+
+| tela | `style="` inline |
+|---|---|
+| `cadastro_placas.html` | 13 |
+| `vinculos.html` | 17 |
+| `gerar_os.html` | 26 |
+| **`operacoes.html`, antes** | **57** |
+| `operacoes.html`, depois | 12, **todos estado** (`display`/`visibility`) |
+
+### 7. O botão que ele não entendeu
+
+*"botão conferir faz o que?"* — chamava `/os/previa`, e era ele que habilitava o
+Gerar, sem isso estar escrito. Virou **Ver prévia**, com a dependência à vista.
+O outro "Conferir", da etapa 2, virou **Usar este documento**.
+
+---
+
+## Decisões do usuário em 21/08
+
+| # | Decisão | O que muda |
+|---|---|---|
+| 1 | **Rescisão passa a ter OS operacional E financeira** | implementa a regra 3 e **reverte a decisão de 29/07**. O que mudou de contexto: a aba nova tem etapa de conferência de placa, que a velha não tinha |
+| 2 | **Serviço de substituição: id `6967` fixo**, 299,90, `cobrar` marcado, sem pergunta na tela | recusada a alternativa de o operador marcar mesmo local × local diferente com o valor vindo do termo |
+| 3 | **Timeout do cliente WESO: 30 s → 60 s** | com barra de progresso passando de 15 s |
+| 4 | **Cliente pode ser trocado no painel** | o termo manda, mas não é infalível |
+| 5 | **F7 só depois de 100% do painel novo rodando** | e as rodadas de teste terminaram |
+
+🚨 **A GUARDA QUE ACOMPANHA A DECISÃO 2, e não a contradiz.** Id fixo em código
+apodrece **em silêncio** — foi assim que 7 das 14 OS de manutenção ficaram com
+`tipo = 55`, que não existe mais. `conferir_servico_de_substituicao()` faz o
+apodrecimento virar recado em vez de OS errada. Decidir é dele; fazer o
+apodrecimento aparecer é trabalho meu.
+
+---
+
+## 🔴 PENDENTE, E NÃO É NOSSO CÓDIGO: o nginx
+
+🚨 **A DECISÃO DE 14/08 NUNCA CHEGOU AO SERVIDOR.** Ela registra que o
+`proxy_read_timeout` do `location /` foi de 35 s para 180 s. **O arquivo no ar
+é de 12/08 — anterior à decisão — e está em 35 s nos DOIS server blocks.**
+
+Consequência hoje: o teto de 60 s do cliente WESO **não existe na prática**. O
+nginx corta em 35 s antes e devolve uma **página HTML de 504**, que a tela lê
+como JSON — é o "erro json" de 14/08, ainda vivo.
+
+Autorizado pelo usuário em 21/08: **`location /` de 35 s para 90 s**, nos dois
+blocos. O cliente (60 s) dispara primeiro e o operador recebe erro nosso, em
+JSON, em vez de página do nginx. **Exige root e ainda não foi aplicado.**
+
+---
+
 ### Estado
 
 **F1 a F6 no ar. Falta a F7.**

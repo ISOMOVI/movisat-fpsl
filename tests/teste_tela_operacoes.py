@@ -118,10 +118,28 @@ def campos_do_retorno(nome_funcao: str) -> set:
                           re.M))
 
 
+def sem_comentarios(fonte):
+    """O fonte da tela sem comentário, para medir USO e não palavra.
+
+    🚨 SEM ISTO O TESTE MEDE A PALAVRA. Um comentário que EXPLICA por que
+    `extraido.<algo>` não deve existir fazia o teste exigir que o router
+    entregasse esse campo -- exatamente o erro de 19/08, quando três travas
+    reprovaram código correto por acharem um nome dentro de comentário.
+
+    ⚠️ Tira comentário de bloco e linha que COMEÇA com `//`. Nada além disso:
+    `//` no meio de uma linha costuma ser `https://`, e um regex esperto aqui
+    apagaria código de verdade -- e teste que apaga código aprova o que não
+    existe.
+    """
+    fonte = re.sub(r"/\*.*?\*/", " ", fonte, flags=re.S)
+    return "\n".join(l for l in fonte.split("\n")
+                     if not l.lstrip().startswith("//"))
+
+
 def teste_contrato_extrair():
     print("\n3. Todo campo que a tela lê de `/extrair` é entregue")
     entregues = campos_do_retorno("extrair")
-    lidos = set(re.findall(r"extraido\.([a-z_]+)", tela))
+    lidos = set(re.findall(r"extraido\.([a-z_]+)", sem_comentarios(tela)))
     checar("o router declara campos no retorno do /extrair",
            len(entregues) > 5, str(entregues))
     for campo in sorted(lidos):

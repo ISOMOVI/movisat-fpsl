@@ -23,6 +23,7 @@ Escopo, as 14 regras e as fases: `docs/fpsl/28_Operacoes.md`.
 desta aba muda de endereço.
 """
 import io
+import asyncio
 import logging
 from datetime import datetime
 
@@ -1115,6 +1116,61 @@ async def rodar_rotina(caso: str | None = Query(None),
 # exigem `gerar_os` — quem tem só `operacoes` toma 403 nas três, e isso só
 # apareceria ao usar a tela. Aqui elas nascem sob `operacoes`, e quando as
 # telas velhas saírem (F7) nenhuma rota desta aba muda de endereço.
+
+
+@router.get("/placas/do-cliente")
+async def placas_do_cliente(cliente_harmonit_id: int = Query(...),
+                            _=Depends(requer_aba("operacoes"))):
+    """As placas do cliente, da base local, para os perfis SEM TERMO.
+
+    Devolve também `atualizada_em` para a tela poder dizer de quando é o dado.
+    Lista que não diz a própria idade é lista em que se confia demais.
+    """
+    def _ler():
+        with storage._connect() as conn:
+            linhas = conn.execute(
+                "SELECT placa, veiculo FROM harmonit_veiculos "
+                "WHERE clienteId = ? ORDER BY placa", (cliente_harmonit_id,)
+            ).fetchall()
+        return [{"placa": p, "veiculo": v} for p, v in linhas]
+
+    veiculos = await asyncio.get_running_loop().run_in_executor(None, _ler)
+    return {"veiculos": veiculos, "total": len(veiculos)}
+
+
+@router.get("/clientes/buscar")
+async def buscar_cliente(q: str = Query(..., min_length=3),
+                         _=Depends(requer_aba("operacoes"))):
+    """Cliente por nome, CNPJ ou CPF -- para TROCAR o que veio do termo.
+
+    🚨 O TERMO MANDA, MAS NÃO É INFALÍVEL (decisão do usuário, 21/08): "o
+    painel importa do termo e confirma, como no Gerar OS, mas é possível mudar
+    pelo painel sim". Até aqui a etapa 2 só mostrava o resultado do cruzamento
+    e não oferecia saída nenhuma quando ele vinha errado.
+
+    ⚠️ MÍNIMO DE 3 CARACTERES, igual ao Gerar OS: `search` de 1 letra no
+    `/ObterClientes` devolve a base com cara de resposta útil.
+
+    🚨 DOCUMENTO ANTES DE NOME. Se o que foi digitado tem 11 ou 14 dígitos, é
+    documento e a consulta é exata -- cruzar por nome é proibido nesta casa, e
+    o mesmo CNPJ tem razão social diferente nos dois sistemas.
+    """
+    so_digitos = "".join(c for c in q if c.isdigit())
+    if len(so_digitos) in (11, 14):
+        achado = await _no_harmonit(so_digitos)
+        if achado:
+            return {"resultados": [{"id": achado.get("id"),
+                                    "nome": achado.get("nome"),
+                                    "documento": achado.get("cnpJ_CPF")}],
+                    "por_documento": True}
+
+    r = await harmonit_get("/ObterClientes",
+                           params={"skip": 0, "take": 15, "search": q})
+    itens = (r.get("lista") if isinstance(r, dict) else r) or []
+    return {"resultados": [{"id": i.get("id"), "nome": i.get("nome"),
+                            "documento": i.get("cnpJ_CPF") or i.get("cnpjCpf")}
+                           for i in itens],
+            "por_documento": False}
 
 
 @router.get("/servicos/buscar")

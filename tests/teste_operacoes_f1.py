@@ -128,15 +128,31 @@ checar("os dois renomes entraram",
 checar("os dois ressarcimentos são agregados e híbridos",
        all(cfg.PERFIS[n].get("agregada") and cfg.PERFIS[n].get("hibrida")
            for n in ("ressarcimento_sem_termo", "ressarcimento_com_termo")))
-# 🚨 PENDENTE DE PROPÓSITO: dois serviços do Harmonit têm o nome idêntico
-# ("SUBSTITUIÇÃO DIA, HORÁRIO OU LOCAL DIFERENTE - CLIENTE", ids 6967 e 54845).
-# Escolher um no chute sairia com o serviço errado sem nada acusar.
-checar("o serviço de local diferente segue pendente, falhando alto",
-       cfg.SUBSTITUICAO_LOCAL_DIFERENTE_ID is None)
-checar("mas o valor já está fixado",
+# ✅ ESCOLHIDO PELO USUÁRIO EM 21/08. Dois serviços do Harmonit têm o nome
+# idêntico ("SUBSTITUIÇÃO DIA, HORÁRIO OU LOCAL DIFERENTE - CLIENTE", ids 6967 e
+# 54845); ele escolheu o 6967, com o valor fixo e sem pergunta na tela.
+checar("o serviço de local diferente é o 6967",
+       cfg.SUBSTITUICAO_LOCAL_DIFERENTE_ID == 6967)
+checar("com o valor fixado",
        cfg.SUBSTITUICAO_LOCAL_DIFERENTE_VALOR == 299.90)
-checar("rescisão mantém a financeira embutida (decisão de 29/07)",
-       cfg.PERFIS["rescisao"].get("financeira_embutida") is True)
+checar("e o perfil da substituição usa esse id",
+       cfg.PERFIS["substituicao"]["financeira_servico_id"] == 6967)
+
+# 🚨 A GUARDA DO ID FIXO. Id em código apodrece em silêncio -- 7 das 14 OS de
+# manutenção ficaram com `tipo = 55`, que não existe mais. Aqui o apodrecimento
+# vira recado, não OS errada.
+checar("some do catálogo → a guarda acusa",
+       cfg.conferir_servico_de_substituicao([{"id": 999}]) is not None)
+checar("está no catálogo → a guarda cala",
+       cfg.conferir_servico_de_substituicao([{"id": 6967}]) is None)
+checar("catálogo fora do ar NÃO vira aviso falso",
+       cfg.conferir_servico_de_substituicao([]) is None)
+
+# 🆕 DECISÃO DO USUÁRIO, 21/08: "rescisao tera OS OP e FIN, decisão nova do
+# pessoal". Implementa a regra 3 da spec 28 e reverte a decisão de 29/07, que
+# mandava a cobrança embutida em cada OS de placa.
+checar("rescisão passa a ter financeira agregada (decisão de 21/08)",
+       cfg.PERFIS["rescisao"].get("financeira_embutida") in (None, False))
 
 # ── 3. registro e tranca ─────────────────────────────────────────────────────
 print("\n[3] a tela está registrada e trancada")

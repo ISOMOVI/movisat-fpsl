@@ -348,23 +348,36 @@ async def teste_regra_11():
 # ── 8. regra 12: a substituição ──────────────────────────────────────────────
 
 async def teste_regra_12():
-    print("\n8. Regra 12 — a substituição falha alto sem o serviço escolhido")
+    print("\n8. Regra 12 — a substituição gera a financeira no serviço 6967")
+    # 🆕 RESOLVIDO PELO USUÁRIO EM 21/08. Até então este teste prendia o estado
+    # PENDENTE: dois registros de nome idêntico no Harmonit (6967 e 54845), o id
+    # em `None`, e a geração parando com 422. Ele escolheu o 6967, com valor
+    # fixo e sem pergunta na tela.
     instalar_dubles(modelo_na_weso="ST340")
     body = corpo("substituicao",
                  [placa("AAA 0A00", placa_entrada="BBB 0B00",
                         veiculo_entrada="CARRO NOVO")],
                  [item("RASTREADOR", "1", "480,00", "COMODATO")])
-    estourou = None
-    try:
-        await montar(body)
-    except HTTPException as exc:
-        estourou = exc
-    checar("sem o serviço escolhido, PARA com mensagem",
-           estourou is not None and estourou.status_code == 422,
-           f"{estourou}")
-    checar("e a mensagem diz que há dois registros idênticos",
-           estourou is not None and "6967" in str(estourou.detail),
-           f"{estourou}")
+    ops, _, _, _ = await montar(body)
+    financeiras = [o for o in ops if o.get("eh_financeira")]
+    checar("gera a OS financeira", len(financeiras) == 1,
+           [o.get("rotulo") for o in ops])
+    checar("2 OS operacionais por placa (retirada e instalação)",
+           len([o for o in ops if not o.get("eh_financeira")]) == 2,
+           [o.get("rotulo") for o in ops])
+    taxa = [m for m in financeiras[0]["materiais"]
+            if "local diferente" in (m.get("descricao") or "").lower()]
+    checar("com o valor de 299,90",
+           taxa and taxa[0]["valor_unitario"] == 299.90, str(taxa))
+    checar("e marcado para cobrar", taxa and taxa[0]["cobrar"] is True)
+
+    # 🚨 A GUARDA DO ID FIXO, que acompanha a escolha sem contradizê-la.
+    # Id em código apodrece em silêncio -- 7 das 14 OS de manutenção ficaram
+    # com `tipo = 55`, que não existe mais e ninguém viu.
+    checar("some do catálogo → acusa",
+           cfg.conferir_servico_de_substituicao([{"id": 1}]) is not None)
+    checar("catálogo fora do ar NÃO vira aviso falso",
+           cfg.conferir_servico_de_substituicao([]) is None)
 
     # 🚨 O VALOR VEM DO TERMO. Id e valor fixos em código apodrecem: foi assim
     # que 7 das 14 OS de manutenção ficaram com `tipo = 55`.
@@ -393,22 +406,38 @@ async def teste_regra_12():
     checar("e o texto diz qual local", taxa and "local diferente" in taxa[0]["descricao"])
 
 
-# ── 9. rescisão: a financeira embutida continua ──────────────────────────────
+# ── 9. rescisão: OS operacional E OS financeira ──────────────────────────────
+#
+# 🆕 DECISÃO DO USUÁRIO, 21/08: "rescisao tera OS OP e FIN, decisão nova do
+# pessoal". É a regra 3 da spec 28, e ela REVERTE a decisão de 29/07 -- que
+# mandava a cobrança embutida em cada OS de placa "porque é mais seguro assim",
+# amarrada ao veículo que a gerou.
+#
+# ⚠️ O QUE MUDOU DE CONTEXTO: a aba nova tem etapa de conferência de placa, que
+# a tela velha não tinha. Era ela que faltava para o agregado ser conferível.
 
 async def teste_rescisao():
-    print("\n9. Rescisão — `financeira_embutida` mantida (decisão de 29/07)")
+    print("\n9. Rescisão — OS operacional + OS financeira (decisão de 21/08)")
     instalar_dubles(modelo_na_weso="ST340")
     body = corpo("rescisao", [placa("AAA 0A00"), placa("BBB 0B00")], [
         item("TAXA DE ADESAO", "2", "150,00", "SERVICO"),
     ])
     ops, _, _, _ = await montar(body)
-    checar("NÃO gera OS financeira agregada",
-           not any(o.get("eh_financeira") for o in ops),
-           [o.get("rotulo") for o in ops])
-    checar("gera 1 OS por placa", len(ops) == 2, f"veio {len(ops)}")
-    d = descricoes(ops[0]["materiais"])
-    checar("a cobrança vai em CADA OS de placa", "TAXA DE ADESAO" in d, d)
-    taxa = [m for m in ops[0]["materiais"]
+    financeiras = [o for o in ops if o.get("eh_financeira")]
+    operacionais = [o for o in ops if not o.get("eh_financeira")]
+    checar("gera UMA OS financeira agregada, por termo",
+           len(financeiras) == 1, [o.get("rotulo") for o in ops])
+    checar("e 1 OS operacional por placa",
+           len(operacionais) == 2, f"veio {len(operacionais)}")
+    d_op = descricoes(operacionais[0]["materiais"])
+    checar("a cobrança NÃO vai mais na OS de placa",
+           "TAXA DE ADESAO" not in d_op, d_op)
+    d_fin = descricoes(financeiras[0]["materiais"])
+    checar("ela vai na financeira", "TAXA DE ADESAO" in d_fin, d_fin)
+    # A taxa mudou de lugar: era `ops[0]`, a OS de placa, e agora vive na
+    # financeira agregada. O `cobrar` continua tendo de vir marcado -- item com
+    # valor e sem comodato cobra, que é a regra 2 e não mudou.
+    taxa = [m for m in financeiras[0]["materiais"]
             if m["descricao"] == "TAXA DE ADESAO"][0]
     checar("com o `cobrar` preservado", taxa["cobrar"] is True)
 

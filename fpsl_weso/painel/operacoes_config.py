@@ -59,12 +59,40 @@ RESSARCIMENTO_PROBLEMA_ID = 7524   # problema "RESSARCIMENTO" -- nome bate exato
 #      7276  SUBSTITUIÇÃO MESMO DIA, LOCAL E HORÁRIO - CAMPINAS
 #
 # A regra da casa é resolver por NOME, não por id -- mas aqui o nome não
-# decide: `_achar_por_nome` pegaria o primeiro da lista, no chute, e a OS sairia
-# com o serviço errado sem nada acusar. Deixar `None` faz a geração da
-# financeira de substituição PARAR com mensagem, que é o comportamento certo
-# enquanto ninguém escolheu.
-SUBSTITUICAO_LOCAL_DIFERENTE_ID = None
+# decide: `_achar_por_nome` pegaria o primeiro da lista, no chute.
+#
+# ✅ RESOLVIDO PELO USUÁRIO EM 21/08: é o `6967`, com valor fixo de 299,90 e
+# `cobrar` marcado. A tela não pergunta nada. A alternativa apresentada -- o
+# operador marcar mesmo local × local diferente e o valor vir do termo, que já
+# traz os dois (199,90 e 299,90) -- foi recusada: ele preferiu o caminho
+# automático.
+SUBSTITUICAO_LOCAL_DIFERENTE_ID = 6967
 SUBSTITUICAO_LOCAL_DIFERENTE_VALOR = 299.90
+
+# 🚨 A GUARDA QUE ACOMPANHA A ESCOLHA, E QUE NÃO A CONTRADIZ. Id fixo em código
+# apodrece EM SILÊNCIO: foi assim que 7 das 14 OS de manutenção ficaram com
+# `tipo = 55`, que não existe mais na lista do Harmonit e ninguém percebeu. A
+# decisão de fixar é do usuário; fazer o apodrecimento APARECER é trabalho meu.
+#
+# Quem chama isto é a geração, com a lista viva do catálogo em mãos. Se o 6967
+# tiver sumido, a OS financeira PARA com recado, em vez de sair apontando para
+# um serviço que não existe -- lacuna visível é melhor que cobrança errada.
+def conferir_servico_de_substituicao(servicos_vivos) -> str | None:
+    """Devolve o recado do problema, ou None se está tudo certo.
+
+    `servicos_vivos` é a lista que o Harmonit devolve; item com `id`.
+    Lista vazia ou ausente NÃO acusa: não saber é diferente de saber que sumiu,
+    e aviso falso treina a equipe a ignorar aviso.
+    """
+    if not servicos_vivos:
+        return None
+    ids = {str(s.get("id")) for s in servicos_vivos if isinstance(s, dict)}
+    if str(SUBSTITUICAO_LOCAL_DIFERENTE_ID) in ids:
+        return None
+    return (f"O serviço {SUBSTITUICAO_LOCAL_DIFERENTE_ID} (substituição em "
+            "local diferente) não está mais no catálogo do Harmonit. A OS "
+            "financeira da substituição não sai até alguém escolher o "
+            "substituto — o id está fixado em `operacoes_config.py`.")
 
 
 PERFIS = {
@@ -103,23 +131,28 @@ PERFIS = {
     },
 
     # ── 3 ─────────────────────────────────────────────────────────────────────
-    # 🚨 `financeira_embutida` MANTIDO -- decisão de 29/07, ainda de pé.
-    # Na rescisão não se cria financeira agregada: o item de cobrança (Taxa de
-    # Retirada, aviso prévio) vai em CADA OS de placa, com o `cobrar`
-    # preservado. A razão registrada é "é mais seguro assim": a cobrança fica
-    # amarrada ao veículo que a gerou, em vez de num agregado que pode ser
-    # fechado sem conferir placa a placa.
+    # 🚨 A RESCISÃO TEM OS OPERACIONAL **E** OS FINANCEIRA (decisão do usuário,
+    # 21/08: "rescisao tera OS OP e FIN, decisão nova do pessoal"). É a regra 3
+    # da spec 28, e ela REVERTE a decisão de 29/07 -- com autorização, não por
+    # engano.
     #
-    # ⚠️ A regra 3 da spec 28 diz "uma financeira por termo, INCLUINDO
-    # rescisão", o que reverteria isto. PENDENTE de confirmação do usuário --
-    # até lá vale o que ele decidiu em 29/07.
+    # ⚠️ O QUE A DECISÃO DE 29/07 PROTEGIA, E QUE VOLTA A SER RISCO. Naquela
+    # data o item de cobrança (Taxa de Retirada, aviso prévio) ia embutido em
+    # CADA OS de placa, com o `cobrar` preservado, "porque é mais seguro
+    # assim": a cobrança ficava amarrada ao veículo que a gerou, em vez de num
+    # agregado que pode ser fechado sem conferir placa a placa. Agora ela é uma
+    # OS só por termo, e conferir placa a placa passa a depender da etapa 3 --
+    # que a aba nova tem e a tela velha não tinha. Foi essa a mudança de
+    # contexto que tornou a reversão possível.
+    #
+    # Reavaliar se: aparecer financeira de rescisão fechada sem que as
+    # operacionais do mesmo termo tenham sido conferidas.
     "rescisao": {
         "label": "Rescisão",
         "tipo_id": 57,
         "problema_id": 7502,   # "RESCISÃO" -- nome bate exato
         "os_por_placa": 1,
         "etapa_placas": "confere",
-        "financeira_embutida": True,
         "desativa_apos_oficina": True,   # rotina: devolve ao estoque
         "modelo_origem": "placa",
         "descricao_template": "Retirada: {placa} | {veiculo} | {serie} ({modelo}) | TERMO {termo}",
