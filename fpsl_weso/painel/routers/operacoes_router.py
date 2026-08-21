@@ -27,7 +27,8 @@ import asyncio
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import (APIRouter, Depends, File, HTTPException, Query,
+                     Request, UploadFile)
 from pydantic import BaseModel
 
 from ..auth import requer_aba
@@ -87,7 +88,8 @@ def _so_doc(v) -> str:
 
 
 @router.post("/extrair")
-async def extrair(perfil: str = Query(...), arquivo: UploadFile = File(...),
+async def extrair(pedido: Request,
+                  perfil: str = Query(...), arquivo: UploadFile = File(...),
                   _=Depends(requer_aba("operacoes"))):
     """Lê o termo. NÃO ESCREVE NADA e NÃO cruza cliente.
 
@@ -113,7 +115,14 @@ async def extrair(perfil: str = Query(...), arquivo: UploadFile = File(...),
     try:
         campos = extrair_campos(io.BytesIO(conteudo), perfil)
     except Exception as exc:
-        log.exception("operacoes: falha ao ler o PDF")
+        # 🚨 LOGA O QUE IDENTIFICA O CASO. "falha ao ler o PDF" no journal não
+        # diz em QUE PDF nem com que perfil, e sem isso o stack sozinho não
+        # reproduz. O `req_id` amarra esta linha à referência que a tela mostra.
+        log.exception("operacoes: falha ao ler o PDF req=%s arquivo=%r "
+                      "perfil=%s bytes=%d erro=%s",
+                      getattr(getattr(pedido, "state", None), "req_id", "?"),
+                      arquivo.filename, perfil, len(conteudo),
+                      type(exc).__name__)
         raise HTTPException(422, f"Não foi possível ler o PDF: {exc}")
 
     # 🚨 A SUBSTITUIÇÃO NÃO USA `placas`, USA `pares` (medido em 19/08). O
@@ -801,7 +810,15 @@ async def _preparar(body: "oos.MontarInput"):
     if not body.placas:
         raise HTTPException(400, "Nenhuma placa foi informada.")
 
-    body.placas, avisos = oos.dedup_placas(body.placas)
+    # 🚨 TUDO VIRA {texto, placa} AQUI. Lista misturada -- uns dicts, outros
+    # strings -- seria pior que qualquer um dos dois: quem consome teria de
+    # adivinhar item a item. O que não sabe de placa entra com `placa: None`,
+    # que é a marca honesta de "isto é do lote".
+    def _globais(textos):
+        return [oos.aviso(t) for t in textos]
+
+    body.placas, _dedup = oos.dedup_placas(body.placas)
+    avisos = _globais(_dedup)
     resolvidos, pendentes, descartados = await oos.resolver_vinculos(body.itens)
 
     # 🚨 SEPARA ANTES DE ALOCAR. A alocação por placa vale só para o que vai na
@@ -811,28 +828,32 @@ async def _preparar(body: "oos.MontarInput"):
     itens_operacional, itens_financeiro = oos.separar_itens(perfil, resolvidos)
     alocacao, avisos_aloc = oos.alocar_itens_por_placa(
         itens_operacional, body.placas)
-    avisos.extend(avisos_aloc)
+    avisos.extend(_globais(avisos_aloc))
     if descartados:
-        avisos.append("Itens marcados NÃO CONTRATADO no termo, fora da OS: "
-                      + "; ".join(descartados))
+        avisos.append(oos.aviso(
+            "Itens marcados NÃO CONTRATADO no termo, fora da OS: "
+            + "; ".join(descartados)))
 
     ctx = await _ler_weso(body, perfil)
     # 🚨 A FALHA DE LEITURA VIRA AVISO NA TELA, NÃO SUMIÇO NO LOG. Não bloqueia
     # -- continua valendo "lacuna é melhor que apagar" -- mas a pessoa vê antes
     # de clicar em Gerar.
-    avisos.extend(ctx["falhas"])
+    # As falhas de leitura são do LOTE, não de uma placa: "a base da WESO
+    # mudou no meio da leitura", "sem tempo para consultar". Ficam globais.
+    avisos.extend(_globais(ctx["falhas"]))
 
     # Sem "entrará" plausível, não inventa: o recipiente duvidoso é descartado
     # com aviso, e a OS sai sem o equipamento em vez de com um errado.
     ctx["recipientes"], avisos_rec = oos.conferir_recipientes(
         body, perfil, ctx["recipientes"])
-    avisos.extend(avisos_rec)
-    avisos.extend(oos.aviso_cobranca_sem_motivo(body, perfil, resolvidos))
+    avisos.extend(avisos_rec)   # já vêm com a placa
+    avisos.extend(_globais(
+        oos.aviso_cobranca_sem_motivo(body, perfil, resolvidos)))
 
     cabecalho, avisos_cab = {}, []
     if perfil.get("tipo_nome") or perfil.get("problema_nome"):
         cabecalho, avisos_cab = await _resolver_cabecalho_por_nome(perfil)
-        avisos.extend(avisos_cab)
+        avisos.extend(_globais(avisos_cab))
 
     return {"perfil": perfil, "alocacao": alocacao,
             "itens_financeiro": itens_financeiro, "resolvidos": resolvidos,

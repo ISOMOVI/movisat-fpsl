@@ -960,6 +960,145 @@ Achado pelo teste da regra 4, que é onde tinha de ser achado.
 
 ---
 
+## A tela reestruturada (21/08) — o wizard vira seções
+
+🚨 **A CAUSA DE EU TER ESCRITO 19 TEXTOS ERA ESTRUTURAL.** No wizard cada etapa
+ocupava a tela e as outras sumiam: na etapa 4 não se via mais termo, cliente nem
+quantas placas — **as três coisas que decidem se a OS está certa.** Eu
+compensava com prosa o contexto que a própria tela tirava. Tirar o texto sem
+mexer na estrutura teria deixado a tela mais limpa e ainda sem contexto.
+
+Agora cada etapa resolvida colapsa numa **linha com o valor**:
+
+```
+✓  Documento   Aditivo ou teste upgrade · termo 8840
+✓  Cliente     Velasco Leite Pastelaria ME · Harmonit #998063 · WESO #13624
+✓  Placas      2 de 2
+●  Ordens de serviço
+   … (aberta)
+```
+
+Isso substituiu, de uma vez: o banner de 5 linhas, os quatro subtítulos de
+etapa, as bolinhas de progresso e o `placasInfo`. **Sete blocos de texto viraram
+estado.**
+
+🚨 **A TRAVA DE ORDEM CONTINUA, e o clique no cabeçalho usa o MESMO `irPara`.**
+Não há um segundo caminho de navegação — que é exatamente como a trava ficou
+solta da F1 até 21/08: um caminho que alguém esqueceria de proteger. Seção
+inalcançável aparece `trancada` e o clique nela não abre.
+
+### A prévia domina
+
+Ela é a razão da aba existir — a última coisa antes de escrever em produção — e
+era uma `div` solta no fim de um formulário, com o mesmo peso do campo de
+observação. Agora tem moldura e título com o número de OS.
+
+### O aviso vai na OS a que pertence
+
+*"2 aviso(s)"* numa lista no topo não diz **qual** OS está torta.
+
+⚠️ **LIMITE HONESTO, e ele fica registrado:** os avisos são lista de texto, sem
+vínculo com a OS. O casamento é pela **placa citada no texto**, e só quando ela
+aparece em **exatamente uma** operação. O que não casar continua no bloco geral
+— inventar vínculo poria o aviso na OS errada, que é pior que pô-lo em cima.
+Amarrar de verdade exigiria o servidor etiquetar cada aviso com a placa.
+
+### Linha gravada não é mais editável
+
+Depois de escrever nos dois sistemas, Veículo e Placa continuavam campos de
+texto — a tela sugeria que dava para corrigir o que já tinha sido gravado.
+**Campo editável depois da escrita é mentira.** Linha que **falhou** continua
+editável, porque ela vai ser tentada de novo.
+
+### Todo erro leva a referência da requisição
+
+Em 21/08 ele viu um erro ao ler um termo e não conseguiu dizer qual — a mensagem
+passou e a rodada seguiu. **Pedir "me diga a mensagem exata" põe o diagnóstico
+na mão de quem está tentando trabalhar.**
+
+O `req_id` já existia: o middleware gera um por requisição e devolve em
+`X-Request-Id`, e a barra de status já mostrava. Faltava a tela lê-lo **quando dá
+erro**, que é a única hora em que ele importa. Agora qualquer erro vira
+`… (ref a3f1)`, e `journalctl | grep req=a3f1` traz a requisição inteira com
+stack. O `/extrair` passou a logar também o nome do arquivo, o perfil e o
+tamanho — *"falha ao ler o PDF"* sozinho não diz em qual.
+
+---
+
+## O acabamento visual (21/08) — só nesta aba
+
+Decisão dele: **só a aba Operações.** A sidebar e o resto do padrão visual dos
+quatro painéis ficam como estão — mexer lá mudaria MoviZap, MoviServer e Painel
+rápido de tabela.
+
+🚨 **TUDO EM CSS, NO `<head>`.** É a lição de 18/08: CSS que muda geometria não
+vem por JavaScript. A barra de status injetava `<style>` no `DOMContentLoaded` e
+a página saltava a cada troca de aba — regra que chega depois não corrige o
+desenho, **remonta**.
+
+| # | O quê | Por quê |
+|---|---|---|
+| 1 | **Foco visível** (`:focus-visible`, não `:focus`) | O anel só aparece quando o foco veio do teclado. Anel em tudo que se clica polui e ensina a ignorar |
+| 2 | **Botões**: raio 8px, borda nos três pesos, transição de 120 ms, **`:active` que afunda** | Sem o afundar, em rede lenta nada confirma que o clique chegou — e o operador clica de novo, que numa escrita duplica |
+| 3 | **Campos**: borda reage com a cor do sistema; `readonly` com fundo próprio | Cliente e serviço se **escolhem**. Campo que parece editável convida a digitar |
+| 4 | **Elevação**: duas alturas só, cartão e modal | Mais que isso vira gradiente de sombra que ninguém mantém coerente |
+| 5 | **Ritmo de 4 em 4** (`--e1`…`--e6`) | Conviviam 12/14/16/20/24/28/32 escolhidos um a um — é isso que faz a tela parecer montada em pedaços mesmo com cada pedaço certo |
+| 6 | **Tabelas**: hover na linha, valores à direita com `tabular-nums` | Numa tabela de 11 placas o olho perde a linha entre a placa e a coluna Situação, que é onde está o resultado |
+| 7 | **Transição de seção** sem salto | — |
+| 8 | **Classes órfãs removidas** | Sobra minha das bolinhas de etapa |
+
+### O que a auditoria do acabamento achou
+
+**1. O cabeçalho de seção não era alcançável por `Tab`.** É `<header onclick>`,
+e `div` com clique não entra na ordem de tabulação — **e é a navegação
+principal da tela agora**. Irônico: eu tinha acabado de ligar `Esc` e foco
+automático nos modais, e a navegação entre etapas continuava exclusiva do mouse.
+**Acessibilidade pela metade é o mesmo que nenhuma** — quem depende dela para no
+primeiro buraco. Virou `tabindex="0"` + `role="button"` + Enter/Espaço, que é o
+contrato que um elemento clicável assume quando não é `<button>`.
+
+**2. Quatro espaços fora da escala.** Corrigidos.
+
+---
+
+## A auditoria de fechamento, e o que ela achou
+
+Sete frentes: os 11 perfis pelo caminho da tela · as rotas que a tela chama e
+sob qual permissão · as duas telas velhas de pé · o que mudou hoje se
+sustentando junto · referência morta · o contrato tela↔router · geometria por
+JavaScript.
+
+**Dois achados:**
+
+1. **Um bloco de estilo inteiro morto no `<head>`** — `.etapa-titulo`,
+   `.etapa-sub`, `.em-construcao` e `.step-dot.locked`. Todas perderam o
+   consumidor com os 19 textos e as seções.
+2. **A checagem de classes órfãs só olhava o `operacoes.css`** e não o estilo
+   inline. **CSS morto em outro arquivo não é menos morto — só é mais difícil
+   de achar.**
+
+---
+
+## 🚨 A LIÇÃO QUE 21/08 REPETIU CINCO VEZES: trava que mede PALAVRA
+
+Cinco travas minhas, no mesmo dia, reprovaram o certo ou acusaram o inexistente
+— todas procurando um **nome** em vez de um **uso**:
+
+| # | A trava | O que ela achou de errado |
+|---|---|---|
+| 1 | teste de contrato do `/extrair` | exigiu um campo porque o nome aparecia num **comentário meu** |
+| 2 | guarda de rótulo de botão | reprovou os dois "Buscar", que estão certos, em etapas diferentes |
+| 3 | teste de geometria | reprovou a barra de progresso, cuja largura é **calculada** |
+| 4 | guarda do bloco de estilo | bateu no **próprio comentário** que documentava a remoção |
+| 5 | checagem de resto morto | acusou `placasInfo` citado num comentário **JavaScript** |
+
+⚠️ **O padrão é sempre o mesmo, e o remédio também:** tirar comentário antes de
+varrer, e medir a **ligação** (a chamada, o binding, o atributo) e não a
+ocorrência do nome. Está no `M7` desde 19/08 e voltou cinco vezes — porque a
+trava é escrita no fim, quando a atenção já foi para o código que ela protege.
+
+---
+
 ### Estado
 
 **F1 a F6 no ar. Falta a F7.**

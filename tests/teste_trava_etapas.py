@@ -298,6 +298,95 @@ checar("a placa ja resolvida entra marcada, e nao sera reescrita",
 checar("Descartar limpa a chave", v("rt_descartou") is True)
 
 print()
+print("== 🚨 TODO ERRO LEVA A REFERENCIA DA REQUISICAO ==")
+# Em 21/08 ele viu um erro ao ler um termo e nao conseguiu me dizer qual: a
+# mensagem passou e a rodada seguiu. Pedir "me diga a mensagem exata" poe o
+# diagnostico na mao de quem esta tentando trabalhar. O `req_id` ja existia no
+# middleware e ia no cabecalho -- faltava a tela le-lo QUANDO DA ERRO.
+checar("a mensagem de erro traz a referência",
+       "(ref a3f1)" in (v("erro_com_ref") or ""), v("erro_com_ref"))
+checar("e o texto do erro continua lá",
+       "PDF" in (v("erro_com_ref") or ""), v("erro_com_ref"))
+
+print()
+print("== 🚨 AS SECOES CARREGAM O VALOR, e nada some da vista ==")
+# 🚨 A CAUSA DE EU TER ESCRITO 19 TEXTOS. No wizard cada etapa ocupava a tela e
+# as outras sumiam: na etapa 4 nao se via mais termo, cliente nem quantas
+# placas -- as tres coisas que decidem se a OS esta certa. A prosa compensava o
+# contexto que a propria tela tirava. Agora cada etapa resolvida colapsa numa
+# LINHA com o valor.
+checar("a seção 1 mostra o tipo e o termo",
+       "Aditivo" in (v("sec_valor_1") or "") and "8840" in (v("sec_valor_1") or ""),
+       v("sec_valor_1"))
+checar("a seção 2 mostra o cliente e os DOIS ids",
+       "Harmonit #998063" in (v("sec_valor_2") or "")
+       and "WESO #13624" in (v("sec_valor_2") or ""), v("sec_valor_2"))
+checar("a seção 3 mostra quantas placas fecharam",
+       v("sec_valor_3") == "2 de 2", v("sec_valor_3"))
+checar("etapa concluída fica marcada com ✓",
+       v("sec_marca_1") == "✓" and v("sec_pronta_1") is True)
+checar("a etapa aberta fica marcada com ●",
+       v("sec_marca_4") == "●" and v("sec_aberta_4") is True)
+
+print()
+print("== 🚨 E A TRAVA VALE NO CLIQUE DO CABECALHO ==")
+# O cabecalho chama o MESMO `irPara`. Se houvesse um segundo caminho de
+# navegacao, seria um caminho que alguem esqueceria de proteger -- que e
+# exatamente como a trava ficou solta da F1 ate 21/08.
+checar("clicar na seção 4 sem nada feito não sai da 1",
+       v("sec_clique_travado") == 1,
+       f"foi para a {v('sec_clique_travado')}")
+checar("e a seção inalcançável aparece trancada",
+       v("sec_trancada_3") is True)
+
+print()
+print("== 🚨 A PREVIA DOMINA, e o aviso vai na OS a que pertence ==")
+# A previa e a razao da aba existir -- a ultima coisa antes de escrever em
+# producao -- e era uma `div` solta no fim de um formulario, com o mesmo peso
+# do campo de observacao.
+checar("a prévia tem moldura própria", v("prev_tem_moldura") is True)
+checar("com o número de OS no título", v("prev_titulo") is True)
+# ⚠️ LIMITE HONESTO: os avisos sao texto, sem vinculo com a OS. O casamento e
+# pela PLACA citada, e SO quando ela aparece em exatamente uma operacao --
+# inventar vinculo poria o aviso na OS errada, que e pior que po-lo em cima.
+checar("aviso que cita UMA placa vai na OS dela",
+       v("prev_aviso_na_os") is True)
+checar("e o que não cita placa fica no bloco geral, acima",
+       v("prev_aviso_generico_em_cima") is True)
+
+print()
+print("== 🚨 LINHA GRAVADA NAO E MAIS EDITAVEL ==")
+# Depois de escrever nos dois sistemas os campos continuavam editaveis -- a
+# tela sugeria que dava para corrigir o que ja tinha sido gravado. Campo
+# editavel depois da escrita e mentira. Linha que FALHOU continua editavel,
+# porque ela vai ser tentada de novo.
+checar("os campos somem depois de gravar",
+       v("linha_gravada_sem_input") is True)
+
+print()
+print("== 🚨 OS MODAIS FUNCIONAM PELO TECLADO ==")
+# Tres coisas, e as tres sao do mesmo problema: o modal abria e a mao tinha de
+# voltar para o mouse.
+#
+# ⚠️ O `gerar_os.html` tambem nao tem nenhuma das tres -- e lacuna
+# compartilhada, nao regressao da aba. Quem tem e a tela nova.
+checar("há UM ouvinte de tecla, no documento",
+       v("mod_esc_ligado") == 1,
+       "um por modal divergiria no primeiro modal novo que alguém acrescentasse")
+checar("o modal abre", v("mod_abriu") is True)
+checar("e o campo de busca recebe o foco",
+       v("mod_focou_campo") is True,
+       "abrir e não poder digitar é um clique desperdiçado, toda vez")
+checar("Esc fecha o modal", v("mod_fechou_com_esc") is True)
+checar("e o foco volta para quem abriu",
+       v("mod_foco_voltou") is True,
+       "modal que fecha e larga o foco no nada obriga a achar o lugar com o mouse")
+checar("tecla que NÃO é Esc não fecha nada",
+       v("mod_outra_tecla_nao_fecha") is True)
+checar("e vale para o modal de serviço também",
+       v("mod_servico_fechou") is True)
+
+print()
 print(f"== {ok} verificações OK, {len(falhas)} falha(s) ==")
 if falhas:
     for f in falhas:

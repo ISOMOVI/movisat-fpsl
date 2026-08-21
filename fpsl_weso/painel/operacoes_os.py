@@ -335,7 +335,7 @@ def norm_desc(t: str) -> str:
 
 
 def conferir_recipientes(body: MontarInput, perfil: dict,
-                         recipientes: dict) -> tuple[dict, list[str]]:
+                         recipientes: dict) -> tuple[dict, list[dict]]:
     """Separa os recipientes CONFIÁVEIS dos demais, e avisa sobre cada descarte.
 
     🚨 SEM "ENTRARÁ" PLAUSÍVEL, NÃO INVENTA (decisão do usuário, 14/08). Até
@@ -357,38 +357,38 @@ def conferir_recipientes(body: MontarInput, perfil: dict,
     modelo = perfil.get("placa_teste_descricao") or "TERMO {termo}"
     esperado = modelo.format(termo=body.termo or "")
     bons: dict[str, dict] = {}
-    avisos: list[str] = []
+    avisos: list[dict] = []
     for p in body.placas:
         ch = eqp.chave(p.placa)
         pt = eqp.placa_teste(p.placa, sufixo)
         dado = recipientes.get(ch)
         if not dado:
-            avisos.append(
-                f"Placa {p.placa}: o recipiente {pt} não existe na WESO. A OS "
-                f"sai com '{eqp.MARCADOR_SERIE_A_PREENCHER}' e SEM o "
-                "equipamento nos materiais — peça ao setor de configuração "
-                "para vincular.")
+            avisos.append(aviso(
+                f"O recipiente {pt} não existe na WESO. A OS sai com "
+                f"'{eqp.MARCADOR_SERIE_A_PREENCHER}' e SEM o equipamento nos "
+                "materiais — peça ao setor de configuração para vincular.",
+                p.placa))
             continue
         if dado.get("ambiguo"):
             achados = ", ".join(str(x) for x in dado["ambiguo"])
-            avisos.append(
-                f"Placa {p.placa}: mais de um recipiente na WESO casa com {pt} "
-                f"({achados}). Ambiguidade não se resolve por escolha "
-                "automática — a OS sai sem o equipamento.")
+            avisos.append(aviso(
+                f"Mais de um recipiente na WESO casa com {pt} ({achados}). "
+                "Ambiguidade não se resolve por escolha automática — a OS sai "
+                "sem o equipamento.", p.placa))
             continue
         achado = dado.get("descricao")
         if achado is not None and norm_desc(achado) != norm_desc(esperado):
-            avisos.append(
-                f"Placa {p.placa}: o recipiente {pt} está descrito como "
-                f"{achado!r}, e o esperado é {esperado!r} — provavelmente é o "
-                "recipiente de uma rodada ANTERIOR desta placa. A OS sai sem o "
-                "equipamento.")
+            avisos.append(aviso(
+                f"O recipiente {pt} está descrito como {achado!r}, e o "
+                f"esperado é {esperado!r} — provavelmente é o recipiente de "
+                "uma rodada ANTERIOR desta placa. A OS sai sem o equipamento.",
+                p.placa))
             continue
         if not dado.get("serie"):
-            avisos.append(
-                f"Placa {p.placa}: o recipiente {pt} existe mas não tem "
-                f"rastreador vinculado. A OS sai com "
-                f"'{eqp.MARCADOR_SERIE_A_PREENCHER}'.")
+            avisos.append(aviso(
+                f"O recipiente {pt} existe mas não tem rastreador vinculado. "
+                f"A OS sai com '{eqp.MARCADOR_SERIE_A_PREENCHER}'.",
+                p.placa))
             continue
         bons[ch] = dado
     return bons, avisos
@@ -625,6 +625,16 @@ def equipamentos_agregados(body: MontarInput, perfil: dict, itens: list[dict],
     if not achados:
         return list(itens)
     return [m for m in itens if not eh_rastreador(m)] + achados
+
+
+def aviso(texto: str, placa: str | None = None) -> dict:
+    """Um aviso, e de qual placa ele é.
+
+    🚨 `placa=None` NÃO É DESCUIDO: é a marca de "isto é do lote, não de um
+    veículo". "A base da WESO mudou no meio da leitura" não pertence a placa
+    nenhuma, e forçar uma poria o recado numa OS ao acaso.
+    """
+    return {"texto": texto, "placa": placa}
 
 
 def aviso_cobranca_sem_motivo(body: MontarInput, perfil: dict,

@@ -18,9 +18,31 @@
     --red: #DC2626; --red-dim: #FEF2F2;
     --bg: #F8FAFC; --bg2: #F1F5F9; --bg3: #E2E8F0; --text: #0F172A; --text2: #64748B;
     --border: #E2E8F0; --card: #FFFFFF; --radius: 8px;
+    /* 🚨 RITMO DE 4 EM 4. Ate 21/08 conviviam 12, 14, 16, 20, 24, 28 e 32px
+       escolhidos um a um -- e e isso que faz uma tela parecer montada em
+       pedacos mesmo quando cada pedaco esta certo. */
+    --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px; --e6: 32px;
+    --raio-btn: 8px;
+    /* Elevacao em duas alturas so: cartao e modal. Mais que isso vira
+       gradiente de sombra que ninguem consegue manter coerente. */
+    --sombra-card: 0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06);
+    --sombra-modal: 0 10px 15px -3px rgba(15,23,42,.12),
+                    0 4px 6px -4px rgba(15,23,42,.10);
+    --anel: 0 0 0 3px rgba(37,99,235,.28);
     --sidebar-bg: #0F172A; --sidebar-tx: #94A3B8; --sidebar-w: 230px; --header-h: 56px;
   }
   * { box-sizing: border-box; margin:0; padding:0; }
+
+  /* 🚨 FOCO VISIVEL, e e o item que mais vale desta passada. Ate 21/08 quem
+     navegava por Tab nao via onde estava -- e a aba acabou de ganhar Esc e
+     foco automatico nos modais, que nao servem de nada se o foco e invisivel.
+
+     `:focus-visible` e nao `:focus`: o navegador so mostra o anel quando o
+     foco veio do TECLADO. No clique do mouse ele nao aparece, que e o
+     comportamento esperado -- anel em tudo que se clica polui a tela e ensina
+     a ignora-lo. */
+  :focus { outline:none; }
+  :focus-visible { outline:none; box-shadow:var(--anel); border-radius:4px; }
   body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
   .layout { display:flex; min-height:100vh; }
   .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
@@ -41,35 +63,54 @@
      PC, tambem por decisao dele. Em 820px cada OS da previa quebrava em cinco
      linhas. */
   .main { flex:1; padding:32px; max-width:1200px; }
-  h1 { font-size:1.3rem; font-weight:700; margin-bottom:20px; }
-  .steps { display:flex; align-items:center; gap:6px; margin-bottom:24px; }
-  .step-dot { width:26px; height:26px; border-radius:50%; background:var(--card); color:var(--text2);
-              font-size:.74rem; font-weight:700; display:flex; align-items:center; justify-content:center;
-              border:1.5px solid var(--border); flex-shrink:0; }
-  .step-dot.active { background:var(--blue); color:#fff; border-color:var(--blue); }
-  .step-dot.done { background:var(--green-dim); color:var(--green); border-color:var(--green); }
-  .step-line { flex:1; height:1.5px; background:var(--border); }
-  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px; }
+  h1 { font-size:1.3rem; font-weight:700; margin-bottom:var(--e5); }
+  .card { background:var(--card); border:1px solid var(--border);
+          border-radius:12px; padding:var(--e5); box-shadow:var(--sombra-card); }
   .panel { display:none; flex-direction:column; gap:16px; }
   .panel.active { display:flex; }
   label { font-size:.78rem; font-weight:600; display:block; margin-bottom:6px; }
-  select, input[type=text] { width:100%; padding:9px 12px; border:1.5px solid var(--border); border-radius:6px;
-          background:var(--bg); color:var(--text); font-size:.88rem; font-family:inherit; }
-  select:focus, input:focus { outline:none; border-color:var(--blue); background:var(--card); }
+  select, input[type=text] { width:100%; padding:var(--e2) var(--e3);
+          border:1.5px solid var(--border); border-radius:6px;
+          background:var(--bg); color:var(--text); font-size:.88rem;
+          font-family:inherit;
+          transition:border-color .12s ease, box-shadow .12s ease,
+                     background .12s ease; }
+  select:hover:not(:disabled), input[type=text]:hover:not([readonly]) {
+          border-color:var(--bg3); }
+  /* A borda reage com a COR DO SISTEMA, e o anel vem junto -- o azul padrao do
+     navegador nao combina com paleta nenhuma e muda de forma entre eles. */
+  select:focus, input:focus { outline:none; border-color:var(--blue);
+          background:var(--card); box-shadow:var(--anel); }
+  /* Campo somente-leitura nao finge ser editavel: fundo diferente e sem
+     cursor de texto. E o caso do cliente e do servico, que se ESCOLHEM. */
+  input[readonly] { background:var(--bg2); color:var(--text2); cursor:default; }
   .campo-com-botao { display:flex; gap:8px; }
   .campo-com-botao input { flex:1; }
   .drop { border:2px dashed var(--border); border-radius:10px; padding:32px; text-align:center;
           color:var(--text2); font-size:.86rem; cursor:pointer; }
   .drop:hover { border-color:var(--blue-mid); background:var(--blue-dim); }
   .drop input { display:none; }
-  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:10px 18px; border-radius:7px;
-         border:1.5px solid transparent; cursor:pointer; }
-  .btn-primary { background:var(--blue); color:#fff; }
-  .btn-primary:hover { background:#1d4ed8; }
+  /* 🚨 TRES PESOS, E A BORDA E O QUE OS SEPARA quando a cor nao basta:
+     fantasma navega, solido escreve, vermelho grava em producao. */
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600;
+         padding:10px 18px; border-radius:var(--raio-btn);
+         border:1.5px solid transparent; cursor:pointer;
+         display:inline-flex; align-items:center; gap:var(--e2);
+         /* 120ms: rapido o bastante para nao atrasar, longo o bastante para
+            o olho registrar que algo respondeu ao dedo. */
+         transition:background .12s ease, border-color .12s ease,
+                    box-shadow .12s ease, transform .06s ease; }
+  /* O botao AFUNDA no clique. Sem isso, em rede lenta, nada confirma que o
+     clique chegou -- e o operador clica de novo, que numa escrita duplica. */
+  .btn:active:not(:disabled) { transform:translateY(1px); }
+  .btn-primary { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .btn-primary:hover:not(:disabled) { background:#1d4ed8; border-color:#1d4ed8; }
   .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
   .btn-ghost { background:var(--card); color:var(--text); border-color:var(--border); }
+  .btn-ghost:hover:not(:disabled) { background:var(--bg2); border-color:var(--bg3); }
   .footer-nav { display:flex; justify-content:space-between; align-items:center;
-                gap:12px; margin-top:20px; }
+                gap:var(--e3); margin-top:var(--e5);
+                padding-top:var(--e4); border-top:1px solid var(--border); }
   /* A dica do que falta fica ENTRE Voltar e Avancar, na linha do botao que
      ela explica. Aviso longe do botao vira decoracao. */
   .falta-dica { flex:1; text-align:right; font-size:.78rem; color:var(--text2); }
@@ -77,7 +118,16 @@
   table { width:100%; border-collapse:collapse; font-size:.84rem; }
   th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase;
        letter-spacing:.03em; padding:8px; border-bottom:1.5px solid var(--border); }
-  td { padding:8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  td { padding:var(--e2); border-bottom:1px solid var(--border);
+       vertical-align:middle; }
+  /* Hover na linha: numa tabela de 11 placas o olho perde a linha entre a
+     placa e a coluna Situacao, que e onde esta o resultado. */
+  tbody tr:hover td { background:var(--bg2); }
+  tbody tr:last-child td { border-bottom:none; }
+  /* Valor alinhado a direita: numero em coluna esquerda obriga a comparar
+     casa a casa. */
+  .col-valor, .col-qtd { text-align:right; }
+  td.col-valor, td.col-qtd { text-align:right; font-variant-numeric:tabular-nums; }
   .badge { font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; }
   .badge-blue { background:var(--blue-dim); color:var(--blue); }
   .badge-green { background:var(--green-dim); color:var(--green); }
@@ -100,13 +150,39 @@
              border-radius:50%; animation:girar .7s linear infinite; }
   @keyframes girar { to { transform:rotate(360deg); } }
 
+  /* ── seções ───────────────────────────────────────────────────────────────
+     🚨 O WIZARD ESCONDIA O CONTEXTO, e era isso que me fazia escrever prosa:
+     na etapa 4 nao se via mais termo, cliente nem quantas placas. Agora cada
+     etapa resolvida colapsa numa LINHA com o valor, e a trava de ordem
+     continua -- secao trancada nao abre. */
+  .secao { border-bottom:1px solid var(--border); }
+  .secao:last-of-type { border-bottom:none; }
+  .secao-cab { display:flex; align-items:center; gap:var(--e3);
+               padding:var(--e3) var(--e1); cursor:pointer; user-select:none;
+               border-radius:6px;
+               transition:background .12s ease; }
+  .secao:not(.aberta):not(.trancada) .secao-cab:hover { background:var(--bg2); }
+  .secao-marca { width:14px; text-align:center; color:var(--text2);
+                 font-size:.8rem; }
+  .secao.pronta .secao-marca { color:var(--green); }
+  .secao.aberta .secao-marca { color:var(--blue); }
+  .secao-nome { font-weight:600; font-size:.9rem; min-width:150px; }
+  .secao-valor { color:var(--text2); font-size:.82rem;
+                 overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .secao.aberta .secao-cab { cursor:default; }
+  /* Trancada nao convida: o clique nela nao abre, e a tela diz isso antes. */
+  .secao.trancada .secao-cab { cursor:not-allowed; opacity:.5; }
+  .secao .panel { display:none; padding:var(--e1) var(--e1) var(--e5); }
+  .secao .panel.active { display:flex; flex-direction:column; gap:var(--e4); }
+
   /* ── campos e linhas ──────────────────────────────────────────────────────
      🚨 A GEOMETRIA MORA AQUI, NÃO NO HTML. Em 21/08 esta tela tinha 57
      `style="` inline contra 26 do `gerar_os.html` e 13 do
      `cadastro_placas.html` -- o dobro da tela mais parecida. O efeito é o que
      o usuário chamou de "está tudo torto": cada bloco escolhia o seu tamanho e
      nenhum combinava com o vizinho. */
-  .linha-campos { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .linha-campos { display:flex; gap:var(--e3); flex-wrap:wrap;
+                  margin-bottom:var(--e3); }
   .campo { flex:1; min-width:170px; }
   .campo-largo { flex:2; min-width:260px; }
   .campo.bloco { flex:none; width:100%; margin-bottom:12px; }
@@ -114,10 +190,10 @@
                  margin-bottom:4px; }
   .campo select, .campo input[type="text"] { width:100%; }
   .campo .ajuda { font-size:.7rem; color:var(--text2); margin-top:2px; }
-  .campo-cliente { margin-bottom:14px; }
+  .campo-cliente { margin-bottom:var(--e4); }
   .campo-cliente label { display:block; font-size:.78rem; color:var(--text2);
                          margin-bottom:4px; }
-  .bloco-acima { margin-top:12px; }
+  .bloco-acima { margin-top:var(--e3); }
   .col-sistema { width:110px; }
   .col-id { width:110px; }
   .dim { color:var(--text2); }
@@ -125,18 +201,19 @@
      sem isto o bloco do Problema apareceria mesmo escondido. */
   [hidden] { display:none !important; }
 
-  .acoes { margin-top:14px; display:flex; gap:8px; align-items:center; }
+  .acoes { margin-top:var(--e4); display:flex; gap:var(--e2); align-items:center; }
   .dim-pequeno { font-size:.8rem; color:var(--text2); }
   .mini { font-size:.72rem; }
   .rotulo-bloco { font-size:.82rem; font-weight:600; margin-bottom:4px; }
-  .bloco { margin-bottom:12px; }
+  .bloco { margin-bottom:var(--e3); }
   .btn-mini { padding:4px 8px; }
   .col-num { width:34px; }
   .col-troca { width:56px; }
   .col-situacao { width:200px; }
 
-  .steps { margin-top:20px; }
-  .cartao-previa { margin-top:10px; padding:12px; }
+  .cartao-previa { margin-top:var(--e3); padding:var(--e3);
+                   border:1px solid var(--border); border-radius:var(--radius);
+                   background:var(--bg); }
   .linha-entre { display:flex; justify-content:space-between; align-items:center; }
   .sub-previa { font-size:.78rem; color:var(--text2); margin:6px 0; }
   .col-modelo { width:280px; }
@@ -162,15 +239,28 @@
   /* retomar: so aparece quando ha rodada pendente no navegador */
   .retomar { display:flex; align-items:center; justify-content:space-between;
              gap:16px; background:var(--yellow-dim); border:1px solid var(--yellow);
-             border-radius:var(--radius); padding:12px 16px; margin-bottom:20px;
+             border-radius:var(--radius); padding:var(--e3) var(--e4);
+             margin-bottom:var(--e5);
              font-size:.86rem; }
   .retomar-acoes { display:flex; gap:8px; flex-shrink:0; }
+
+  /* a previa domina: e a ultima coisa antes de escrever em producao */
+  .previa-moldura { border:1.5px solid var(--blue-mid); border-radius:var(--radius);
+                    padding:var(--e4); margin-top:var(--e1);
+                    background:var(--card); }
+  .previa-titulo { font-size:.78rem; font-weight:700; letter-spacing:.04em;
+                   text-transform:uppercase; color:var(--blue);
+                   margin-bottom:10px; }
+  .aviso-na-os { background:var(--yellow-dim); color:var(--yellow);
+                 border-radius:6px; padding:6px 10px; margin:6px 0;
+                 font-size:.78rem; }
 
   /* modal */
   .modal-bg { display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100;
               align-items:center; justify-content:center; }
   .modal-bg.open { display:flex; }
-  .modal { background:var(--card); border-radius:12px; padding:20px; width:100%; max-width:460px;
+  .modal { background:var(--card); border-radius:12px; padding:var(--e4) var(--e5);
+           width:100%; max-width:460px; box-shadow:var(--sombra-modal);
            max-height:80vh; display:flex; flex-direction:column; gap:12px; }
   .modal-header { display:flex; justify-content:space-between; align-items:center; }
   .modal-header h3 { font-size:1rem; font-weight:700; }

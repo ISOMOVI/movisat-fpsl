@@ -11,15 +11,14 @@
 <!-- 🚨 CSS PRÓPRIO, clonado do gerar_os.html. As duas telas velhas vão ser
      apagadas; estilo compartilhado com elas sumiria junto. -->
 <link rel="stylesheet" href="/painel/static/operacoes.css">
-<style>
-  /* Só o que é desta tela e não existe nas outras. */
-  .etapa-titulo { font-size:.95rem; font-weight:700; margin-bottom:2px; }
-  .etapa-sub { font-size:.8rem; color:var(--text2); margin-bottom:16px; }
-  .em-construcao { border:1.5px dashed var(--border); border-radius:10px; padding:28px;
-                   text-align:center; color:var(--text2); font-size:.86rem; }
-  .em-construcao code { background:var(--bg2); padding:1px 6px; border-radius:4px; }
-  .step-dot.locked { opacity:.45; }
-</style>
+<!-- 🚨 O BLOCO DE ESTILO LOCAL DESTA TELA FICOU VAZIO EM 21/08 e por isso
+     saiu inteiro. Ele tinha `.etapa-titulo` e `.etapa-sub` (os subtítulos que
+     saíram com os 19 textos), `.em-construcao` (o banner) e `.step-dot.locked`
+     (as bolinhas que as seções substituíram). Nenhuma tinha consumidor.
+
+     Se algum estilo voltar a ser só desta tela, o natural é ir para
+     `operacoes.css` -- que é da aba e sai junto quando as telas velhas
+     saírem na F7. -->
 </head>
 <body>
 <div class="layout">
@@ -34,16 +33,6 @@
   <main class="main">
     <h1>Operações</h1>
 
-    <div class="steps">
-      <div class="step-dot active" id="dot-1">1</div>
-      <div class="step-line"></div>
-      <div class="step-dot locked" id="dot-2">2</div>
-      <div class="step-line"></div>
-      <div class="step-dot locked" id="dot-3">3</div>
-      <div class="step-line"></div>
-      <div class="step-dot locked" id="dot-4">4</div>
-    </div>
-
     <div class="card">
       <!-- Retomada: so aparece quando ha lote pendente no navegador. -->
       <div id="barraRetomar" class="retomar" style="display:none">
@@ -55,8 +44,14 @@
       </div>
 
       <!-- ETAPA 1 — documento -->
-      <div class="panel active" id="panel-1">
-        <div class="etapa-titulo">1 · Documento</div>
+      <section class="secao" id="sec-1">
+        <header class="secao-cab" onclick="irPara(1)" onkeydown="teclaNaSecao(event, 1)"
+                tabindex="0" role="button">
+          <span class="secao-marca" id="marca-1"></span>
+          <span class="secao-nome">Documento</span>
+          <span class="secao-valor" id="valor-1"></span>
+        </header>
+        <div class="panel active" id="panel-1">
         <div>
           <label for="perfil">Tipo de operação</label>
           <select id="perfil"></select>
@@ -79,9 +74,17 @@
         </div>
       </div>
 
+      </section>
+
       <!-- ETAPA 2 — cliente -->
-      <div class="panel" id="panel-2">
-        <div class="etapa-titulo">2 · Cliente</div>
+      <section class="secao" id="sec-2">
+        <header class="secao-cab" onclick="irPara(2)" onkeydown="teclaNaSecao(event, 2)"
+                tabindex="0" role="button">
+          <span class="secao-marca" id="marca-2"></span>
+          <span class="secao-nome">Cliente</span>
+          <span class="secao-valor" id="valor-2"></span>
+        </header>
+        <div class="panel" id="panel-2">
         <!-- 🚨 SÓ APARECE QUANDO O TERMO NÃO TRAZ O DOCUMENTO. Medido em
              19/08: a rescisão vem sem `cnpj` e sem `cpf`, só com o nome. E
              cruzar por nome é proibido -- o mesmo CNPJ tem razão social
@@ -121,9 +124,17 @@
         </div>
       </div>
 
+      </section>
+
       <!-- ETAPA 3 — placas -->
-      <div class="panel" id="panel-3">
-        <div class="etapa-titulo">3 · Placas</div>
+      <section class="secao" id="sec-3">
+        <header class="secao-cab" onclick="irPara(3)" onkeydown="teclaNaSecao(event, 3)"
+                tabindex="0" role="button">
+          <span class="secao-marca" id="marca-3"></span>
+          <span class="secao-nome">Placas</span>
+          <span class="secao-valor" id="valor-3"></span>
+        </header>
+        <div class="panel" id="panel-3">
         <div class="msg" id="msgEtapa3" style="display:none"></div>
 
         <!-- 🚨 SÓ NOS PERFIS SEM TERMO (decisão do usuário, 21/08). Nos outros
@@ -143,9 +154,17 @@
         </div>
       </div>
 
+      </section>
+
       <!-- ETAPA 4 — OS -->
-      <div class="panel" id="panel-4">
-        <div class="etapa-titulo">4 · Ordens de serviço</div>
+      <section class="secao" id="sec-4">
+        <header class="secao-cab" onclick="irPara(4)" onkeydown="teclaNaSecao(event, 4)"
+                tabindex="0" role="button">
+          <span class="secao-marca" id="marca-4"></span>
+          <span class="secao-nome">Ordens de serviço</span>
+          <span class="secao-valor" id="valor-4"></span>
+        </header>
+        <div class="panel" id="panel-4">
         <div class="aviso-info" id="osInfo"></div>
         <div class="msg" id="msgEtapa4" style="display:none"></div>
 
@@ -202,6 +221,8 @@
           <span id="progressoOS" class="dim-pequeno"></span>
         </div>
       </div>
+
+      </section>
 
       <div class="footer-nav">
         <button class="btn btn-ghost" id="btnVoltar" onclick="irPara(etapaAtual - 1)"
@@ -268,12 +289,27 @@ async function lerResposta(res) {
   let corpo = null;
   try { corpo = JSON.parse(bruto); } catch (e) { corpo = null; }
   if (res.ok) return corpo;
+
+  /* 🚨 A REFERÊNCIA DA REQUISIÇÃO ENTRA EM TODO ERRO. O `req_id` já existia --
+     o middleware gera um por requisição e devolve em `X-Request-Id`, e a barra
+     de status já o mostra. Faltava a tela lê-lo QUANDO DÁ ERRO, que é a única
+     hora em que ele importa.
+
+     Sem isso, diagnosticar dependia de o operador copiar a mensagem antes de
+     ela sumir -- e em 21/08 um erro de leitura de termo se perdeu exatamente
+     assim. Com a referência, `journalctl | grep req=a3f1` traz a requisição
+     inteira, com stack. */
+  const ref = (res.headers && res.headers.get)
+    ? res.headers.get('X-Request-Id') : null;
+  const marca = ref ? ` (ref ${ref})` : '';
+
   if (res.status === 401) { logout(); throw new Error('sessão expirada'); }
   if (res.status === 403) throw new Error('sem permissão para esta aba');
   if (res.status === 502 || res.status === 504) {
-    throw new Error('o servidor passou do tempo. Nada foi gravado — tente de novo.');
+    throw new Error('o servidor passou do tempo. Nada foi gravado — tente de novo.'
+                    + marca);
   }
-  throw new Error((corpo && corpo.detail) || `erro HTTP ${res.status}`);
+  throw new Error(((corpo && corpo.detail) || `erro HTTP ${res.status}`) + marca);
 }
 
 /* ── navegação entre etapas ─────────────────────────────────────────────────
@@ -360,15 +396,88 @@ function irPara(n) {
   atualizarAvancar();
 }
 
+/* Só os cabeçalhos, sem mexer em qual painel está aberto. */
+function pintarCabecalhos() {
+  for (let i = 1; i <= TOTAL_ETAPAS; i++) {
+    const valor = document.getElementById('valor-' + i);
+    const marca = document.getElementById('marca-' + i);
+    if (!valor || !marca) return;
+    const pronta = !faltaNaEtapa(i);
+    if (i === etapaAtual) { valor.textContent = ''; marca.textContent = '●'; continue; }
+    valor.textContent = resumoDaEtapa(i);
+    const alcancavel = Array.from({ length: i - 1 }, (_, k) => k + 1)
+      .every((k) => !faltaNaEtapa(k));
+    marca.textContent = pronta ? '✓' : (alcancavel ? '○' : '·');
+  }
+}
+
+/* O que cada etapa resolveu, em uma linha. É isto que substitui o banner, os
+   quatro subtítulos e o `placasInfo`: o operador lê ESTADO, não explicação, e
+   continua vendo na etapa 4 o que decidiu na 1. */
+function resumoDaEtapa(n) {
+  const p = perfilAtual();
+  if (n === 1) {
+    if (!p.label) return '';
+    return p.label + (extraido && extraido.termo ? ` · termo ${extraido.termo}` : '');
+  }
+  if (n === 2) {
+    if (!cliente) return '';
+    const nome = (cliente.harmonit && cliente.harmonit.nome)
+      || (cliente.weso && cliente.weso.nome) || '';
+    const ids = [];
+    if (cliente.harmonit) ids.push('Harmonit #' + cliente.harmonit.id);
+    if (cliente.weso) ids.push('WESO #' + cliente.weso.id);
+    return nome + (ids.length ? ' · ' + ids.join(' · ') : '');
+  }
+  if (n === 3) {
+    if (!linhasPlacas.length) return '';
+    const feitas = linhasPlacas.filter(
+      (l) => l.situacao && !placaFalhou(l.situacao)).length;
+    const ruins = linhasPlacas.filter((l) => placaFalhou(l.situacao)).length;
+    const partes = [`${feitas} de ${linhasPlacas.length}`];
+    if (ruins) partes.push(`${ruins} com falha`);
+    return partes.join(' · ');
+  }
+  if (n === 4) {
+    if (!previa) return '';
+    return `${(previa.operacoes || []).length} OS`;
+  }
+  return '';
+}
+
+/* 🚨 O CABECALHO E A NAVEGACAO DA TELA, e um `<header onclick>` nao entra na
+   ordem de tabulacao -- quem usa teclado nao chegava nele. Com `tabindex` ele
+   passa a receber foco, e entao PRECISA responder a Enter e Espaco: e o
+   contrato que todo elemento clicavel assume quando nao e `<button>`.
+
+   ⚠️ Espaco tem de chamar `preventDefault`, senao a pagina rola junto. */
+function teclaNaSecao(e, n) {
+  if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+  if (e.preventDefault) e.preventDefault();
+  irPara(n);
+}
+
 function pintarEtapa(n) {
   etapaAtual = n;
   for (let i = 1; i <= TOTAL_ETAPAS; i++) {
     const painel = document.getElementById('panel-' + i);
-    const bola = document.getElementById('dot-' + i);
+    const secao = document.getElementById('sec-' + i);
+    const marca = document.getElementById('marca-' + i);
+    const valor = document.getElementById('valor-' + i);
+    const pronta = !faltaNaEtapa(i);
+
     painel.classList.toggle('active', i === n);
-    bola.classList.toggle('active', i === n);
-    bola.classList.toggle('done', i < n && !faltaNaEtapa(i));
-    bola.classList.toggle('locked', i > n);
+    secao.classList.toggle('aberta', i === n);
+    secao.classList.toggle('pronta', pronta && i !== n);
+    /* Trancada = a anterior ainda não fechou. É a mesma conta do `irPara`, e
+       de propósito: se as duas divergirem, a tela mostra um cadeado que o
+       clique abre, ou o contrário. */
+    const alcancavel = Array.from({ length: i - 1 }, (_, k) => k + 1)
+      .every((k) => !faltaNaEtapa(k));
+    secao.classList.toggle('trancada', !alcancavel && i !== n);
+
+    marca.textContent = i === n ? '●' : (pronta ? '✓' : (alcancavel ? '○' : '·'));
+    valor.textContent = i === n ? '' : resumoDaEtapa(i);
   }
   document.getElementById('btnVoltar').style.visibility = n === 1 ? 'hidden' : 'visible';
   document.getElementById('btnAvancar').style.visibility =
@@ -381,6 +490,9 @@ function atualizarAvancar() {
   const btn = document.getElementById('btnAvancar');
   const dica = document.getElementById('faltaDica');
   if (!btn) return;
+  /* Repinta os cabeçalhos: o valor de uma seção muda enquanto ela está aberta
+     (placa gravada, cliente resolvido), e sem isto a linha ficaria velha. */
+  pintarCabecalhos();
   const falta = faltaNaEtapa(etapaAtual);
   btn.disabled = !!falta;
   /* Curta, por escolha dele: duas ou tres palavras, nao frase. Botao
@@ -611,8 +723,40 @@ let cliente = null;
    termo: onde ela ainda acontece -- perfis sem termo -- nao ha nada de que se
    desviar, porque nao havia cliente antes. */
 
-function abrirModal(id) { document.getElementById(id).classList.add('open'); }
-function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+/* Quem tinha o foco antes do modal abrir, para devolver ao fechar. */
+let focoAntesDoModal = null;
+
+function abrirModal(id) {
+  focoAntesDoModal = document.activeElement || null;
+  const m = document.getElementById(id);
+  m.classList.add('open');
+  /* 🚨 O CAMPO RECEBE O FOCO. O modal existe para buscar -- abrir e nao poder
+     digitar e um clique desperdicado, toda vez que se usa a tela. */
+  const campo = m.querySelector ? m.querySelector('input') : null;
+  if (campo && campo.focus) { campo.focus(); if (campo.select) campo.select(); }
+}
+
+function fecharModal(id) {
+  document.getElementById(id).classList.remove('open');
+  /* 🚨 E O FOCO VOLTA para quem abriu. Modal que fecha e larga o foco no nada
+     obriga a achar o lugar de novo com o mouse. */
+  if (focoAntesDoModal && focoAntesDoModal.focus) focoAntesDoModal.focus();
+  focoAntesDoModal = null;
+}
+
+/* 🚨 `Esc` FECHA O QUE ESTIVER ABERTO. Sem isso a unica saida e o ✕ ou clicar
+   fora, e quem abriu por engano no meio de digitar perde o fio.
+   Um ouvinte so, no documento: um por modal divergiria no primeiro modal
+   novo que alguem acrescentasse sem lembrar. */
+if (document.addEventListener) {
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const aberto = document.querySelector('.modal-bg.open');
+    if (!aberto || !aberto.id) return;
+    if (e.preventDefault) e.preventDefault();
+    fecharModal(aberto.id);
+  });
+}
 
 /* ── trocar o cliente ───────────────────────────────────────────────────────
    🚨 A TROCA VOLTA PELO MESMO CAMINHO DO TERMO. Escolher na lista NÃO grava o
@@ -1090,6 +1234,12 @@ async function garantirLote() {
   guardarLote();
 }
 
+/* Gravada = terminou bem nos sistemas que lhe cabem. Linha que FALHOU nao
+   conta: ela vai ser tentada de novo, e para isso precisa continuar editavel. */
+function gravada(l) {
+  return !!l.situacao && !placaFalhou(l.situacao);
+}
+
 function desenharPlacas() {
   document.getElementById('cabPlacas').innerHTML = `<tr>
     <th class="col-num">#</th><th>Veículo</th><th>Placa</th>
@@ -1099,11 +1249,14 @@ function desenharPlacas() {
       <td>${n + 1}${l.recipiente
         ? ' <span class="badge badge-ambar">bancada · só WESO</span>' : ''}${
         l.entrada ? ' <span class="badge badge-ambar">entra</span>' : ''}</td>
-      <td><input type="text" data-campo="veiculo" data-linha="${n}"
-                 value="${escapeHtml(l.veiculo || '')}"></td>
-      <td><input type="text" data-campo="placa" data-linha="${n}"
-                 value="${escapeHtml(l.placa || '')}"></td>
-      <td>${l.recipiente ? '' :
+      ${gravada(l)
+        ? `<td>${escapeHtml(l.veiculo || '')}</td>
+           <td><code>${escapeHtml(l.placa || '')}</code></td>`
+        : `<td><input type="text" data-campo="veiculo" data-linha="${n}"
+                      value="${escapeHtml(l.veiculo || '')}"></td>
+           <td><input type="text" data-campo="placa" data-linha="${n}"
+                      value="${escapeHtml(l.placa || '')}"></td>`}
+      <td>${(l.recipiente || gravada(l)) ? '' :
         `<button class="btn btn-ghost btn-mini" onclick="inverter(${n})">⇄</button>` +
         (perfilAtual().sem_termo
           ? ` <button class="btn btn-ghost btn-mini" onclick="removerPlaca(${n})">✕</button>`
@@ -1440,6 +1593,22 @@ function escolherModelo(el) {
 function desenharPrevia(d) {
   desenharModelos(d.placas || []);
 
+  const ops = d.operacoes || [];
+
+  /* 🚨 O SERVIDOR DIZ DE QUAL PLACA E CADA AVISO. Até 21/08 a tela adivinhava:
+     procurava a placa DENTRO do texto e só colava quando ela aparecia em uma
+     operação só. Heurística assim desgruda em silêncio na primeira vez que
+     alguém reescreve um aviso. Agora vem `{texto, placa}`, e `placa: null` é a
+     marca honesta de "isto é do lote, não de um veículo". */
+  const porOS = {};
+  const gerais = [];
+  (d.avisos || []).forEach((a) => {
+    const texto = (a && a.texto !== undefined) ? a.texto : String(a);
+    const placa = (a && a.placa) || null;
+    if (placa) (porOS[placa] = porOS[placa] || []).push(texto);
+    else gerais.push(texto);
+  });
+
   let html = '';
   if ((d.pendentes || []).length) {
     html += `<div class="msg msg-erro" style="display:block"><strong>` +
@@ -1447,12 +1616,12 @@ function desenharPrevia(d) {
       `a OS sairia sem eles, e ninguém veria. Vincule antes de gerar:<ul>` +
       d.pendentes.map((p) => `<li>${escapeHtml(p)}</li>`).join('') + `</ul></div>`;
   }
-  if ((d.avisos || []).length) {
-    html += `<div class="aviso-info"><strong>${d.avisos.length} aviso(s)</strong><ul>` +
-      d.avisos.map((a) => `<li>${escapeHtml(a)}</li>`).join('') + `</ul></div>`;
+  if (gerais.length) {
+    html += `<div class="aviso-info"><ul>` +
+      gerais.map((a) => `<li>${escapeHtml(a)}</li>`).join('') + `</ul></div>`;
   }
 
-  html += (d.operacoes || []).map((op) => {
+  html += ops.map((op) => {
     const fin = op.eh_financeira;
     return `<div class="panel cartao-previa">
       <div class="linha-entre">
@@ -1461,6 +1630,8 @@ function desenharPrevia(d) {
           ${fin ? 'financeira' : 'operacional'}</span></div>
       <div class="sub-previa">
         ${escapeHtml(op.descricao || '')}</div>
+      ${(porOS[op.placa] || []).map((a) =>
+        `<div class="aviso-na-os">${escapeHtml(a)}</div>`).join('')}
       <table><thead><tr><th>Material</th><th class="col-qtd">Qtd</th>
         <th class="col-valor">Valor</th><th class="col-flags">Flags</th></tr></thead>
         <tbody>${(op.materiais || []).map((m) => `<tr>
@@ -1473,7 +1644,16 @@ function desenharPrevia(d) {
         </tr>`).join('')}</tbody></table></div>`;
   }).join('');
 
-  document.getElementById('previaOS').innerHTML = html;
+  /* 🚨 A PREVIA E A RAZAO DA ABA EXISTIR, e era uma `div` solta no fim de um
+     formulario, com o mesmo peso do campo de observacao. Agora tem moldura e
+     titulo: e a ultima coisa que a pessoa ve antes de escrever em producao. */
+  document.getElementById('previaOS').innerHTML = ops.length
+    ? `<div class="previa-moldura">
+         <div class="previa-titulo">${ops.length} OS ser${ops.length > 1 ? 'ão' : 'á'}
+           gravada${ops.length > 1 ? 's' : ''} no Harmonit</div>
+         ${html}
+       </div>`
+    : html;
   /* Só o BLOQUEIO fala. Quantas OS vao sair esta no botao, que e onde a mao
      esta indo. */
   document.getElementById('osInfo').innerHTML = d.pode_gerar ? ''

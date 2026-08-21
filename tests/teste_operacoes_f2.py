@@ -42,6 +42,19 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 TELA = RAIZ / "frontend" / "operacoes.html"
 FIXTURES = RAIZ / "tests" / "fixtures"
 
+class PedidoDeMentira:
+    """O que a rota usa do `Request`: só `state.req_id`, para o log de erro.
+
+    🚨 Mock complacente aprova rota quebrada -- este tem exatamente o que a
+    rota lê, e nada mais. Se ela passar a ler outro campo, estoura aqui.
+    """
+
+    class _Estado:
+        req_id = "teste"
+
+    state = _Estado()
+
+
 ok, falhas = 0, []
 
 
@@ -68,7 +81,8 @@ leituras = {}
 for pdf in pdfs:
     # os fixtures são de contrato; `contrato_novo` lê todos
     try:
-        d = asyncio.run(opr.extrair(perfil="contrato_novo", arquivo=subir(pdf), _=None))
+        d = asyncio.run(opr.extrair(PedidoDeMentira(), perfil="contrato_novo",
+                                    arquivo=subir(pdf), _=None))
     except HTTPException as exc:
         checar(f"{pdf.name}: leu", False, f"{exc.status_code}: {exc.detail}")
         continue
@@ -101,12 +115,14 @@ else:
 print("\n[3] perfil sem termo recusa documento")
 for nome in cfg.sem_termo():
     try:
-        asyncio.run(opr.extrair(perfil=nome, arquivo=subir(pdfs[0]), _=None))
+        asyncio.run(opr.extrair(PedidoDeMentira(), perfil=nome,
+                            arquivo=subir(pdfs[0]), _=None))
         checar(f"{nome} recusa PDF", False, "aceitou")
     except HTTPException as exc:
         checar(f"{nome} recusa PDF", exc.status_code == 400)
 try:
-    asyncio.run(opr.extrair(perfil="nao_existe", arquivo=subir(pdfs[0]), _=None))
+    asyncio.run(opr.extrair(PedidoDeMentira(), perfil="nao_existe",
+                        arquivo=subir(pdfs[0]), _=None))
     checar("perfil inexistente é recusado", False, "aceitou")
 except HTTPException as exc:
     checar("perfil inexistente é recusado", exc.status_code == 400)

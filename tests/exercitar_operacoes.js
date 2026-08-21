@@ -45,7 +45,17 @@ function novoElemento(id) {
       remove(c) { this._dono._classes.delete(c); },
       contains(c) { return this._dono._classes.has(c); },
     },
-    appendChild() {}, prepend() {}, remove() {}, focus() {},
+    appendChild() {}, prepend() {}, remove() {},
+    /* 🚨 `focus()` VAZIO APROVA MODAL QUE NAO FOCA. Ele passou a registrar
+       quem recebeu o foco -- e assim "o campo recebe foco ao abrir" vira algo
+       que se mede, nao que se afirma. */
+    focus() { global.__foco = this; },
+    /* O modal procura o `input` dentro de si. Devolver null aqui faria o
+       exercicio aprovar uma tela que nao acha o campo. */
+    querySelector(sel) {
+      if (sel !== 'input') return null;
+      return this._campo || null;
+    },
     _ouvintes: {},
     addEventListener(tipo, fn) {
       (this._ouvintes[tipo] = this._ouvintes[tipo] || []).push(fn);
@@ -100,6 +110,8 @@ global.alert = (m) => { global.__alertas.push(m); };
 global.__confirms = [];
 global.confirm = (m) => { global.__confirms.push(String(m)); return true; };
 global.__alertas = [];
+global.__foco = null;
+global.__ouvintesDoc = {};
 global.document = {
   getElementById: elemento,
   createElement: () => {
@@ -107,8 +119,33 @@ global.document = {
     IDS_DA_PAGINA.add(id);
     return elemento(id);
   },
-  querySelector: anonimo,
+  /* O `Esc` e ligado no DOCUMENTO, um ouvinte so para todos os modais. Sem
+     isto aqui, o exercicio nao ve a ligacao existir. */
+  addEventListener(tipo, fn) {
+    (global.__ouvintesDoc[tipo] = global.__ouvintesDoc[tipo] || []).push(fn);
+  },
+  get activeElement() { return global.__foco; },
+  querySelector: (sel) => {
+    /* `.modal-bg.open` procura QUAL modal esta aberto -- e a pergunta que o
+       Esc faz. Responder com um anonimo faria o Esc fechar um modal que nao
+       existe e o teste passar sem nada acontecer. */
+    if (sel === '.modal-bg.open') {
+      for (const id of ['modalCliente', 'modalServico']) {
+        const m = elemento(id);
+        if (m && m._classes.has('open')) return m;
+      }
+      return null;
+    }
+    return anonimo(sel);
+  },
   querySelectorAll: () => [],
+};
+
+/* Harness-only: dispara uma tecla no documento, como o navegador faria. */
+global.__tecla = (key) => {
+  let n = 0;
+  (global.__ouvintesDoc.keydown || []).forEach((fn) => { fn({ key }); n += 1; });
+  return n;
 };
 
 /* ── fetch de mentira ──────────────────────────────────────────────────────
@@ -123,11 +160,21 @@ let placasFalham = false;
 global.fetch = async (url, opcoes) => {
   const u = String(url);
   chamadas.push(u);
+  /* 🚨 O MOCK PRECISA TER `headers`. A tela passou a ler `X-Request-Id` de
+     toda resposta de erro, e mock sem cabecalho aprovaria uma tela que nao le
+     -- exatamente o tipo de complacencia que a lição de 14/08 proibe. */
+  const cab = (id) => ({ get: (k) => (k === 'X-Request-Id' ? id : null) });
   const ok = (corpo) => ({
-    ok: true, status: 200,
+    ok: true, status: 200, headers: cab('req-ok'),
     json: async () => corpo,
     text: async () => JSON.stringify(corpo),
   });
+  const erro = (status, detail) => ({
+    ok: false, status, headers: cab('a3f1'),
+    json: async () => ({ detail }),
+    text: async () => JSON.stringify({ detail }),
+  });
+  if (u.includes("__forcar_erro__")) return erro(422, "Não foi possível ler o PDF");
 
   if (u.includes("/operacoes/perfis")) {
     return ok({ perfis: [
@@ -235,7 +282,14 @@ global.fetch = async (url, opcoes) => {
   }
   if (u.includes("/operacoes/os/previa")) {
     return ok({
-      pode_gerar: true, avisos: [], estado_placas: [],
+      pode_gerar: true, estado_placas: [],
+      /* 🚨 O FORMATO NOVO: {texto, placa}. `placa: null` e a marca de "isto e
+         do lote". Se o mock mandasse string, o exercicio aprovaria a tela
+         lendo o formato velho. */
+      avisos: [
+        { texto: "sem equipamento nos materiais", placa: "TST 0E55" },
+        { texto: "aviso que nao cita placa nenhuma", placa: null },
+      ],
       operacoes: [
         { rotulo: "Instalação", placa: "TST 0E55", eh_financeira: false,
           descricao: "INSTALAÇÃO: TST 0E55", materiais: [] },
@@ -272,6 +326,10 @@ const src = html.split("<script>").slice(1)
   .map((p) => p.split("</script>")[0]).join("\n");
 eval(src + EPILOGO);
 const estado = () => global.__estado();
+
+/* O `input` que cada modal contem, como o navegador acharia pelo DOM. */
+elemento("modalCliente")._campo = elemento("buscaCliente");
+elemento("modalServico")._campo = elemento("buscaServico");
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -480,6 +538,8 @@ function registrarCelulas(quantas) {
     irPara(2); await espera(40);
     irPara(3); await espera(60);
     r.vt_gravadas_depois = estado().linhasPlacas.filter((l) => l.situacao).length;
+    const _tab = document.querySelector("#tabelaPlacas tbody").innerHTML;
+    r.linha_gravada_sem_input = !_tab.includes("data-campo=");
     r.vt_avancar_liberado_depois = elemento("btnAvancar").disabled === false;
     r.vt_dica_depois = elemento("faltaDica").textContent;
 
@@ -516,6 +576,16 @@ function registrarCelulas(quantas) {
     await conferirOS();
     await espera(30);
     r.previa_liberou_gerar = elemento("btnGerar").disabled === false;
+
+    /* 🚨 MEDE A PREVIA ANTES DE GERAR. Depois do `gerarOS` o `previaOS` e
+       substituido pelo RESULTADO -- medir la dava tudo falso, e a falha era do
+       exercicio, nao da tela. */
+    const _p = elemento("previaOS").innerHTML;
+    r.prev_tem_moldura = _p.includes("previa-moldura");
+    r.prev_titulo = /3 OS serão[\s\S]{0,60}?Harmonit/.test(_p);
+    r.prev_aviso_na_os = _p.includes("aviso-na-os");
+    r.prev_aviso_generico_em_cima =
+      _p.indexOf("aviso que nao cita") < _p.indexOf("aviso-na-os");
     await gerarOS();
     await espera(30);
     r.gerou = chamadas.some((u) => u.includes("/operacoes/os/gerar"));
@@ -570,6 +640,65 @@ function registrarCelulas(quantas) {
     global.localStorage.setItem("fpsl_operacoes_lote", "{\"lote\":\"x\"}");
     global.__descartar();
     r.rt_descartou = global.localStorage.getItem("fpsl_operacoes_lote") === null;
+
+    /* ── 16. todo erro leva a referencia da requisicao ──────────────────── */
+    try {
+      await lerResposta(await global.fetch("/painel/api/__forcar_erro__"));
+      r.erro_com_ref = "*** nao levantou ***";
+    } catch (e) {
+      r.erro_com_ref = e.message;
+    }
+
+    /* ── 17. as secoes carregam o VALOR, e a trava vale no clique ────────── */
+    await escolherPerfil("aditivo");
+    await espera(20);
+    elemento("arquivo").files = [{ name: "t.pdf" }];
+    await lerTermo();
+    await espera(20);
+    irPara(2); await espera(60);
+    irPara(3); await espera(60);
+    registrarCelulas(estado().linhasPlacas.length);
+    await processarPlacas();
+    await espera(30);
+    irPara(4); await espera(60);
+    r.sec_valor_1 = elemento("valor-1").textContent;
+    r.sec_valor_2 = elemento("valor-2").textContent;
+    r.sec_valor_3 = elemento("valor-3").textContent;
+    r.sec_marca_1 = elemento("marca-1").textContent;
+    r.sec_marca_4 = elemento("marca-4").textContent;
+    r.sec_aberta_4 = elemento("sec-4")._classes.has("aberta");
+    r.sec_pronta_1 = elemento("sec-1")._classes.has("pronta");
+
+    /* clicar no cabecalho usa o MESMO irPara -- entao a trava vale nele */
+    zerarRodada();
+    pintarEtapa(1);
+    await espera(20);
+    irPara(4);
+    await espera(10);
+    r.sec_clique_travado = estado().etapaAtual;
+    r.sec_trancada_3 = elemento("sec-3")._classes.has("trancada");
+
+    /* ── 18. os modais pelo teclado ──────────────────────────────────────── */
+    r.mod_esc_ligado = (global.__ouvintesDoc.keydown || []).length;
+
+    const botao = elemento("btnBuscarCliente");
+    global.__foco = botao;                     // como se ele tivesse clicado
+    abrirModalCliente();
+    await espera(20);
+    r.mod_abriu = elemento("modalCliente")._classes.has("open");
+    r.mod_focou_campo = global.__foco === elemento("buscaCliente");
+
+    r.mod_disparos = global.__tecla("Escape");
+    r.mod_fechou_com_esc = !elemento("modalCliente")._classes.has("open");
+    r.mod_foco_voltou = global.__foco === botao;
+
+    // tecla que nao e Esc nao fecha nada
+    abrirModalServico();
+    await espera(20);
+    global.__tecla("a");
+    r.mod_outra_tecla_nao_fecha = elemento("modalServico")._classes.has("open");
+    global.__tecla("Escape");
+    r.mod_servico_fechou = !elemento("modalServico")._classes.has("open");
 
     r.chamadas = chamadas;
   } catch (e) {

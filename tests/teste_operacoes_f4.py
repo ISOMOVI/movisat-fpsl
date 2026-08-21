@@ -561,8 +561,13 @@ async def teste_conferir_recipientes():
 
     bons, avisos = oos.conferir_recipientes(body, p, {})
     checar("recipiente ausente é descartado", bons == {})
+    # 🚨 O AVISO DIZ DE QUAL PLACA ELE E. Ate 21/08 era so texto, e a tela
+    # adivinhava o dono procurando a placa DENTRO da frase -- heuristica que
+    # desgruda em silencio na primeira vez que alguem reescreve um aviso.
     checar("e vira aviso citando a placa derivada",
-           avisos and "OOM4131-UPGRADE" in avisos[0], str(avisos))
+           avisos and "OOM4131-UPGRADE" in avisos[0]["texto"], str(avisos))
+    checar("e o aviso sabe de qual placa é",
+           avisos and avisos[0]["placa"] == "OOM 4131", str(avisos))
 
     ch = oos.eqp.chave("OOM 4131")
     bons, avisos = oos.conferir_recipientes(
@@ -570,13 +575,15 @@ async def teste_conferir_recipientes():
                        "serie": "123"}})
     checar("recipiente ambíguo é descartado", bons == {})
     checar("e o aviso diz que ambiguidade não se resolve sozinha",
-           avisos and "automática" in avisos[0], str(avisos))
+           avisos and "automática" in avisos[0]["texto"], str(avisos))
+    checar("com a placa junto", avisos and avisos[0]["placa"] == "OOM 4131")
 
     bons, avisos = oos.conferir_recipientes(
         body, p, {ch: {"descricao": "TERMO 7777", "serie": "123"}})
     checar("recipiente de OUTRA rodada é descartado", bons == {})
     checar("e o aviso diz que é de rodada anterior",
-           avisos and "ANTERIOR" in avisos[0], str(avisos))
+           avisos and "ANTERIOR" in avisos[0]["texto"], str(avisos))
+    checar("com a placa junto", avisos and avisos[0]["placa"] == "OOM 4131")
 
     bons, avisos = oos.conferir_recipientes(
         body, p, {ch: {"descricao": "TERMO 8800", "serie": None}})
