@@ -360,6 +360,13 @@ class LoteInput(BaseModel):
     perfil: str
     termo: str | None = None
     documento: str | None = None
+    # 🚨 O CLIENTE VEM DA ETAPA 2, QUE JÁ ACONTECEU. O `guardar_cliente` existia
+    # desde a F3 e NUNCA foi chamado: as colunas `cliente_harmonit_id` e
+    # `cliente_weso_id` ficavam nulas em todo lote, e com elas o Histórico não
+    # sabia de quem era a rodada. Não dá para gravar na rota `/cliente` porque
+    # lá o lote ainda não existe -- ele nasce ao entrar na etapa 3.
+    cliente_harmonit_id: int | None = None
+    cliente_weso_id: int | None = None
 
 
 @router.post("/lote")
@@ -375,6 +382,10 @@ async def abrir_lote(body: LoteInput, usuario=Depends(requer_aba("operacoes"))):
         raise HTTPException(400, f"Tipo de operação desconhecido: {body.perfil}")
     lote = await reg.abrir_lote((usuario or {}).get("login"), body.perfil,
                                 body.termo, _so_doc(body.documento))
+    # A etapa 2 já terminou quando o lote nasce -- gravar o cliente aqui é o
+    # que faz a coluna `etapa` sair de 1.
+    await reg.guardar_cliente(lote, body.cliente_harmonit_id,
+                              body.cliente_weso_id)
     return {"lote": lote}
 
 
@@ -463,6 +474,9 @@ async def criar_uma_placa(body: PlacaInput,
     # e ganhar espaço quebraria a chave que a geração de OS procura.
     if body.recipiente:
         texto = (body.placa or "").strip()
+
+    # Chegou a escrever placa: a rodada está na etapa 3.
+    await reg.marcar_etapa(body.lote, 3)
 
     doc = _so_doc(body.documento or cabecalho.get("documento"))
     comum = dict(placa_digitada=body.placa, placa_gravada=texto,
@@ -1000,6 +1014,9 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
                 "criado" if r.get("ok") else "falhou",
                 placa_gravada=r.get("placa"), descricao=r.get("rotulo"),
                 id_externo=r.get("os_id"), erro=r.get("erro"))
+
+    if body.lote:
+        await reg.encerrar(body.lote)
 
     pendencias = await _gravar_pendencias(body, pre, operacionais, criadas)
 

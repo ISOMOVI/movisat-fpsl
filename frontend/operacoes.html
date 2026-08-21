@@ -645,8 +645,16 @@ async function prepararPlacas() {
   if (!lote) {
     const res = await fetch('/painel/api/operacoes/lote', {
       method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+      /* 🚨 O CLIENTE VAI JUNTO. Ele foi resolvido na etapa 2 e o lote nasce
+         agora; sem mandar aqui, `cliente_harmonit_id` e `cliente_weso_id`
+         ficam nulos no registro para sempre -- foi o que aconteceu com os
+         dois lotes de 21/08, e o Histórico de Operações lê essas colunas. */
       body: JSON.stringify({ perfil: document.getElementById('perfil').value,
-                             termo: extraido.termo, documento: extraido.documento }),
+                             termo: extraido.termo, documento: extraido.documento,
+                             cliente_harmonit_id: (cliente && cliente.harmonit)
+                               ? cliente.harmonit.id : null,
+                             cliente_weso_id: (cliente && cliente.weso)
+                               ? cliente.weso.id : null }),
     });
     lote = (await lerResposta(res)).lote;
   }

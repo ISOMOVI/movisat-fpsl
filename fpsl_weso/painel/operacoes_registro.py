@@ -114,6 +114,40 @@ async def guardar_cliente(lote: str, harmonit_id: int | None,
     await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
+async def marcar_etapa(lote: str, n: int) -> None:
+    """Anota até onde esta rodada chegou. NUNCA anda para trás.
+
+    🚨 ATÉ 21/08 NINGUÉM CHAMAVA NADA DISSO, e a coluna `etapa` ficava em 1
+    para sempre. Os dois lotes de 21/08 estão gravados em `etapa 1` com zero
+    passos -- e o operador tinha chegado à etapa 4 e pedido a prévia. O
+    Histórico de Operações (HST_4.1) lê esta coluna, então ele mostrava toda
+    rodada como se tivesse parado no começo.
+
+    ⚠️ `MAX` e não atribuição: voltar para conferir a etapa 2 não desfaz o que
+    a 3 já gravou nos dois sistemas. O registro é do que ACONTECEU, não de onde
+    a tela está aberta.
+    """
+    def _run():
+        _criar()
+        with storage._connect() as conn:
+            conn.execute(
+                "UPDATE operacoes_lote SET etapa = MAX(etapa, ?) WHERE lote = ?",
+                (int(n), lote))
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def encerrar(lote: str) -> None:
+    """Fecha a rodada. Chamado quando as OS saem -- é o fim do caminho."""
+    def _run():
+        _criar()
+        with storage._connect() as conn:
+            conn.execute(
+                "UPDATE operacoes_lote SET encerrado_em = ?, etapa = MAX(etapa, 4) "
+                "WHERE lote = ? AND encerrado_em IS NULL",
+                (_agora(), lote))
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
 async def registrar(lote: str, etapa: int, sistema: str, acao: str, *,
                     placa_digitada: str | None = None,
                     placa_gravada: str | None = None,
