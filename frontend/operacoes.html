@@ -84,7 +84,6 @@
         <div id="leitura" style="display:none">
           <div class="aviso-info" id="leituraResumo"></div>
           <div id="leituraNaoLidos"></div>
-          <table id="tabelaLeitura"><thead id="cabLeitura"></thead><tbody></tbody></table>
         </div>
       </div>
 
@@ -190,6 +189,7 @@
       <div class="footer-nav">
         <button class="btn btn-ghost" id="btnVoltar" onclick="irPara(etapaAtual - 1)"
                 style="visibility:hidden">← Voltar</button>
+        <span id="faltaDica" class="falta-dica"></span>
         <button class="btn btn-primary" id="btnAvancar" onclick="irPara(etapaAtual + 1)">
           Avançar →
         </button>
@@ -234,27 +234,108 @@ async function lerResposta(res) {
 }
 
 /* ── navegação entre etapas ─────────────────────────────────────────────────
-   🚨 A ORDEM É A REGRA, e é por isso que a aba existe. Hoje dá para gerar OS
-   de placa que não existe na WESO -- foi assim que a OS 16775 saiu sem
+   🚨 A ORDEM É A REGRA, e é por isso que a aba existe. Dá para gerar OS de
+   placa que não existe na WESO -- foi assim que a OS 16775 saiu sem
    equipamento e sem chip. Aqui a etapa N só abre com a N-1 concluída.
-   Na F1 nada conclui nada, então a trava está solta de propósito. */
+
+   🚨 ESTA TRAVA FICOU SOLTA DA F1 ATÉ 21/08. O comentário dizia "na F1 nada
+   conclui nada, então está solta de propósito" e sobreviveu a cinco fases. Em
+   21/08 o operador foi da etapa 1 direto para a 4 e a prévia devolveu 400
+   "Nenhuma placa foi informada" -- o erro certo, na hora errada, depois de
+   todo o trabalho. O registro prova: os dois lotes daquele dia estão em
+   `etapa 1` com ZERO placas gravadas. */
 let etapaAtual = 1;
 const TOTAL_ETAPAS = 4;
 
+/* O que ainda falta na etapa N. String vazia = concluída. A MESMA frase vai
+   para a dica ao lado do botão, para o operador não descobrir o que falta só
+   depois de clicar. */
+function faltaNaEtapa(n) {
+  const p = perfilAtual();
+  if (n === 1) {
+    if (!document.getElementById('perfil').value) return 'escolha o tipo de operação';
+    if (p.sem_termo) return '';
+    if (!extraido) return 'suba o PDF do termo';
+    if (!(extraido.itens || []).length) {
+      return 'o termo foi lido e não trouxe nenhuma placa — confira o documento';
+    }
+    return '';
+  }
+  if (n === 2) {
+    if (!cliente) return 'confira o cliente';
+    if (cliente.situacao === 'sem_harmonit') {
+      return 'o cliente não existe no Harmonit — a operação para aqui';
+    }
+    if (cliente.situacao === 'falta_na_weso') return 'cadastre o cliente na WESO';
+    return '';
+  }
+  if (n === 3) {
+    if (!linhasPlacas.length) return 'informe ao menos uma placa';
+    const semPassar = linhasPlacas.filter((l) => !l.situacao).length;
+    if (semPassar) return `${semPassar} placa(s) ainda não passaram pelos dois sistemas`;
+    const ruins = linhasPlacas.filter((l) => placaFalhou(l.situacao)).length;
+    if (ruins) return `${ruins} placa(s) falharam — resolva antes de gerar OS`;
+    return '';
+  }
+  return '';
+}
+
+/* Falha é o que impede a OS de sair correta: placa que o perfil manda CONFERIR
+   e não achou, ou escrita recusada. `ja_existia` e `ignorado` NÃO são falha --
+   trava que reprova o caminho certo ensina a ignorar a trava. */
+function placaFalhou(s) {
+  if (!s) return false;
+  return ['harmonit', 'weso'].some(
+    (sis) => s[sis] && ['confere_falta', 'falhou'].includes(s[sis].acao));
+}
+
 function irPara(n) {
   if (n < 1 || n > TOTAL_ETAPAS) return;
+  /* Voltar é sempre livre: rever o que já se fez nunca estraga nada. Avançar
+     confere TODAS as etapas anteriores, não só a de agora -- senão o salto de
+     1 para 4 continuaria passando. */
+  if (n > etapaAtual) {
+    for (let i = 1; i < n; i++) {
+      const falta = faltaNaEtapa(i);
+      if (falta) {
+        pintarEtapa(i);
+        msg('msgEtapa' + i, `Para seguir, ${escapeHtml(falta)}.`, 'msg-erro');
+        atualizarAvancar();
+        return;
+      }
+    }
+  }
+  pintarEtapa(n);
+  if (n === 2 && extraido && !cliente) conferirCliente();
+  if (n === 3) prepararPlacas();
+  if (n === 4) carregarApoio();
+  atualizarAvancar();
+}
+
+function pintarEtapa(n) {
   etapaAtual = n;
   for (let i = 1; i <= TOTAL_ETAPAS; i++) {
     const painel = document.getElementById('panel-' + i);
     const bola = document.getElementById('dot-' + i);
     painel.classList.toggle('active', i === n);
     bola.classList.toggle('active', i === n);
-    bola.classList.toggle('done', i < n);
+    bola.classList.toggle('done', i < n && !faltaNaEtapa(i));
     bola.classList.toggle('locked', i > n);
   }
   document.getElementById('btnVoltar').style.visibility = n === 1 ? 'hidden' : 'visible';
   document.getElementById('btnAvancar').style.visibility =
     n === TOTAL_ETAPAS ? 'hidden' : 'visible';
+}
+
+/* O botão diz o que falta ANTES do clique. Botão que só reclama depois de
+   clicado ensina a clicar para descobrir. */
+function atualizarAvancar() {
+  const btn = document.getElementById('btnAvancar');
+  const dica = document.getElementById('faltaDica');
+  if (!btn) return;
+  const falta = faltaNaEtapa(etapaAtual);
+  btn.disabled = !!falta;
+  if (dica) dica.textContent = falta ? 'Falta: ' + falta : '';
 }
 
 /* ── etapa 1: os perfis ─────────────────────────────────────────────────────
@@ -269,7 +350,7 @@ async function carregarPerfis() {
       .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`)
       .join('');
     perfisCarregados = d.perfis;
-    sel.onchange = () => mostrarPerfil(d.perfis);
+    sel.onchange = () => { zerarRodada(); pintarEtapa(1); mostrarPerfil(d.perfis); };
     mostrarPerfil(d.perfis);
   } catch (e) {
     document.getElementById('resumoPerfil').style.display = 'block';
@@ -298,6 +379,29 @@ function mostrarPerfil(perfis) {
   /* Campo de PDF só existe para quem nasce de documento. */
   document.getElementById('anexoWrap').style.display = p.sem_termo ? 'none' : 'block';
   document.getElementById('semTermoWrap').style.display = p.sem_termo ? 'block' : 'none';
+  atualizarAvancar();
+}
+
+/* 🚨 TROCAR O TIPO DE OPERAÇÃO ZERA A RODADA. Sem isto o termo lido para um
+   perfil seguia valendo para outro: o operador trocava de Aditivo para
+   Rescisão e a etapa 3 continuava com as placas do documento anterior, que
+   têm regra diferente. O lote já aberto fica no registro como estava -- ele
+   é histórico do que aconteceu, não rascunho. */
+function zerarRodada() {
+  extraido = null;
+  cliente = null;
+  lote = null;
+  linhasPlacas = [];
+  previa = null;
+  document.getElementById('leitura').style.display = 'none';
+  document.getElementById('cliente').style.display = 'none';
+  document.getElementById('docWrap').style.display = 'none';
+  document.getElementById('dropLabel').textContent =
+    'Clique ou arraste o PDF do termo aqui';
+  document.getElementById('arquivo').value = '';
+  ['msgEtapa1', 'msgEtapa2', 'msgEtapa3', 'msgEtapa4'].forEach((id) => msg(id, '', ''));
+  document.getElementById('btnGerar').disabled = true;
+  document.getElementById('previaOS').innerHTML = '';
 }
 
 /* ── etapa 1: ler o termo ───────────────────────────────────────────────────
@@ -340,6 +444,7 @@ async function lerTermo() {
   } catch (e) {
     extraido = null;
     msg('msgEtapa1', escapeHtml(e.message), 'msg-erro');
+    atualizarAvancar();
   }
 }
 
@@ -363,27 +468,14 @@ function desenharLeitura(d) {
     naoLidos.map((x) => `<code>${escapeHtml(x.texto || x)}</code>`).join(' · ') +
     `</div>`;
 
-  /* 🚨 A SUBSTITUIÇÃO TEM DOIS VEÍCULOS POR LINHA -- o que sai e o que entra.
-     É o único perfil assim, porque nele o equipamento muda de carro. O
-     extrator devolve isso em `pares`, não em `placas`. */
-  const temEntrada = (d.resumo || {}).com_entrada > 0;
-  document.getElementById('cabLeitura').innerHTML = `<tr>
-    <th style="width:34px">#</th><th>Veículo${temEntrada ? ' que SAI' : ''}</th>
-    <th>Placa</th><th style="width:120px">Como fica</th>` +
-    (temEntrada ? '<th>Veículo que ENTRA</th><th style="width:120px">Placa</th>' : '') +
-    `</tr>`;
+  /* 🚨 A TABELA DE PLACAS SAIU DAQUI EM 21/08 (pedido seu). A etapa 1 diz o que
+     o TERMO traz; a placa é assunto da etapa 3, e ela é editável lá. Duas
+     tabelas com a mesma informação, uma delas só de leitura, ensinavam que a
+     etapa 3 era repetição -- e a etapa 1 ficava com cara de lugar onde se
+     corrige placa, que não é.
 
-  document.querySelector('#tabelaLeitura tbody').innerHTML = (d.itens || [])
-    .map((i, n) => `<tr>
-      <td>${n + 1}</td>
-      <td>${i.sem_descricao ? '<span class="badge badge-red">sem descrição</span>'
-                            : escapeHtml(i.veiculo)}</td>
-      <td>${escapeHtml(i.placa)}</td>
-      <td><code>${escapeHtml(i.placa_gravada)}</code>${
-        i.convencional ? '' : ' <span class="badge badge-blue">chassi/série</span>'}</td>` +
-      (temEntrada ? `<td>${escapeHtml(i.veiculo_entrada || '—')}</td>
-                     <td><code>${escapeHtml(i.placa_entrada_gravada || '—')}</code></td>` : '') +
-    `</tr>`).join('');
+     O que NÃO saiu: as linhas sem placa reconhecida, logo acima. Elas não são
+     resumo, são o aviso de que o documento tem coisa que ninguém leu. */
 
   /* As duas taxas vêm DO TERMO, não fixadas em código -- valor de serviço em
      código apodrece igual a id de tipo. Aparecem aqui para conferência. */
@@ -393,6 +485,17 @@ function desenharLeitura(d) {
       ` · local diferente <strong>${escapeHtml(d.taxa_local_diferente || '—')}</strong>`;
   }
   document.getElementById('leitura').style.display = 'block';
+
+  /* 🚨 SEM PLACA, O ERRO É AQUI (pedido seu, 21/08). Até hoje ele só aparecia
+     na etapa 4, como 400 "Nenhuma placa foi informada" -- o erro certo depois
+     de todo o trabalho. O termo que não traz veículo nenhum não avança. */
+  if (!(d.itens || []).length) {
+    msg('msgEtapa1',
+        '<strong>Este termo foi lido e não trouxe nenhuma placa.</strong> ' +
+        'Não há operação possível a partir dele — confira se o documento é o ' +
+        'certo para o tipo escolhido.', 'msg-erro');
+  }
+  atualizarAvancar();
 }
 
 /* ── etapa 2: o cliente ─────────────────────────────────────────────────────
@@ -434,6 +537,7 @@ async function conferirCliente() {
     cliente = null;
     msg('msgEtapa2', escapeHtml(e.message), 'msg-erro');
   }
+  atualizarAvancar();
 }
 
 function desenharCliente(d) {
@@ -482,14 +586,10 @@ async function criarClienteNaWeso() {
   }
 }
 
-/* Ao entrar na etapa 2, consulta sozinho -- perguntar "quer conferir?" para
-   algo que sempre se quer conferir é clique a mais. */
-const irParaBase = irPara;
-irPara = function (n) {
-  irParaBase(n);
-  if (n === 2 && extraido && !cliente) conferirCliente();
-  if (n === 3) prepararPlacas();
-};
+/* ⚠️ O que entrar ao chegar em cada etapa mora dentro do `irPara`, uma vez só.
+   Até 21/08 havia DOIS `irPara = function(...)` reatribuindo a função depois
+   de declarada, um na etapa 2 e outro na 4. Encadeamento assim esconde a
+   ordem de execução e foi o que deixou a trava passar despercebida. */
 
 /* ── etapa 3: as placas ─────────────────────────────────────────────────────
    🚨 UMA REQUISIÇÃO POR PLACA, NÃO LOTE. Medido em 17/08: gravar custa ~4s por
@@ -630,13 +730,15 @@ async function processarPlacas() {
   prog.textContent = '';
   btn.disabled = false;
 
-  const ruins = linhasPlacas.filter((l) => ['falhou', 'confere_falta'].includes(
-    ((l.situacao || {}).weso || {}).acao) || ['falhou', 'confere_falta'].includes(
-    ((l.situacao || {}).harmonit || {}).acao));
+  /* Uma definição só de "falhou", compartilhada com a trava de etapas. Duas
+     listas de `acao` em dois lugares divergem na primeira vez que alguém
+     acrescentar um estado novo. */
+  const ruins = linhasPlacas.filter((l) => placaFalhou(l.situacao));
   msg('msgEtapa3', ruins.length
       ? `<strong>${ruins.length} linha(s) com problema.</strong> Corrija e clique de novo — o que já resolveu não é refeito.`
       : `Todas as ${linhasPlacas.length} linhas resolvidas e conferidas relendo.`,
       ruins.length ? 'msg-erro' : 'msg-ok');
+  atualizarAvancar();
 }
 
 /* ── etapa 4: as OS ─────────────────────────────────────────────────────────
@@ -873,12 +975,6 @@ async function gerarOS() {
     msg('msgEtapa4', escapeHtml(e.message), 'msg-erro');
   }
 }
-
-const irParaEtapa4 = irPara;
-irPara = function (n) {
-  irParaEtapa4(n);
-  if (n === 4) carregarApoio();
-};
 
 irPara(1);
 carregarPerfis();

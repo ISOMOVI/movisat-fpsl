@@ -63,7 +63,12 @@
   .btn-primary:hover { background:#1d4ed8; }
   .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
   .btn-ghost { background:var(--card); color:var(--text); border-color:var(--border); }
-  .footer-nav { display:flex; justify-content:space-between; margin-top:20px; }
+  .footer-nav { display:flex; justify-content:space-between; align-items:center;
+                gap:12px; margin-top:20px; }
+  /* A dica do que falta fica ENTRE Voltar e Avancar, na linha do botao que
+     ela explica. Aviso longe do botao vira decoracao. */
+  .falta-dica { flex:1; text-align:right; font-size:.78rem; color:var(--text2); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
   table { width:100%; border-collapse:collapse; font-size:.84rem; }
   th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase;
        letter-spacing:.03em; padding:8px; border-bottom:1.5px solid var(--border); }
