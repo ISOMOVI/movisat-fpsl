@@ -196,13 +196,43 @@ async def http():
 # ── 4. contrato com a tela ───────────────────────────────────────────────────
 print("\n[4] contrato entre a rota de perfis e o HTML que a consome")
 # lê o HTML e extrai os campos que ele usa de cada perfil
-# ⚠️ SÓ O TRECHO QUE LÊ PERFIL. Varrer o arquivo inteiro atrás de `x.campo`
+# ⚠️ SÓ AS FUNÇÕES QUE LEEM PERFIL. Varrer o arquivo inteiro atrás de `x.campo`
 # pegava `x.texto`, que é de outra lambda -- a das linhas não lidas do termo
 # -- e reprovava a rota de perfis por um campo que não é dela. Trava que
 # mede demais reprova o que está certo, e ensina a ignorar a trava.
-_ini = html.index("function mostrarPerfil")
-_fim = html.index("}", html.index("caixa.textContent"))
-campos_no_html = set(re.findall(r"\bp\.([a-z_]+)\b", html[_ini:_fim]))
+#
+# 🚨 E NÃO SE ANCORA EM LINHA. Até 21/08 este trecho recortava `mostrarPerfil`
+# até o `}` depois de `caixa.textContent` -- a linha que montava o resumo do
+# perfil. Ela saiu junto com os textos explicativos e o teste quebrou com
+# `substring not found`. Pior: via UMA função, e o perfil é lido em cinco.
+
+
+def _sem_comentarios(fonte):
+    """Comentário não é código: nome citado ali não é campo consumido."""
+    fonte = re.sub(r"/\*.*?\*/", " ", fonte, flags=re.S)
+    return "\n".join(l for l in fonte.split("\n")
+                     if not l.lstrip().startswith("//"))
+
+
+def _campos_de_perfil(fonte):
+    """Todo `p.<campo>` dentro de função que consulta o perfil, mais os
+    `perfilAtual().<campo>` diretos."""
+    limpo = _sem_comentarios(fonte)
+    achados = set(re.findall(r"perfilAtual\(\)\.([a-z_]+)", limpo))
+    # 🚨 O CRITÉRIO É O BINDING, não a vizinhança. `carregarApoio` chama
+    # `perfilAtual()` E declara `p` como um PROBLEMA (`p.descricao`) -- contar
+    # `p.` ali fazia o teste exigir `descricao` da rota de perfis, que não é
+    # dela. Só entra função onde `p` foi atribuído AO PERFIL.
+    ligacao = re.compile(
+        r"const p = (?:perfilAtual\(\)|\(perfis \|\| \[\]\)\.find)")
+    # as funções são declarações de topo, então dividir por elas é confiável
+    for pedaco in re.split(r"\n(?=(?:async )?function )", limpo):
+        if ligacao.search(pedaco):
+            achados |= set(re.findall(r"\bp\.([a-z_]+)\b", pedaco))
+    return achados
+
+
+campos_no_html = _campos_de_perfil(html)
 entregues = set(operacoes_router.listar_perfis.__doc__ and [] or [])
 amostra = asyncio.run(operacoes_router.listar_perfis(_=None))["perfis"][0]
 entregues = set(amostra)

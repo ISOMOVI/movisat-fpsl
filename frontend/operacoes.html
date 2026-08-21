@@ -34,15 +34,6 @@
   <main class="main">
     <h1>Operações</h1>
 
-    <div class="aviso" id="avisoConstrucao">
-      <strong>Esta aba substitui Cadastro de Placas e Gerar OS.</strong> As duas
-      continuam funcionando normalmente ate a troca. Aqui o fluxo vai do termo
-      a OS numa tela so. <strong>As etapas 3 e 4 escrevem em sistema externo</strong>
-      &mdash; a 3 cria placa na WESO e no Harmonit, a 4 grava as OS. Confira a
-      previa antes de clicar. O que ficar pendente aparece em
-      <a href="/painel/operacoes-historico">Historico de Operacoes</a>.
-    </div>
-
     <div class="steps">
       <div class="step-dot active" id="dot-1">1</div>
       <div class="step-line"></div>
@@ -54,18 +45,22 @@
     </div>
 
     <div class="card">
+      <!-- Retomada: so aparece quando ha lote pendente no navegador. -->
+      <div id="barraRetomar" class="retomar" style="display:none">
+        <div id="retomarTexto"></div>
+        <div class="retomar-acoes">
+          <button class="btn btn-primary" onclick="retomarLote()">Continuar</button>
+          <button class="btn btn-ghost" onclick="descartarLote()">Descartar</button>
+        </div>
+      </div>
+
       <!-- ETAPA 1 — documento -->
       <div class="panel active" id="panel-1">
-        <div>
-          <div class="etapa-titulo">1 · Documento</div>
-          <div class="etapa-sub">O tipo de operação decide todo o resto: se há
-            termo, se a etapa 3 cria ou confere, e quais OS nascem no fim.</div>
-        </div>
+        <div class="etapa-titulo">1 · Documento</div>
         <div>
           <label for="perfil">Tipo de operação</label>
           <select id="perfil"></select>
         </div>
-        <div id="resumoPerfil" class="aviso-info" style="display:none"></div>
 
         <!-- Some inteiro nos perfis sem termo: oferecer o campo seria oferecer
              um caminho que não existe. -->
@@ -75,9 +70,6 @@
             <div id="dropLabel">Clique ou arraste o PDF do termo aqui</div>
             <input type="file" id="arquivo" accept="application/pdf" onchange="aoEscolher()">
           </div>
-        </div>
-        <div id="semTermoWrap" style="display:none" class="aviso-info">
-          Este tipo não nasce de documento — a entrada digitada entra na F3.
         </div>
 
         <div class="msg" id="msgEtapa1" style="display:none"></div>
@@ -89,11 +81,7 @@
 
       <!-- ETAPA 2 — cliente -->
       <div class="panel" id="panel-2">
-        <div>
-          <div class="etapa-titulo">2 · Cliente</div>
-          <div class="etapa-sub">Harmonit e WESO lado a lado. Falta na WESO,
-            cadastra. Falta no Harmonit, para.</div>
-        </div>
+        <div class="etapa-titulo">2 · Cliente</div>
         <!-- 🚨 SÓ APARECE QUANDO O TERMO NÃO TRAZ O DOCUMENTO. Medido em
              19/08: a rescisão vem sem `cnpj` e sem `cpf`, só com o nome. E
              cruzar por nome é proibido -- o mesmo CNPJ tem razão social
@@ -101,9 +89,8 @@
              nome do termo à vista para conferir. -->
         <div id="docWrap" style="display:none">
           <div class="aviso bloco">
-            <strong>Este termo não traz o CNPJ/CPF.</strong> No termo o cliente
-            é <strong id="nomeNoTermo"></strong>. Informe o documento — o
-            cruzamento é sempre por documento, nunca por nome.
+            <strong>Este termo não traz o CNPJ/CPF.</strong>
+            No termo: <strong id="nomeNoTermo"></strong>
           </div>
           <div class="campo-com-botao">
             <input type="text" id="docDigitado" placeholder="CNPJ ou CPF do cliente do termo">
@@ -135,12 +122,7 @@
 
       <!-- ETAPA 3 — placas -->
       <div class="panel" id="panel-3">
-        <div>
-          <div class="etapa-titulo">3 · Placas</div>
-          <div class="etapa-sub">Cria ou confere, conforme o perfil. É o ponto
-            em que a tela escreve nos dois sistemas.</div>
-        </div>
-        <div class="aviso-info" id="placasInfo"></div>
+        <div class="etapa-titulo">3 · Placas</div>
         <div class="msg" id="msgEtapa3" style="display:none"></div>
 
         <!-- 🚨 SÓ NOS PERFIS SEM TERMO (decisão do usuário, 21/08). Nos outros
@@ -151,7 +133,6 @@
             <select id="placaDoCliente"></select>
             <button class="btn btn-ghost" onclick="adicionarPlaca()">Adicionar</button>
           </div>
-          <div class="ajuda" id="addPlacaAjuda"></div>
         </div>
 
         <table id="tabelaPlacas"><thead id="cabPlacas"></thead><tbody></tbody></table>
@@ -163,11 +144,7 @@
 
       <!-- ETAPA 4 — OS -->
       <div class="panel" id="panel-4">
-        <div>
-          <div class="etapa-titulo">4 · Ordens de serviço</div>
-          <div class="etapa-sub">Mostra o que vai ser gravado, não o que foi
-            digitado.</div>
-        </div>
+        <div class="etapa-titulo">4 · Ordens de serviço</div>
         <div class="aviso-info" id="osInfo"></div>
         <div class="msg" id="msgEtapa4" style="display:none"></div>
 
@@ -183,7 +160,6 @@
           <div class="campo">
             <label for="prioridadeId">Prioridade</label>
             <select id="prioridadeId"></select>
-            <div class="ajuda">Só nas operacionais — a financeira é sempre Normal.</div>
           </div>
           <div class="campo" id="campoProblema" hidden>
             <label for="problemaId">Problema</label>
@@ -206,10 +182,8 @@
 
         <div class="acoes">
           <button class="btn btn-ghost" onclick="conferirOS()">Ver prévia</button>
-          <button class="btn btn-primary" id="btnGerar" onclick="gerarOS()" disabled>
+          <button class="btn btn-perigo" id="btnGerar" onclick="gerarOS()" disabled>
             Gerar as OS</button>
-          <span class="dim-pequeno" id="dicaPrevia">A prévia monta as OS sem
-            gravar nada — é ela que libera o Gerar.</span>
           <span id="progressoOS" class="dim-pequeno"></span>
         </div>
       </div>
@@ -307,28 +281,24 @@ const TOTAL_ETAPAS = 4;
 function faltaNaEtapa(n) {
   const p = perfilAtual();
   if (n === 1) {
-    if (!document.getElementById('perfil').value) return 'escolha o tipo de operação';
+    if (!document.getElementById('perfil').value) return 'escolha o tipo';
     if (p.sem_termo) return '';
     if (!extraido) return 'suba o PDF do termo';
-    if (!(extraido.itens || []).length) {
-      return 'o termo foi lido e não trouxe nenhuma placa — confira o documento';
-    }
+    if (!(extraido.itens || []).length) return 'o termo não trouxe placa';
     return '';
   }
   if (n === 2) {
     if (!cliente) return 'confira o cliente';
-    if (cliente.situacao === 'sem_harmonit') {
-      return 'o cliente não existe no Harmonit — a operação para aqui';
-    }
+    if (cliente.situacao === 'sem_harmonit') return 'cliente não existe no Harmonit';
     if (cliente.situacao === 'falta_na_weso') return 'cadastre o cliente na WESO';
     return '';
   }
   if (n === 3) {
     if (!linhasPlacas.length) return 'informe ao menos uma placa';
     const semPassar = linhasPlacas.filter((l) => !l.situacao).length;
-    if (semPassar) return `${semPassar} placa(s) ainda não passaram pelos dois sistemas`;
+    if (semPassar) return `${semPassar} placa(s) pendentes`;
     const ruins = linhasPlacas.filter((l) => placaFalhou(l.situacao)).length;
-    if (ruins) return `${ruins} placa(s) falharam — resolva antes de gerar OS`;
+    if (ruins) return `${ruins} placa(s) com falha`;
     return '';
   }
   return '';
@@ -353,7 +323,7 @@ function irPara(n) {
       const falta = faltaNaEtapa(i);
       if (falta) {
         pintarEtapa(i);
-        msg('msgEtapa' + i, `Para seguir, ${escapeHtml(falta)}.`, 'msg-erro');
+        msg('msgEtapa' + i, escapeHtml(falta), 'msg-erro');
         atualizarAvancar();
         return;
       }
@@ -365,8 +335,7 @@ function irPara(n) {
        gente, pelo botão Buscar. Sem este recado a etapa 2 ficava em branco e
        parecia quebrada. */
     if (perfilAtual().sem_termo) {
-      msg('msgEtapa2', 'Este tipo não nasce de documento: use <strong>Buscar</strong> '
-          + 'para escolher o cliente da operação.', '');
+      msg('msgEtapa2', 'Escolha o cliente em <strong>Buscar</strong>.', '');
     } else if (extraido) {
       conferirCliente();
     }
@@ -399,7 +368,9 @@ function atualizarAvancar() {
   if (!btn) return;
   const falta = faltaNaEtapa(etapaAtual);
   btn.disabled = !!falta;
-  if (dica) dica.textContent = falta ? 'Falta: ' + falta : '';
+  /* Curta, por escolha dele: duas ou tres palavras, nao frase. Botao
+     desabilitado sem motivo foi a reclamacao do "botao conferir faz o que?". */
+  if (dica) dica.textContent = falta;
 }
 
 /* ── etapa 1: os perfis ─────────────────────────────────────────────────────
@@ -417,9 +388,8 @@ async function carregarPerfis() {
     sel.onchange = () => { zerarRodada(); pintarEtapa(1); mostrarPerfil(d.perfis); };
     mostrarPerfil(d.perfis);
   } catch (e) {
-    document.getElementById('resumoPerfil').style.display = 'block';
-    document.getElementById('resumoPerfil').textContent =
-      'Não consegui carregar os tipos de operação: ' + e.message;
+    msg('msgEtapa1', 'Não consegui carregar os tipos de operação: '
+        + escapeHtml(e.message), 'msg-erro');
   }
 }
 
@@ -428,21 +398,9 @@ async function carregarPerfis() {
 function mostrarPerfil(perfis) {
   const id = document.getElementById('perfil').value;
   const p = (perfis || []).find((x) => x.id === id);
-  const caixa = document.getElementById('resumoPerfil');
-  if (!p) { caixa.style.display = 'none'; return; }
-  const partes = [
-    p.sem_termo ? 'sem termo — entrada manual' : 'exige o PDF do termo',
-    { cria: 'etapa 3 CRIA as placas',
-      confere: 'etapa 3 CONFERE as placas',
-      cria_entrada: 'etapa 3 cria a placa de ENTRADA' }[p.etapa_placas] || p.etapa_placas,
-    p.recipiente ? `recipiente ${p.recipiente} (só na WESO)` : null,
-    p.sem_financeira ? 'sem OS financeira' : null,
-  ].filter(Boolean);
-  caixa.style.display = 'block';
-  caixa.textContent = partes.join(' · ');
+  if (!p) return;
   /* Campo de PDF só existe para quem nasce de documento. */
   document.getElementById('anexoWrap').style.display = p.sem_termo ? 'none' : 'block';
-  document.getElementById('semTermoWrap').style.display = p.sem_termo ? 'block' : 'none';
   atualizarAvancar();
 }
 
@@ -469,6 +427,7 @@ function zerarRodada() {
   document.getElementById('previaOS').innerHTML = '';
   servicoSelecionado = null;
   placasDoCliente = [];
+  esquecerLote();
   document.getElementById('addPlacaWrap').style.display = 'none';
   document.getElementById('servicoCampo').value = '';
   document.getElementById('clienteCampo').value = '';
@@ -522,9 +481,7 @@ function iniciarEspera(idAlvo, oque) {
     }
     const pct = Math.min(100, Math.round((s / TETO_ESPERA_S) * 100));
     el.innerHTML = `${escapeHtml(oque)}… <strong>${s}s</strong>` +
-      `<div class="barra"><div class="barra-cheia" style="width:${pct}%"></div></div>` +
-      '<div class="ajuda">A WESO responde entre 6s e 60s. Não clique de novo — ' +
-      'o pedido continua correndo no servidor, e repetir uma escrita duplica.</div>';
+      `<div class="barra"><div class="barra-cheia" style="width:${pct}%"></div></div>`;
   };
   tick();
   const timer = setInterval(tick, 1000);
@@ -551,6 +508,21 @@ async function lerTermo() {
       `/painel/api/operacoes/extrair?perfil=${encodeURIComponent(perfil)}`,
       { method: 'POST', headers: auth(), body: corpo });
     extraido = await lerResposta(res);
+    /* Termo novo e rodada nova: o que estava montado era do documento
+       anterior. Este e um dos dois casos que zeram a lista de propósito -- o
+       outro e trocar de perfil. Voltar uma etapa NAO e. */
+    linhasPlacas = [];
+    lote = null;
+
+    /* 🚨 A RETOMADA SE FECHA AQUI. Se o termo que acabou de subir e o mesmo do
+       lote pendente, reusa o lote em vez de abrir outro -- e e isso que faz o
+       registro continuar a mesma rodada em vez de comecar uma paralela. */
+    if (retomando && String(retomando.termo || '') === String(extraido.termo || '')) {
+      lote = retomando.lote;
+      /* Renova o carimbo: a rodada continua AGORA, nao quando ela comecou.
+         Sem isto uma rodada retomada perto das 24h expiraria no meio dela. */
+      guardarLote();
+    }
     desenharLeitura(extraido);
     msg('msgEtapa1', '', '');
   } catch (e) {
@@ -575,8 +547,7 @@ function desenharLeitura(d) {
   const naoLidos = d.sem_placa || [];
   document.getElementById('leituraNaoLidos').innerHTML = !naoLidos.length ? '' :
     `<div class="msg msg-erro bloco">` +
-    `<strong>${naoLidos.length} linha(s) sem placa reconhecida.</strong> ` +
-    `Nada é inventado a partir delas — você decide na etapa 3:<br>` +
+    `<strong>${naoLidos.length} linha(s) sem placa reconhecida:</strong><br>` +
     naoLidos.map((x) => `<code>${escapeHtml(x.texto || x)}</code>`).join(' · ') +
     `</div>`;
 
@@ -809,6 +780,110 @@ let lote = null;
 let linhasPlacas = [];
 let placasDoCliente = [];
 
+/* 🚨 ID ESTAVEL POR LINHA, e nao indice. O botao ⇄ troca veiculo com placa e o
+   ✕ remove linha do meio da lista -- qualquer chave posicional quebra junto.
+   A linha de ENTRADA da substituicao aponta para a de SAIDA por `origem`, e e
+   assim que a `corpoOS` monta o par. Antes ela casava pelo TEXTO do veiculo, e
+   na substituicao os dois veiculos sao diferentes por definicao: o equipamento
+   muda de carro. */
+/* ── retomar ────────────────────────────────────────────────────────────────
+   A chave fica no navegador porque e do operador, nao do servidor: e ele que
+   estava no meio de uma rodada. O servidor ja sabe o que aconteceu no lote --
+   o que faltava era alguem perguntar. */
+const CHAVE_LOTE = 'fpsl_operacoes_lote';
+
+function guardarLote() {
+  if (!lote) return;
+  try {
+    localStorage.setItem(CHAVE_LOTE, JSON.stringify({
+      lote,
+      perfil: document.getElementById('perfil').value,
+      termo: (extraido && extraido.termo) || null,
+      documento: (extraido && extraido.documento) || null,
+      quando: Date.now(),
+    }));
+  } catch (e) { /* navegador sem storage nao impede trabalhar */ }
+}
+
+function esquecerLote() {
+  try { localStorage.removeItem(CHAVE_LOTE); } catch (e) { /* idem */ }
+}
+
+function lotePendente() {
+  try {
+    const cru = localStorage.getItem(CHAVE_LOTE);
+    if (!cru) return null;
+    const d = JSON.parse(cru);
+    /* Mais de 24h nao e "rodada em andamento", e lixo. */
+    if (!d || !d.lote || (Date.now() - (d.quando || 0)) > 86400000) {
+      esquecerLote();
+      return null;
+    }
+    return d;
+  } catch (e) { return null; }
+}
+
+let retomando = null;
+
+async function oferecerRetomada() {
+  const d = lotePendente();
+  if (!d) return;
+  let resumo = null;
+  try {
+    const r = await fetch('/painel/api/operacoes/lote/' + encodeURIComponent(d.lote),
+                          { headers: auth() });
+    resumo = await lerResposta(r);
+  } catch (e) {
+    /* Lote que o servidor nao conhece mais nao serve para nada. */
+    esquecerLote();
+    return;
+  }
+  const feitas = Object.keys(resumo.resolvidas || {}).length;
+  if (!feitas) { esquecerLote(); return; }
+
+  retomando = { ...d, resolvidas: resumo.resolvidas || {} };
+  document.getElementById('retomarTexto').innerHTML =
+    `Rodada em andamento — termo <strong>${escapeHtml(d.termo || '—')}</strong>, ` +
+    `<strong>${feitas}</strong> placa(s) já resolvida(s).`;
+  document.getElementById('barraRetomar').style.display = '';
+}
+
+function retomarLote() {
+  if (!retomando) return;
+  document.getElementById('perfil').value = retomando.perfil;
+  mostrarPerfil(perfisCarregados);
+  document.getElementById('barraRetomar').style.display = 'none';
+  msg('msgEtapa1',
+      `Suba o termo <strong>${escapeHtml(retomando.termo || '')}</strong> de novo.`, '');
+}
+
+function descartarLote() {
+  esquecerLote();
+  retomando = null;
+  document.getElementById('barraRetomar').style.display = 'none';
+}
+
+/* Marca como resolvido o que o registro do lote diz que ja terminou. Sem isto
+   a retomada seria so reabrir a tela: as linhas voltariam sem badge e o
+   operador clicaria em Cadastrar de novo. */
+function aplicarResolvidas(resolvidas) {
+  let n = 0;
+  linhasPlacas.forEach((l) => {
+    const sistemas = resolvidas[l.placa];
+    if (!sistemas || !sistemas.length) return;
+    l.situacao = {};
+    sistemas.forEach((sis) => { l.situacao[sis] = { acao: 'ja_existia' }; });
+    n += 1;
+  });
+  return n;
+}
+
+let proximaLinha = 1;
+function novaLinha(dados) {
+  return Object.assign({ id: proximaLinha++, recipiente: false, entrada: false,
+                         situacao: null }, dados);
+}
+
 function perfilAtual() {
   const id = document.getElementById('perfil').value;
   return (perfisCarregados || []).find((p) => p.id === id) || {};
@@ -827,10 +902,6 @@ async function prepararPlacas() {
     document.getElementById('addPlacaWrap').style.display = 'block';
     await carregarPlacasDoCliente();
     if (!linhasPlacas.length) desenharPlacas();
-    document.getElementById('placasInfo').innerHTML =
-      (cria ? '<strong>Este tipo CRIA as placas</strong> nos dois sistemas.'
-            : '<strong>Este tipo apenas CONFERE.</strong>') +
-      ' Escolha as placas do cliente na lista — pode adicionar mais de uma.';
     document.getElementById('btnPlacas').textContent = cria ? 'Cadastrar' : 'Conferir';
     await garantirLote();
     atualizarAvancar();
@@ -843,29 +914,27 @@ async function prepararPlacas() {
     return;
   }
 
-  /* 🚨 O RECIPIENTE ENTRA COMO LINHA PRÓPRIA, e só na WESO. Ele é bancada do
-     setor de configuração, não veículo do cliente. Deixá-lo implícito foi o
-     que fez a manutenção depender de leitura ao vivo por meses. */
-  linhasPlacas = [];
-  (extraido.itens || []).forEach((i) => {
-    linhasPlacas.push({ veiculo: i.veiculo, placa: i.placa_gravada,
-                        recipiente: false, situacao: null });
-    if (i.placa_entrada_gravada) {
-      linhasPlacas.push({ veiculo: i.veiculo_entrada, placa: i.placa_entrada_gravada,
-                          recipiente: false, entrada: true, situacao: null });
-    }
-    if (extraido.recipiente_sufixo) {
-      linhasPlacas.push({
-        veiculo: '(bancada)',
-        placa: i.placa_gravada.replace(/\s+/g, '') + extraido.recipiente_sufixo,
-        recipiente: true, situacao: null });
-    }
-  });
+  /* 🚨 SO MONTA SE AINDA NAO HA LINHA. Ate 21/08 esta funcao fazia
+     `linhasPlacas = []` e reconstruia TODA vez que a etapa 3 abria -- e ela
+     abre a cada `irPara(3)`. Medido: grava 2 placas nos dois sistemas, volta
+     para a etapa 2, retorna, e a `situacao` das duas some. O operador clicaria
+     em Cadastrar de novo e tentaria RECRIAR o que existe.
 
-  document.getElementById('placasInfo').innerHTML =
-    (cria ? '<strong>Este tipo CRIA as placas</strong> nos dois sistemas.'
-          : '<strong>Este tipo apenas CONFERE.</strong> Placa que não existir é apontada, nunca criada — o dado é que está errado.')
-    + ` ${linhasPlacas.length} linha(s).`;
+     O que zera a lista e trocar de perfil (`zerarRodada`) ou subir outro termo
+     (`lerTermo`) -- os dois casos em que a rodada realmente recomeca. Voltar
+     uma etapa nao e um deles. */
+  if (!linhasPlacas.length) {
+    montarLinhasDoTermo();
+    if (retomando && lote === retomando.lote) {
+      const n = aplicarResolvidas(retomando.resolvidas);
+      if (n) {
+        msg('msgEtapa3',
+            `<strong>${n} placa(s)</strong> já resolvidas nesta rodada.`, 'msg-ok');
+      }
+      retomando = null;
+    }
+  }
+
   document.getElementById('btnPlacas').textContent = cria ? 'Cadastrar' : 'Conferir';
   desenharPlacas();
 
@@ -884,7 +953,33 @@ async function prepararPlacas() {
                                ? cliente.weso.id : null }),
     });
     lote = (await lerResposta(res)).lote;
+    guardarLote();
   }
+}
+
+/* 🚨 O RECIPIENTE ENTRA COMO LINHA PROPRIA, e so na WESO. Ele e bancada do
+   setor de configuracao, nao veiculo do cliente. Deixa-lo implicito foi o que
+   fez a manutencao depender de leitura ao vivo por meses. */
+function montarLinhasDoTermo() {
+  linhasPlacas = [];
+  (extraido.itens || []).forEach((i) => {
+    const saida = novaLinha({ veiculo: i.veiculo, placa: i.placa_gravada });
+    linhasPlacas.push(saida);
+
+    /* A linha de entrada guarda de QUAL saida ela e o destino. E o unico
+       vinculo confiavel: veiculo e placa sao editaveis na tabela. */
+    if (i.placa_entrada_gravada) {
+      linhasPlacas.push(novaLinha({ veiculo: i.veiculo_entrada,
+                                    placa: i.placa_entrada_gravada,
+                                    entrada: true, origem: saida.id }));
+    }
+    if (extraido.recipiente_sufixo) {
+      linhasPlacas.push(novaLinha({
+        veiculo: '(bancada)',
+        placa: i.placa_gravada.replace(/\s+/g, '') + extraido.recipiente_sufixo,
+        recipiente: true, origem: saida.id }));
+    }
+  });
 }
 
 /* ── perfis sem termo: as placas vêm da base local ──────────────────────────
@@ -898,11 +993,9 @@ async function prepararPlacas() {
    horas". O sync do Harmonit roda de 12 em 12 h, então é margem dobrada. */
 async function carregarPlacasDoCliente() {
   const sel = document.getElementById('placaDoCliente');
-  const ajuda = document.getElementById('addPlacaAjuda');
   const id = (cliente && cliente.harmonit) ? cliente.harmonit.id : null;
   if (!id) {
     sel.innerHTML = '<option value="">(escolha o cliente na etapa 2)</option>';
-    ajuda.textContent = '';
     return;
   }
   try {
@@ -915,12 +1008,8 @@ async function carregarPlacasDoCliente() {
       ? placasDoCliente.map((v, n) =>
           `<option value="${n}">${escapeHtml(v.placa)} — ${escapeHtml(v.veiculo || '')}</option>`).join('')
       : '<option value="">(este cliente não tem veículo na base)</option>';
-    ajuda.textContent = placasDoCliente.length
-      ? `${placasDoCliente.length} veículo(s) do cliente, da base local (sync a cada 12 h).`
-      : 'Nenhum veículo deste cliente na base local.';
   } catch (e) {
     sel.innerHTML = '<option value="">(não consegui ler a base)</option>';
-    ajuda.textContent = e.message;
   }
 }
 
@@ -938,17 +1027,17 @@ function adicionarPlaca() {
     msg('msgEtapa3', `A placa ${escapeHtml(v.placa)} já está na lista.`, 'aviso');
     return;
   }
-  linhasPlacas.push({ veiculo: v.veiculo, placa: v.placa,
-                      recipiente: false, situacao: null });
+  const saida = novaLinha({ veiculo: v.veiculo, placa: v.placa });
+  linhasPlacas.push(saida);
 
   /* 🚨 O RECIPIENTE ACOMPANHA A PLACA, igual ao caminho do termo. A manutenção
      com troca tem sufixo `-MANUT`, e ele nasce NA TELA desde 19/08 -- é o que
      tirou a leitura ao vivo da WESO do caminho crítico. */
   const p = perfilAtual();
   if (p.recipiente) {
-    linhasPlacas.push({ veiculo: '(bancada)',
-                        placa: v.placa.replace(/\s+/g, '') + p.recipiente,
-                        recipiente: true, situacao: null });
+    linhasPlacas.push(novaLinha({ veiculo: '(bancada)',
+                                  placa: v.placa.replace(/\s+/g, '') + p.recipiente,
+                                  recipiente: true, origem: saida.id }));
   }
   msg('msgEtapa3', '', '');
   desenharPlacas();
@@ -960,13 +1049,13 @@ function adicionarPlaca() {
 function removerPlaca(n) {
   lerCampos();
   const alvo = linhasPlacas[n];
-  linhasPlacas = linhasPlacas.filter((l, i) => {
-    if (i === n) return false;
-    /* O recipiente da placa removida vai junto: ele não existe sozinho. */
-    if (alvo && !alvo.recipiente && l.recipiente
-        && l.placa.startsWith(alvo.placa.replace(/\s+/g, ''))) return false;
-    return true;
-  });
+  if (!alvo) return;
+  /* 🚨 LEVA JUNTO O QUE DEPENDE DELA: recipiente e placa de entrada nao
+     existem sozinhos. Antes isto comparava o TEXTO da placa com `startsWith`,
+     que erra assim que alguem edita o campo -- e ele e editavel. Agora e o
+     `origem`, que nao muda quando o texto muda. */
+  linhasPlacas = linhasPlacas.filter(
+    (l) => l.id !== alvo.id && l.origem !== alvo.id);
   desenharPlacas();
   atualizarAvancar();
 }
@@ -984,6 +1073,7 @@ async function garantirLote() {
                              ? cliente.weso.id : null }),
   });
   lote = (await lerResposta(res)).lote;
+  guardarLote();
 }
 
 function desenharPlacas() {
@@ -1038,6 +1128,27 @@ function situacaoHtml(s) {
 
 async function processarPlacas() {
   lerCampos();
+  const p = perfilAtual();
+
+  /* 🚨 CONFIRMA SO QUANDO ESCREVE (decisao dele, 21/08: "as duas confirmam").
+     O que pesa aqui e que o Harmonit NAO TEM DELETE DE VEICULO -- placa criada
+     por engano fica. Nos perfis `confere` a etapa 3 so le, e perguntar ali
+     ensinaria a clicar em OK sem ler. */
+  if (p.etapa_placas !== 'confere') {
+    /* 🚨 PENDENTE = nunca tentada OU falhou. Placa que falhou TEM `situacao`,
+       e contar so `!l.situacao` fazia a funcao voltar sem fazer nada -- sem
+       poder repetir justamente a que precisa. O servidor ja diz isso no
+       `ja_resolvidas`: "falhou nao entra, a graca e tentar de novo". */
+    const novas = linhasPlacas.filter(
+      (l) => !l.situacao || placaFalhou(l.situacao)).length;
+    if (!novas) return;
+    if (!confirm(
+        `Criar ${novas} registro(s) no Harmonit e na WESO?\n\n` +
+        `O Harmonit nao tem exclusao de veiculo: o que for criado por engano fica.`)) {
+      return;
+    }
+  }
+
   const btn = document.getElementById('btnPlacas');
   btn.disabled = true;
   const prog = document.getElementById('progressoPlacas');
@@ -1046,9 +1157,15 @@ async function processarPlacas() {
   /* 🚨 SEQUENCIAL, NÃO EM PARALELO. Disparar 11 de uma vez contra a WESO,
      que já oscila entre 6s e timeout, é a receita para metade falhar por
      tempo -- e falha por tempo é a pior, porque pode ter gravado. */
-  for (let n = 0; n < linhasPlacas.length; n++) {
-    const l = linhasPlacas[n];
-    prog.innerHTML = `${n + 1} de ${linhasPlacas.length} · ${escapeHtml(l.placa)} <span class="spinner"></span>`;
+  /* Nao refaz o que ja terminou bem: o que ja esta la nao precisa de outra
+     escrita, e repetir escrita apos timeout duplica. */
+  const pendentes = linhasPlacas
+    .map((l, n) => ({ l, n }))
+    .filter(({ l }) => !l.situacao || placaFalhou(l.situacao));
+
+  for (let k = 0; k < pendentes.length; k++) {
+    const { l, n } = pendentes[k];
+    prog.innerHTML = `${k + 1} de ${pendentes.length} · ${escapeHtml(l.placa)} <span class="spinner"></span>`;
     try {
       const res = await fetch('/painel/api/operacoes/placas/uma', {
         method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
@@ -1071,10 +1188,11 @@ async function processarPlacas() {
      listas de `acao` em dois lugares divergem na primeira vez que alguém
      acrescentar um estado novo. */
   const ruins = linhasPlacas.filter((l) => placaFalhou(l.situacao));
+  /* So o erro fala. O sucesso ja esta nos badges verdes da coluna Situacao --
+     repeti-lo em prosa e dizer duas vezes a mesma coisa. */
   msg('msgEtapa3', ruins.length
-      ? `<strong>${ruins.length} linha(s) com problema.</strong> Corrija e clique de novo — o que já resolveu não é refeito.`
-      : `Todas as ${linhasPlacas.length} linhas resolvidas e conferidas relendo.`,
-      ruins.length ? 'msg-erro' : 'msg-ok');
+      ? `<strong>${ruins.length} linha(s) com problema.</strong> Corrija e clique de novo.`
+      : '', ruins.length ? 'msg-erro' : '');
   atualizarAvancar();
 }
 
@@ -1192,7 +1310,13 @@ function corpoOS(confirmar) {
     produto_servico_id: (servicoSelecionado && servicoSelecionado.id) || 0,
     prioridade_id: +document.getElementById('prioridadeId').value || 382,
     placas: linhas.map((l) => {
-      const par = linhasPlacas.find((x) => x.entrada && x.veiculo === l.veiculo);
+      /* 🚨 PAREIA POR `origem`, NAO PELO TEXTO DO VEICULO. Ate 21/08 era
+         `x.veiculo === l.veiculo`, e na substituicao os dois veiculos sao
+         DIFERENTES por definicao -- "FIAT FIORINO 2020/2021" sai, "FIAT/FIORINO
+         ENDURANCE" entra. O `find` nunca achava, a tela mandava
+         `placa_entrada: null` e o servidor barrava com "a Substituicao exige a
+         placa de entrada" -- uma placa que estava VISIVEL na tela. */
+      const par = linhasPlacas.find((x) => x.entrada && x.origem === l.id);
       return {
         placa: l.placa, veiculo: l.veiculo,
         placa_entrada: par ? par.placa : null,
@@ -1305,15 +1429,30 @@ function desenharPrevia(d) {
   }).join('');
 
   document.getElementById('previaOS').innerHTML = html;
-  document.getElementById('osInfo').innerHTML =
-    `<strong>${(d.operacoes || []).length} OS</strong> serão gravadas no Harmonit. ` +
-    (d.pode_gerar ? 'Confira acima antes de gerar.'
-                  : '<strong>Bloqueado</strong> — resolva os vínculos pendentes.');
-  document.getElementById('btnGerar').disabled = !d.pode_gerar;
+  /* Só o BLOQUEIO fala. Quantas OS vao sair esta no botao, que e onde a mao
+     esta indo. */
+  document.getElementById('osInfo').innerHTML = d.pode_gerar ? ''
+    : '<strong>Bloqueado</strong> — resolva os vínculos pendentes.';
+  const btn = document.getElementById('btnGerar');
+  btn.disabled = !d.pode_gerar;
+  const quantas = (d.operacoes || []).length;
+  btn.textContent = quantas ? `Gerar ${quantas} OS` : 'Gerar as OS';
 }
 
 async function gerarOS() {
   if (!previa || !previa.pode_gerar) return;
+
+  /* 🚨 A TRAVA QUE A TELA VELHA TEM E A ABA TINHA PERDIDO. `gerar_os.html:810`
+     pergunta antes de gravar desde sempre; a aba nova nao perguntava nada.
+     O numero vai no texto porque e a ultima chance de perceber que sao 3 e
+     deveriam ser 2. */
+  const quantas = (previa.operacoes || []).length;
+  if (!confirm(
+      `Gerar ${quantas} OS no Harmonit?\n\n` +
+      `Essa acao e real e nao tem como desfazer em lote.`)) {
+    return;
+  }
+
   const btn = document.getElementById('btnGerar');
   btn.disabled = true;
   const prog = document.getElementById('progressoOS');
@@ -1325,6 +1464,9 @@ async function gerarOS() {
       body: JSON.stringify(corpoOS(true)),
     });
     const d = await lerResposta(res);
+    /* As OS sairam: a rodada acabou e a chave nao serve mais. Deixa-la ali
+       ofereceria retomar algo que ja terminou. */
+    esquecerLote();
     prog.textContent = '';
     document.getElementById('previaOS').innerHTML =
       `<table><thead><tr><th>OS</th><th>Placa</th><th>Tipo</th>
@@ -1352,7 +1494,7 @@ async function gerarOS() {
 }
 
 irPara(1);
-carregarPerfis();
+carregarPerfis().then(oferecerRetomada);
 </script>
 </body>
 </html>

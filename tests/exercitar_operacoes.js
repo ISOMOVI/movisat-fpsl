@@ -84,10 +84,21 @@ function anonimo(sel) {
 }
 
 global.window = { location: { href: "" } };
-global.localStorage = { getItem: () => "token-de-mentira" };
+/* 🚨 UM `localStorage` DE VERDADE. Um mock que so devolve o token nao
+   exercita a retomada -- e a retomada e justamente o que a tela nunca teve. */
+const _store = { fpsl_painel_token: "token-de-mentira" };
+global.localStorage = {
+  getItem: (k) => (k in _store ? _store[k] : null),
+  setItem: (k, v) => { _store[k] = String(v); },
+  removeItem: (k) => { delete _store[k]; },
+};
 global.montarSidebar = () => {};
 global.alert = (m) => { global.__alertas.push(m); };
-global.confirm = () => true;
+/* 🚨 CONTA AS CONFIRMACOES. `confirm` que devolve true e sempre silencioso
+   aprova tela que nao pergunta nada -- e foi assim que a aba perdeu, sem
+   ninguem ver, a trava que o `gerar_os.html` tem desde sempre. */
+global.__confirms = [];
+global.confirm = (m) => { global.__confirms.push(String(m)); return true; };
 global.__alertas = [];
 global.document = {
   getElementById: elemento,
@@ -124,9 +135,29 @@ global.fetch = async (url, opcoes) => {
         etapa_placas: "cria", recipiente: null, sem_financeira: false },
       { id: "manutencao_troca", label: "Manutenção com troca", sem_termo: true,
         etapa_placas: "cria", recipiente: "-MANUT", sem_financeira: true },
+      { id: "substituicao", label: "Substituição (troca de equipamento)",
+        sem_termo: false, etapa_placas: "cria_entrada", recipiente: null,
+        sem_financeira: false },
     ] });
   }
   if (u.includes("/operacoes/extrair")) {
+    /* 🚨 O TERMO DE SUBSTITUICAO TEM DOIS VEICULOS POR LINHA, e eles sao
+       DIFERENTES -- medido no fixture substituicao.pdf: "FIAT FIORINO
+       2020/2021" sai e "FIAT/FIORINO ENDURANCE" entra. E exatamente essa
+       diferenca que quebrava o pareamento por texto. */
+    if (u.includes("perfil=substituicao")) {
+      return ok({
+        termo: "9001", documento: "32020313000106", documento_no_termo: true,
+        nome_no_termo: "PASTELARIA VELASCO LTDA",
+        resumo: { veiculos: 1, com_entrada: 1, nao_convencionais: 0, sem_descricao: 0 },
+        sem_placa: [], recipiente_sufixo: null, itens_contrato: [],
+        itens: [{ veiculo: "FIAT FIORINO 2020/2021", placa: "BZR 5B97",
+                  placa_gravada: "BZR 5B97", convencional: true,
+                  veiculo_entrada: "FIAT/FIORINO ENDURANCE",
+                  placa_entrada: "UPW 3G17",
+                  placa_entrada_gravada: "UPW 3G17" }],
+      });
+    }
     return ok({
       termo: "8840", documento: "32020313000106", documento_no_termo: true,
       nome_no_termo: "PASTELARIA VELASCO LTDA",
@@ -161,7 +192,9 @@ global.fetch = async (url, opcoes) => {
                 situacao: "ok", recado: "Existe nos dois." });
   }
   if (u.includes("/operacoes/lote/")) {
-    return ok({ lote: {}, passos: [], resumo: {}, resolvidas: {} });
+    return ok({ lote: { lote: "loteDeMentira01", termo: "8840", etapa: 3 },
+                passos: [], resumo: {},
+                resolvidas: { "TST0E55": ["harmonit", "weso"] } });
   }
   if (u.includes("/operacoes/lote")) return ok({ lote: "loteDeMentira01" });
   if (u.includes("/operacoes/placas/uma")) {
@@ -194,8 +227,24 @@ global.fetch = async (url, opcoes) => {
   if (u.includes("/servicos/buscar")) {
     return ok({ resultados: [{ id: 6967, descricao: "SUBSTITUIÇÃO" }] });
   }
+  if (u.includes("/operacoes/os/gerar")) {
+    return ok({ criadas: [{ ok: true, os_id: 17001, placa: "TST 0E55",
+                            rotulo: "Instalação" }],
+                avisos: [], pendencias: [], falhas_de_leitura: [],
+                total: 1, com_erro: 0 });
+  }
   if (u.includes("/operacoes/os/previa")) {
-    return ok({ operacoes: [], avisos: [], estado_placas: [] });
+    return ok({
+      pode_gerar: true, avisos: [], estado_placas: [],
+      operacoes: [
+        { rotulo: "Instalação", placa: "TST 0E55", eh_financeira: false,
+          descricao: "INSTALAÇÃO: TST 0E55", materiais: [] },
+        { rotulo: "Instalação", placa: "TST 0G78", eh_financeira: false,
+          descricao: "INSTALAÇÃO: TST 0G78", materiais: [] },
+        { rotulo: "Financeira", placa: "(financeira)", eh_financeira: true,
+          descricao: "FINANCEIRO", materiais: [] },
+      ],
+    });
   }
   return ok({});
 };
@@ -213,6 +262,11 @@ global.fetch = async (url, opcoes) => {
 const EPILOGO = `
 global.__estado = () => ({ etapaAtual, extraido, cliente, lote, linhasPlacas,
                            placasDoCliente, servicoSelecionado });
+global.__corpoOS = corpoOS;
+global.__retomada = () => ({ retomando, lote });
+global.__oferecer = oferecerRetomada;
+global.__retomar = retomarLote;
+global.__descartar = descartarLote;
 `;
 const src = html.split("<script>").slice(1)
   .map((p) => p.split("</script>")[0]).join("\n");
@@ -291,18 +345,37 @@ function registrarCelulas(quantas) {
     await espera(60);
     r.etapa_final = estado().etapaAtual;
 
-    /* ── 7. placa que FALHOU trava de novo ───────────────────────────────── */
+    /* ── 7. placa que FALHOU trava, e PODE ser repetida ──────────────────
+       🚨 A FALHA TEM DE ACONTECER NA PRIMEIRA TENTATIVA. Antes este bloco
+       reprocessava placas que ja tinham gravado com sucesso -- e a tela,
+       certa, se recusa a reescrever o que ja esta la. O cenario e que estava
+       errado: media a recusa de regravar, nao a falha. */
+    await escolherPerfil("aditivo");
+    await espera(20);
     placasFalham = true;
-    irPara(3);
+    elemento("arquivo").files = [{ name: "t.pdf" }];
+    await lerTermo();
     await espera(20);
+    irPara(2); await espera(60);
+    irPara(3); await espera(60);
+    registrarCelulas(estado().linhasPlacas.length);
     await processarPlacas();
-    await espera(20);
+    await espera(30);
     r.avancar_travado_com_falha = elemento("btnAvancar").disabled;
     r.dica_com_falha = elemento("faltaDica").textContent;
     irPara(4);
     await espera(10);
     r.etapa_com_placa_falhada = estado().etapaAtual;
+
+    /* a placa que falhou PODE ser tentada de novo -- e a razao do retomar */
     placasFalham = false;
+    const antes = chamadas.filter((u) => u.includes("placas/uma")).length;
+    await processarPlacas();
+    await espera(30);
+    const depois = chamadas.filter((u) => u.includes("placas/uma")).length;
+    r.retentou_a_que_falhou = depois > antes;
+    r.gravadas_apos_retentar =
+      estado().linhasPlacas.filter((l) => l.situacao && !placaFalhou(l.situacao)).length;
 
     /* ── 8. trocar o perfil zera a rodada ────────────────────────────────── */
     await escolherPerfil("manutencao_troca");
@@ -383,6 +456,116 @@ function registrarCelulas(quantas) {
     selecionarServico({ id: 6967, descricao: "SUBSTITUICAO" });
     r.sv_campo = elemento("servicoCampo").value;
     r.sv_selecionado = (estado().servicoSelecionado || {}).id;
+
+    /* ── 12. voltar uma etapa e retornar: o trabalho sobrevive? ─────────── */
+    // Reconstroi um fluxo COM termo do zero.
+    await escolherPerfil("aditivo");
+    await espera(20);
+    elemento("arquivo").files = [{ name: "t.pdf" }];
+    await lerTermo();
+    await espera(20);
+    irPara(2); await espera(60);
+    irPara(3); await espera(60);
+    registrarCelulas(estado().linhasPlacas.length);
+    await processarPlacas();
+    await espera(30);
+    r.vt_gravadas = estado().linhasPlacas.filter((l) => l.situacao).length;
+    r.vt_avancar_liberado = elemento("btnAvancar").disabled === false;
+
+    // o operador volta para conferir o cliente e retorna
+    irPara(2); await espera(40);
+    irPara(3); await espera(60);
+    r.vt_gravadas_depois = estado().linhasPlacas.filter((l) => l.situacao).length;
+    r.vt_avancar_liberado_depois = elemento("btnAvancar").disabled === false;
+    r.vt_dica_depois = elemento("faltaDica").textContent;
+
+    /* ── 13. 🚨 SUBSTITUICAO: a placa de ENTRADA chega ao payload? ──────── */
+    await escolherPerfil("substituicao");
+    await espera(20);
+    elemento("arquivo").files = [{ name: "sub.pdf" }];
+    await lerTermo();
+    await espera(20);
+    irPara(2); await espera(60);
+    irPara(3); await espera(60);
+    const linhas = estado().linhasPlacas;
+    r.sub_linhas = linhas.length;
+    r.sub_tem_entrada_na_tela = linhas.some((l) => l.entrada);
+    const payload = global.__corpoOS(false);
+    r.sub_placas_no_payload = payload.placas.length;
+    r.sub_placa_saida = (payload.placas[0] || {}).placa;
+    r.sub_placa_entrada = (payload.placas[0] || {}).placa_entrada;
+    r.sub_veiculo_entrada = (payload.placas[0] || {}).veiculo_entrada;
+
+    /* ── 13b. a previa e a geracao, ate o fim ───────────────────────────── */
+    // volta ao fluxo do aditivo, que ja tem placas gravadas
+    await escolherPerfil("aditivo");
+    await espera(20);
+    elemento("arquivo").files = [{ name: "t.pdf" }];
+    await lerTermo();
+    await espera(20);
+    irPara(2); await espera(60);
+    irPara(3); await espera(60);
+    registrarCelulas(estado().linhasPlacas.length);
+    await processarPlacas();
+    await espera(30);
+    irPara(4); await espera(60);
+    await conferirOS();
+    await espera(30);
+    r.previa_liberou_gerar = elemento("btnGerar").disabled === false;
+    await gerarOS();
+    await espera(30);
+    r.gerou = chamadas.some((u) => u.includes("/operacoes/os/gerar"));
+    r.rotulo_gerar = elemento("btnGerar").textContent;
+    r.osinfo_apos_previa = elemento("osInfo").innerHTML;
+
+    /* ── 14. as duas escritas perguntam antes? ──────────────────────────── */
+    r.confirms = global.__confirms;
+    r.confirmou_placas = global.__confirms.some(
+      (m) => /Harmonit e na WESO/i.test(m));
+    r.confirmou_os = global.__confirms.some((m) => /Gerar \d+ OS/i.test(m));
+
+    /* ── 15. 🚨 RETOMADA: a chave sobrevive e o gravado nao se refaz ────── */
+    /* A chave saiu de proposito quando as OS foram geradas no passo 13b:
+       rodada terminada nao se retoma. Isso e comportamento, nao falta. */
+    r.rt_chave_apos_gerar = global.localStorage.getItem("fpsl_operacoes_lote");
+
+    // simula reabrir a tela: o operador volta e a barra pergunta
+    zerarRodada();
+    await espera(10);
+    // zerarRodada esquece de proposito; recria a chave como se fosse outra sessao
+    global.localStorage.setItem("fpsl_operacoes_lote", JSON.stringify({
+      lote: "loteDeMentira01", perfil: "aditivo", termo: "8840",
+      documento: "32020313000106", quando: Date.now(),
+    }));
+    await global.__oferecer();
+    await espera(20);
+    r.rt_barra_visivel = elemento("barraRetomar").style.display !== "none";
+    r.rt_barra_texto = elemento("retomarTexto").innerHTML;
+
+    global.__retomar();
+    await espera(20);
+    r.rt_perfil_restaurado = elemento("perfil").value;
+
+    // sobe o MESMO termo: o lote tem de ser reusado, nao criado outro
+    elemento("arquivo").files = [{ name: "8840.pdf" }];
+    await lerTermo();
+    await espera(20);
+    r.rt_lote_reusado = estado().lote === "loteDeMentira01";
+    /* Retomar renova o carimbo: a rodada continua AGORA. Sem isto uma rodada
+       retomada perto das 24h expiraria no meio dela. */
+    const guardado = JSON.parse(
+      global.localStorage.getItem("fpsl_operacoes_lote") || "{}");
+    r.rt_chave_renovada = guardado.lote === "loteDeMentira01"
+      && (Date.now() - (guardado.quando || 0)) < 5000;
+    irPara(2); await espera(60);
+    irPara(3); await espera(60);
+    r.rt_ja_resolvidas = estado().linhasPlacas.filter((l) => l.situacao).length;
+    r.rt_recado = elemento("msgEtapa3").innerHTML;
+
+    // e descartar limpa a chave
+    global.localStorage.setItem("fpsl_operacoes_lote", "{\"lote\":\"x\"}");
+    global.__descartar();
+    r.rt_descartou = global.localStorage.getItem("fpsl_operacoes_lote") === null;
 
     r.chamadas = chamadas;
   } catch (e) {

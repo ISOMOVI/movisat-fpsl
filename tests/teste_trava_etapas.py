@@ -127,8 +127,16 @@ print("== 🚨 placa que FALHOU trava de novo ==")
 # Sem isto a OS sairia para placa que a WESO recusou -- que é como a OS 16775
 # saiu sem equipamento e sem chip.
 checar("placa com falha trava o Avançar", v("avancar_travado_com_falha") is True)
-checar("a dica diz que falharam",
-       "falharam" in (v("dica_com_falha") or ""), v("dica_com_falha"))
+checar("a dica conta quantas falharam",
+       "com falha" in (v("dica_com_falha") or ""), v("dica_com_falha"))
+# 🚨 REPETIR A QUE FALHOU E A RAZAO DO RETOMAR EXISTIR. Uma guarda que escrevi
+# em 21/08 contava como pendente so `!l.situacao` -- e placa que falhou TEM
+# situacao, entao a tela se recusava a tentar de novo. O proprio servidor diz
+# isso no `ja_resolvidas`: "falhou nao entra, a graca e tentar de novo".
+checar("a placa que falhou PODE ser tentada outra vez",
+       v("retentou_a_que_falhou") is True)
+checar("e na segunda tentativa ela grava",
+       v("gravadas_apos_retentar") == 2, v("gravadas_apos_retentar"))
 checar("não abre a etapa 4 com placa falhada",
        v("etapa_com_placa_falhada") == 3,
        f"abriu a {v('etapa_com_placa_falhada')}")
@@ -203,6 +211,91 @@ print("== o serviço se ESCOLHE, e o id aparece ==")
 checar("o campo mostra nome e id",
        "(#6967)" in (v("sv_campo") or ""), v("sv_campo"))
 checar("e o que vai para a OS é o selecionado", v("sv_selecionado") == 6967)
+
+print()
+print("== 🚨 VOLTAR UMA ETAPA NAO APAGA O QUE JA FOI GRAVADO ==")
+# Medido em 21/08: gravava 2 placas nos dois sistemas, voltava para a etapa 2,
+# retornava para a 3 -- `situacao` zerada, 0 gravadas, botao travado e a dica
+# mandando gravar de novo. O `prepararPlacas` fazia `linhasPlacas = []` e
+# reconstruia TODA vez que a etapa abria. O operador clicaria em Cadastrar e
+# tentaria RECRIAR placa que existe: 409 no Harmonit, duplicata na WESO se a
+# escrita der timeout. E o botao Voltar esta ali, convidando.
+checar("grava 2 placas", v("vt_gravadas") == 2)
+checar("volta para a etapa 2 e retorna: as 2 continuam gravadas",
+       v("vt_gravadas_depois") == 2,
+       f"sobraram {v('vt_gravadas_depois')} -- o trabalho foi perdido")
+checar("e o Avancar continua liberado",
+       v("vt_avancar_liberado_depois") is True, v("vt_dica_depois"))
+
+print()
+print("== 🚨 SUBSTITUICAO: a placa de ENTRADA chega ao payload ==")
+# 1 dos 11 perfis estava morto. A tela casava a linha de entrada com a de saida
+# pelo TEXTO do veiculo, e na substituicao os dois sao diferentes por
+# definicao -- o equipamento muda de carro. Medido no fixture: "FIAT FIORINO
+# 2020/2021" sai, "FIAT/FIORINO ENDURANCE" entra. O `find` nunca achava, a tela
+# mandava `placa_entrada: null` e o servidor barrava com "a Substituicao exige
+# a placa de entrada" -- uma placa VISIVEL na tela.
+checar("a tela monta as duas linhas", v("sub_linhas") == 2)
+checar("e a de entrada existe", v("sub_tem_entrada_na_tela") is True)
+checar("a placa que SAI vai no payload",
+       v("sub_placa_saida") == "BZR 5B97", v("sub_placa_saida"))
+checar("a placa que ENTRA vai junto",
+       v("sub_placa_entrada") == "UPW 3G17",
+       f"veio {v('sub_placa_entrada')!r} -- era o defeito de 21/08")
+checar("com o veiculo de destino",
+       v("sub_veiculo_entrada") == "FIAT/FIORINO ENDURANCE",
+       v("sub_veiculo_entrada"))
+
+print()
+print("== 🚨 AS DUAS ESCRITAS PERGUNTAM ANTES ==")
+# A aba tinha perdido uma trava que o `gerar_os.html` tem desde sempre. Decisao
+# dele em 21/08: as duas confirmam.
+checar("criar placa pergunta antes", v("confirmou_placas") is True,
+       str(v("confirms"))[:200])
+checar("gerar OS pergunta antes", v("confirmou_os") is True)
+checar("e a pergunta da OS traz o NUMERO",
+       any("Gerar 3 OS" in m for m in (v("confirms") or [])),
+       "o numero e a ultima chance de ver que sao 3 e deveriam ser 2")
+checar("a previa libera o Gerar", v("previa_liberou_gerar") is True)
+checar("e a geracao chega ao servidor", v("gerou") is True)
+
+# 🚨 O NUMERO VAI NO BOTAO. Ele dizia "Gerar as OS" e o `osInfo` narrava, em
+# duas frases, o que o botao diz em duas palavras. E o numero e a ultima chance
+# de o operador ver que sao 3 e deveriam ser 2, com a mao ja indo clicar.
+checar("o botao diz QUANTAS OS vai gerar",
+       v("rotulo_gerar") == "Gerar 3 OS", v("rotulo_gerar"))
+checar("e o texto que narrava saiu",
+       (v("osinfo_apos_previa") or "") == "", v("osinfo_apos_previa"))
+
+print()
+print("== 🚨 RETOMAR: o que ja foi gravado nao se refaz ==")
+# O `lote` foi criado exatamente para isto, e esta escrito no proprio codigo:
+# "um termo de 11 placas leva mais de um minuto so nesta etapa, e a WESO oscila
+# entre 6s e timeout. Se cair no meio, o operador NAO PODE recomecar do PDF --
+# metade ja nasceu, e recriar devolve 409 ou duplica."
+#
+# O servidor tinha `GET /lote/{id}` com `passos`, `resumo` e `ja_resolvidas`.
+# A tela nao chamava NENHUM, e o `lote` vivia so numa variavel JS: um F5 no
+# meio de 11 placas perdia a chave.
+checar("rodada terminada NAO se oferece para retomar",
+       v("rt_chave_apos_gerar") is None,
+       "as OS sairam, entao a chave sai junto")
+checar("com lote pendente, a barra pergunta",
+       v("rt_barra_visivel") is True)
+checar("e diz de qual termo e quantas ja foram",
+       "8840" in (v("rt_barra_texto") or "")
+       and "1</strong> placa" in (v("rt_barra_texto") or ""),
+       v("rt_barra_texto"))
+checar("Continuar restaura o tipo de operação",
+       v("rt_perfil_restaurado") == "aditivo", v("rt_perfil_restaurado"))
+checar("subir o MESMO termo reusa o lote, nao abre outro",
+       v("rt_lote_reusado") is True)
+checar("e o carimbo se renova — rodada retomada continua AGORA",
+       v("rt_chave_renovada") is True,
+       "sem isto uma rodada longa expiraria no meio dela")
+checar("a placa ja resolvida entra marcada, e nao sera reescrita",
+       v("rt_ja_resolvidas") == 1, v("rt_ja_resolvidas"))
+checar("Descartar limpa a chave", v("rt_descartou") is True)
 
 print()
 print(f"== {ok} verificações OK, {len(falhas)} falha(s) ==")

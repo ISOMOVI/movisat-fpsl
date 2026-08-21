@@ -778,6 +778,107 @@ respondendo (`nginx -t` antes do `reload`, backup em `/root/`).
 
 ---
 
+## 🚨 A AUDITORIA DE FLUXO (21/08) — o que a suíte não via
+
+Depois de corrigir o que ele apontou usando, ele pediu auditoria de funções,
+etapas e fluxos. **Ela achou dois defeitos que impediam trabalho e que 1.411
+verificações verdes não pegavam.** O motivo é sempre o mesmo: os testes montam
+o `MontarInput` na mão, com os campos certos; **a tela monta a partir de
+`linhasPlacas`, e é aí que ela erra.** Teste de backend aprova backend.
+
+### 1. Voltar uma etapa apagava tudo que já tinha sido gravado
+
+`prepararPlacas()` fazia `linhasPlacas = []` e reconstruía do zero — e ela roda
+a cada `irPara(3)`. Medido: grava 2 placas nos dois sistemas, volta para a
+etapa 2, retorna, e a `situacao` das duas some. O botão trava, a dica manda
+gravar de novo, e o operador clicaria em Cadastrar tentando **recriar o que já
+existe**: 409 no Harmonit, duplicata na WESO se a escrita der timeout.
+
+E o botão Voltar está ali, convidando.
+
+**Consertado:** só monta se a lista estiver vazia. O que zera é trocar de
+perfil ou subir outro termo — os dois casos em que a rodada realmente recomeça.
+
+### 2. A substituição não gerava — 1 dos 11 perfis estava morto
+
+A tela casava a linha de ENTRADA com a de SAÍDA pelo **texto do veículo**:
+
+```js
+const par = linhasPlacas.find((x) => x.entrada && x.veiculo === l.veiculo);
+```
+
+E na substituição os dois veículos são **diferentes por definição** — o
+equipamento muda de carro. Medido no fixture: `FIAT FIORINO 2020/2021` sai,
+`FIAT/FIORINO ENDURANCE` entra. O `find` nunca achava, a tela mandava
+`placa_entrada: null`, e o servidor barrava com *"a Substituição exige a placa
+de entrada"* — **uma placa visível na tela, na etapa 3**. O operador lia um erro
+dizendo que falta o que ele está vendo.
+
+Rodei os 11 perfis montando o payload como a tela monta: **10 passavam, só ela
+parava.**
+
+**Consertado:** `id` estável por linha, e a de entrada aponta para a de saída
+por `origem`. Não é índice: o ⇄ troca campos e o ✕ remove linha do meio, então
+qualquer chave posicional quebra junto.
+
+### 3. A retomada existia no servidor e a tela nunca chamou
+
+`GET /lote/{id}` devolve `passos`, `resumo` e `ja_resolvidas` desde a F3. A tela
+não chamava nenhum, e o `lote` vivia só numa variável JS — **um F5 no meio de
+11 placas perdia a chave**, e a próxima tentativa abria lote novo.
+
+**Consertado:** chave no `localStorage`, barra que **pergunta** ao abrir (nunca
+retoma sozinha), `Continuar` restaura o perfil, subir o mesmo termo reusa o
+lote, e o que `ja_resolvidas` diz que terminou entra marcado.
+
+⚠️ **O que a retomada não faz, e não adianta fingir:** ela não guarda o PDF. O
+operador sobe o mesmo termo de novo, que custa segundos. O caro são os ~4 s por
+placa escrevendo em dois sistemas.
+
+### 4. A aba tinha perdido uma trava que a tela velha tem
+
+`gerar_os.html:810` pergunta antes de gravar desde sempre. A aba não perguntava
+nada — clicou, gravou. Regressão por omissão, e o teste de comparação com a
+tela velha não pegou **porque eu tinha comparado dois widgets, não a tela**.
+
+**Decisão dele, 21/08: as duas escritas confirmam.** Criar placa também, porque
+o Harmonit não tem DELETE de veículo. Nos perfis `confere` não há confirmação —
+a etapa 3 só lê, e perguntar ali ensinaria a clicar em OK sem ler.
+
+🚨 **E a confirmação introduziu um defeito que o próprio exercício pegou:** a
+guarda contava como pendente só `!l.situacao`, e placa que **falhou** tem
+`situacao` — então a tela se recusava a tentar de novo justamente a que
+precisava. O `ja_resolvidas` do servidor já dizia: *"falhou não entra, a graça é
+tentar de novo"*.
+
+---
+
+## O que mudou na cara da tela (21/08)
+
+Pedido dele: *"esses textos informativos são horríveis, não precisa deles"*.
+
+**Saíram 19 blocos de prosa** — o banner de 5 linhas, os 4 subtítulos de etapa,
+o resumo do perfil, o `placasInfo`, a ajuda da lista, a nota da prioridade, a
+dica da prévia, o parágrafo da espera, a narração do `osInfo`. Ficou **rótulo,
+valor e erro**.
+
+⚠️ **E vale registrar POR QUE eu tinha escrito tanto:** o wizard esconde as
+outras etapas, então na 4 não se vê mais termo, cliente nem quantas placas. Eu
+estava compensando com prosa o contexto que a própria tela tirava. **O conserto
+de verdade é a reestruturação em seções colapsáveis**, que fica para depois da
+próxima rodada de uso.
+
+Outras decisões dele no mesmo dia:
+
+| O quê | Decisão |
+|---|---|
+| Largura | **1.200px só nesta aba.** Diverge do padrão dos quatro painéis, conscientemente: é a única com prévia de OS e tabela de placas juntas, e o FPSL é só PC |
+| Dica do que falta | **Fica, curta.** Duas ou três palavras. Botão desabilitado sem motivo foi a reclamação do *"botão conferir faz o que?"* |
+| Número das OS | Vai **no botão** (`Gerar 3 OS`), não em prosa acima dele. É a última chance de ver que são 3 e deveriam ser 2 |
+| Peso dos botões | Três: fantasma navega, sólido escreve, **vermelho grava em produção**. Antes os três eram o mesmo azul |
+
+---
+
 ### Estado
 
 **F1 a F6 no ar. Falta a F7.**
