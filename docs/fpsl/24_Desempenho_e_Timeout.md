@@ -94,20 +94,33 @@ minuto. Qualquer teto colado no tempo típico volta a quebrar.
 
 ---
 
-## O nginx: 180s, e por que o login continua em 35s
+## O nginx: 90s, e por que o login continua em 35s
 
-`proxy_read_timeout` e `proxy_send_timeout` do `location /` foram de **35s para
-180s**, **nos dois blocos server** (443 e 8005), com autorização do usuário.
+🚨 **ESTE TRECHO ESTEVE ERRADO DE 14/08 A 21/08, E ELE FOI A FONTE DO ENGANO.**
+Ele afirmava que o `location /` tinha ido para **180s**. **Nunca foi.** O
+arquivo em `/etc/nginx/sites-enabled/fpsl.conf` era de 12/08 — anterior à
+decisão — e estava em **35s nos dois blocos**. A decisão ficou sete dias no
+papel, e quem foi conferir conferiu este texto e a cópia de 32 linhas do
+repositório, não o arquivo no ar.
+
+⚠️ **A LIÇÃO É MAIOR QUE O NÚMERO: decisão registrada não é decisão aplicada.**
+Ao mexer no nginx, ler `/etc`, aplicar lá, e ressincronizar `nginx_fpsl.conf`
+na mesma passada — ele agora tem cabeçalho dizendo que é espelho, não fonte.
+
+**Aplicado de verdade em 21/08**, com autorização: `proxy_read_timeout` e
+`proxy_send_timeout` do `location /` a **90s**, **nos dois blocos server** (443
+e 8005). Conferido com `nginx -T`, que mostra o que o nginx CARREGOU e não o
+que está no disco.
 Backup em `fpsl.conf.bak_2026-08-14`, `nginx -t` **antes** do reload.
 
 | Rota | Timeout | Por quê |
 |---|---|---|
-| `location /` | **180s** | depende da WESO, que oscila |
+| `location /` | **90s** | depende da WESO, que oscila. Acomoda o cliente de 60s com folga |
 | `/weso/onboarding` | 120s | cadeia de cadastro, já era longa |
 | `/painel/api/login` | **35s** | de propósito: login não fala com a WESO, e limite curto ali é proteção |
 
 ⚠️ **Timeout maior não conserta lentidão, só evita que ela vire erro mudo.** As
-correções acima é que trouxeram o caminho normal para 2 a 9s; os 180s são
+correções acima é que trouxeram o caminho normal para 2 a 9s; os 90s são
 folga para quando a WESO piorar.
 
 ---
@@ -210,11 +223,28 @@ Teste: `tests/teste_aviso_weso.py`, 20 verificações. Os itens 6 e 7 leem os
 **consumidores** — o fonte do `os_router` e o `gerar_os.html` — porque um aviso
 que a tela não mostra é o defeito de 18/08 outra vez.
 
-## O que isto diz sobre o teto de 30s
+## O teto do cliente WESO: 60s desde 21/08
 
-O teto do cliente WESO (`client.py`, `timeout=30`) não é uma preocupação
+🚨 **ERA 30s ATÉ 21/08, E ESTE TRECHO DIZIA QUE ESTAVA BOM.** Estava errado no
+mérito: o teto foi calibrado quando a base levava 2,3s, e a documentação da
+própria WESO registra **30 a 90s** como resposta normal no `UltimaPosicao`.
+Medido em 18/08: base inteira de 6,0s a 30,7s, mediana 23,8s. **Foi ele que
+gerou a OS 16775 sem equipamento.** O usuário autorizou **60s** em 21/08.
+
+🚨 **A ORDEM DOS DOIS TETOS É O DESENHO, não coincidência: 60s no cliente < 90s
+no nginx.** O nosso dispara PRIMEIRO, então o operador recebe erro nosso em
+JSON, com explicação. Invertido, quem corta é o nginx, com uma **página HTML de
+504** que a tela lê como JSON — que foi exatamente o "erro json" de 14/08.
+
+E a espera passou a ter relógio na aba Operações: nada até 3s, contador de 3s a
+15s, **barra de progresso a partir de 15s** (pedido do usuário, 21/08), com o
+recado de não clicar de novo — repetir uma escrita depois de timeout duplica.
+
+### O texto abaixo é de antes, e a conclusão dele estava errada
+
+O teto do cliente WESO (`client.py`) não era uma preocupação
 teórica: **ele já produziu uma OS errada em produção**. A documentação da WESO
-descreve 30 a 90s como tempo normal de resposta. O teto continua em 30s —
+descreve 30 a 90s como tempo normal de resposta. O teto continuava em 30s —
 mexer nele é decisão do usuário, e nada foi alterado.
 
 ## 🚨 O timeout da WESO pode MENTIR na direção contrária

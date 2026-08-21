@@ -748,19 +748,33 @@ apodrecimento aparecer é trabalho meu.
 
 ---
 
-## 🔴 PENDENTE, E NÃO É NOSSO CÓDIGO: o nginx
+## ✅ O nginx, e a decisão que tinha ficado no papel
 
-🚨 **A DECISÃO DE 14/08 NUNCA CHEGOU AO SERVIDOR.** Ela registra que o
-`proxy_read_timeout` do `location /` foi de 35 s para 180 s. **O arquivo no ar
-é de 12/08 — anterior à decisão — e está em 35 s nos DOIS server blocks.**
+🚨 **A DECISÃO DE 14/08 NUNCA TINHA CHEGADO AO SERVIDOR.** Ela registra que o
+`proxy_read_timeout` do `location /` foi de 35 s para 180 s. O arquivo no ar era
+de **12/08 — anterior à decisão — e estava em 35 s nos DOIS server blocks**.
+Enquanto isso o teto de 60 s do cliente WESO não existia na prática: o nginx
+cortava antes e devolvia uma **página HTML de 504**, que a tela lê como JSON.
 
-Consequência hoje: o teto de 60 s do cliente WESO **não existe na prática**. O
-nginx corta em 35 s antes e devolve uma **página HTML de 504**, que a tela lê
-como JSON — é o "erro json" de 14/08, ainda vivo.
+⚠️ **DECISÃO REGISTRADA NÃO É DECISÃO APLICADA.** O doc dizia 180 s por sete
+dias e o servidor dizia 35 s. Ninguém tinha lido o arquivo no ar.
 
-Autorizado pelo usuário em 21/08: **`location /` de 35 s para 90 s**, nos dois
-blocos. O cliente (60 s) dispara primeiro e o operador recebe erro nosso, em
-JSON, em vez de página do nginx. **Exige root e ainda não foi aplicado.**
+**Aplicado em 21/08**, com autorização dele: `location /` a **90 s** nos dois
+server blocks. O que **não** mudou, de propósito:
+
+| Rota | Teto | Por quê |
+|---|---|---|
+| `location /` | **90 s** | acomoda o cliente WESO de 60 s com folga |
+| `/painel/api/login` | 35 s | login que demora meio minuto é login quebrado |
+| `/weso/onboarding` | 120 s | faz 5-6 chamadas WESO em sequência |
+
+🚨 **A ORDEM É O DESENHO: 60 s no cliente < 90 s no nginx.** O nosso timeout
+dispara PRIMEIRO, e o operador recebe erro nosso em JSON, com explicação, em vez
+de uma página do nginx que a tela não sabe ler. Invertido, o defeito de 14/08
+voltaria.
+
+Conferido relendo o arquivo no ar, e os quatro sites vizinhos continuam
+respondendo (`nginx -t` antes do `reload`, backup em `/root/`).
 
 ---
 
