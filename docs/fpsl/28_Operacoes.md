@@ -1099,13 +1099,174 @@ trava é escrita no fim, quando a atenção já foi para o código que ela prote
 
 ---
 
+## 🚨 24/08 — A SEGUNDA RODADA DE USO REAL, E O QUE ELA ACHOU
+
+📌 **Ele rodou manutenção com troca, SEM TERMO, do começo ao fim — e deu
+certo.** É o primeiro perfil sem termo exercitado de ponta a ponta por gente,
+e junto com ele a rotina da F5 saiu da inércia: a fila tem hoje a pendência do
+recipiente da **OS 16793, placa BCN 8I82**, marcada `concluido`. A rotina leu,
+agiu e fechou sozinha.
+
+**Três achados vieram do uso. Nenhum de teste meu — quinta vez desde 14/08.**
+
+### 1. A caixa do recipiente ainda induzia ao erro, e o conserto de 21/08 tinha feito metade
+
+O commit `ce56e45` separou os grupos e resolveu a **contagem**. Sobraram duas
+mentiras, e as duas são de linguagem:
+
+| O que dizia | Por que era falso |
+|---|---|
+| *"O Harmonit não tem exclusão de veículo…"*, **sempre** | A frase é fixa. Aparecia inteira numa rodada que **não escreve uma linha** no Harmonit — que é exatamente a manutenção com troca |
+| *"**Criar** N veículo(s) no Harmonit e na WESO"* | Nos perfis SEM TERMO a placa saiu da **base do Harmonit** — o `<select>` da etapa 3 é ela. Ela **já existe lá**, e o que a etapa faz é conferir. Quem nasce é o recipiente, e só na WESO |
+
+**Como ficou:** a linha carrega `daBase` (marcada em `adicionarPlaca`, que é
+onde a origem se sabe com certeza), cada grupo diz o próprio destino, e o
+alerta do Harmonit **só existe quando alguma linha pode nascer lá**.
+
+```
+Prosseguir com 2 linha(s)?
+
+1 veículo(s) da base do Harmonit: confere lá e garante na WESO
+1 recipiente(s) de bancada: SÓ na WESO — o Harmonit não recebe nada
+```
+
+⚠️ **A trava mede o que a frase PROMETE, não a palavra "Harmonit".** Dizer *"o
+Harmonit não recebe nada"* é a **correção** do engano; travar na ocorrência do
+nome reprovaria justamente o texto certo. É o `M7`. E tem **contrapeso**: no
+perfil que cria, o teste exige que o alerta continue de pé — sem ele, a trava
+seria satisfeita apagando o aviso de todo lugar, e o aviso existe porque o
+Harmonit **não tem DELETE de veículo**.
+
+### 2. A rodada não tinha fim
+
+As OS saíam, o resultado ficava na etapa 4, e começar outra era **recarregar a
+página** — ou trocar o tipo de operação, que zera por **efeito colateral**, não
+por escolha.
+
+**Como ficou** (pedido dele, ao pé da letra): botão **Concluir** na ponta
+direita da linha de ações, escondido até as OS saírem → modal com contagem,
+**números das OS** e pendências → **OK** devolve a tela à etapa 1.
+
+O reinício passa pelo `zerarRodada()`, que já era a única função que sabe o que
+uma rodada nova precisa esquecer. **Um segundo reset viraria a segunda verdade**
+e envelheceria no primeiro campo que alguém acrescentasse à tela.
+
+### 3. As etapas não se destacavam
+
+**Este era o último ajuste antes do MVP em campo**, e ele mesmo disse isso.
+
+A marca da etapa era um glifo de 0,8rem — `●`, `✓`, `○` ou `·` — que não se lê
+de relance e **não diz qual etapa é**. A única diferença entre "estou aqui" e
+"já passei" era a **cor desse glifo**.
+
+| O quê | Como ficou |
+|---|---|
+| A marca | **Círculo numerado de 28px**. O número fica à vista o tempo todo; só a etapa concluída o troca pelo `✓` |
+| A seção aberta | **Trilho azul à esquerda** e fundo próprio |
+| O rodapé | **`Etapa N de 4`**, ao lado do Voltar — não é clicável, de propósito |
+| Os dois pintores | Passaram a escrever a marca pela **mesma** `glifoDaEtapa()` |
+
+---
+
+### Decisão: a cor da etapa diz ESTADO, não identidade (24/08)
+
+**Objetivo** — a pessoa saber, sem procurar, em que etapa está e quais já
+fecharam.
+**Hoje** — igual ao objetivo. Cinza é trancada, azul é aqui, verde é pronta. O
+número diz **qual** etapa; a cor diz **como** ela está.
+**Por quê** — ele ofereceu uma cor para cada etapa (*"se quiser usar cores para
+cada uma delas, pode ser também"*), e a escolha foi minha. A paleta desta tela
+**já carrega significado** desde 21/08 — verde aconteceu, azul já estava, âmbar
+olhe, vermelho impede — e quatro cores decorativas desfariam isso. É o mesmo
+defeito que 21/08 corrigiu, quando o azul significava quatro coisas ao mesmo
+tempo e ninguém aprendia.
+**Reavaliar se** — ele preferir a cor por etapa. É troca de meia hora: só o
+bloco `.secao-marca` do `operacoes.css`.
+
+---
+
+### 🚨 A auditoria de design achou três coisas de 21/08 que nenhuma verificação pegava
+
+Todas do mesmo tipo: **ninguém tinha olhado o CSS inteiro de uma vez.**
+
+1. **`.btn-perigo` com borda de 1px** contra 1.5px dos outros dois pesos — e ele
+   fica **ao lado** do *Ver prévia*, no mesmo `.acoes`. Desalinhamento de 1px é
+   do tipo que ninguém nomeia e todo mundo sente;
+2. **duas opacidades para desabilitado** (`.45` no `.btn`, `.5` no
+   `.btn-primary`) — dois cinzas para o mesmo estado;
+3. **a tabela de placas ficava na tela depois de zerar a rodada.**
+   `linhasPlacas` esvaziava e o HTML dela continuava lá até alguém reabrir a
+   etapa 3 — trocar de perfil deixava as placas do perfil anterior à vista, que
+   é o **oposto** do que zerar promete.
+
+As três viraram verificação no `teste_acabamento.py`.
+
+---
+
+### 🚨 DOIS TESTES LIAM PRODUÇÃO — e o uso real foi quem os derrubou
+
+`teste_operacoes_f5.py` e `teste_operacoes_f5b.py` limpam **só o próprio lote**
+(`DELETE ... WHERE lote = ?`) e afirmavam sobre a fila **inteira**:
+`esp.pendentes()` e `esp.resumo()` **não filtram por lote**, e nem devem — eles
+são a visão do Registro, que é global de propósito.
+
+**As duas coisas só combinam enquanto a fila real está vazia.** Em 24/08 ela
+deixou de estar, porque a rotina concluiu a pendência da OS 16793. **O placar
+ficou vermelho porque o sistema fez o que devia.**
+
+🚨 **E o pior não era o placar.** O `pendencia()` do `f5b` fazia
+`(await esp.pendentes(caso))[0]` — **a primeira da fila global**. Com uma
+pendência **real** do mesmo caso esperando, o teste operaria em cima dela, e o
+`concluir()` dele **fecharia trabalho de verdade**. Não era placar errado: era
+escrita no lugar errado. Agora é pelo `ident` devolvido no `registrar`.
+
+**Como ficou:** as contagens viraram **delta** (onde só há agregado) ou
+**filtro por lote** (onde há linha), e entrou o **teste 8**, que *prova* o
+isolamento inserindo uma linha de outro lote e conferindo que ela não aparece.
+Correção que ninguém exercita volta no próximo `esp.pendentes` que alguém
+escrever.
+
+⚠️ **A linha real não foi apagada.** Ela é histórico da rotina.
+
+**Isto é a decisão de 19/08 pelo avesso** — *"teste não depende de dado que
+outro sistema pode apagar"*. Lá o dado sumia; aqui o dado **nasce**, e nasce
+porque o produto está funcionando.
+
+### E dois dublês que aprovavam tela quebrada
+
+- o mock de `/os/gerar` mandava só `os_id`, e **a tela lê `numero_ordem`** — o
+  router devolve os dois (`operacoes_router.py:985`). O exercício aprovava
+  número de OS **vazio** na tabela de resultado;
+- o `.modal-bg.open` do mock tinha a lista de modais **fixa em dois nomes**. O
+  primeiro modal novo da tela ficaria fora do exercício sem ninguém notar — que
+  é o mesmo defeito que o `Esc` evita ao ter **um** ouvinte no documento. Agora
+  a lista vem dos ids do próprio HTML.
+
+---
+
+### ⏸️ Um achado menor, na mesa dele
+
+`GET /placas/do-cliente` (`operacoes_router.py:1142`) promete na docstring
+devolver `atualizada_em` — *"para a tela poder dizer de quando é o dado"* — e
+**não devolve**. A lista da etapa 3 dos perfis sem termo não diz a própria
+idade, e ela vem de uma base que sincroniza de 12 em 12 h. Duas saídas:
+implementar o campo, ou corrigir a docstring. **Não mexido**: é escopo novo.
+
+---
+
 ### Estado
 
 **F1 a F6 no ar. Falta a F7.**
 
-🚨 **A F7 tem condição escrita e ela não é minha:** *"depende de uso real
-aprovado por você"*. Apagar Cadastro de Placas e Gerar OS antes de alguém rodar
-um termo de verdade pela aba nova é o erro de 19/08 outra vez, quando o
-interruptor foi removido antes da garantia do que dependia dele.
+🚨 **A condição da F7 mudou em 21/08 e não é minha:** não é mais "uso real
+aprovado", é **100% do painel novo rodando** (decisão dele). Apagar Cadastro de
+Placas e Gerar OS antes disso é o erro de 19/08 outra vez, quando o interruptor
+foi removido antes da garantia do que dependia dele.
 
-**Suíte do FPSL: 1.227 verificações em 34 arquivos, zero reprovações.**
+🚨 **O `os_router.py` NÃO pode ser apagado** — ele hospeda as rotas de Vínculos,
+que ficam. A F7 é **partir o arquivo em dois**.
+
+**Suíte do FPSL: 1.552 verificações em 39 arquivos de teste, zero reprovações**
+(24/08). ⚠️ A contagem soma os **dois formatos de rodapé** que os arquivos usam
+(`N verificações` e `N passaram`) — comparar com número antigo só medindo do
+mesmo jeito.
