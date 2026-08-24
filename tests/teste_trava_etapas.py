@@ -35,6 +35,13 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 EXERCICIO = RAIZ / "tests" / "exercitar_operacoes.js"
 TELA = RAIZ / "frontend" / "operacoes.html"
 
+# 🚨 O DUBLÊ DE `/perfis` É UMA SEGUNDA VERDADE. O router monta a lista a
+# partir do `cfg.PERFIS`; o exercício tem a dele escrita à mão. Importar o
+# config aqui deixa o teste comparar as duas -- foi assim que a manutenção no
+# local ficou 4 dias sem cobertura nenhuma.
+sys.path.insert(0, str(RAIZ))
+from fpsl_weso.painel import operacoes_config as cfg  # noqa: E402
+
 ok, falhas = 0, []
 
 
@@ -458,6 +465,60 @@ checar("a etapa 1 volta a mostrar o número 1",
        v("fim_marca_1") == "1", v("fim_marca_1"))
 checar("e o contador acompanha",
        v("fim_contador") == "Etapa 1 de 4", v("fim_contador"))
+
+print()
+print("== 🚨 A ETAPA 2 MOSTRA QUEM E O CLIENTE, e nao pede termo a quem nao tem ==")
+# Achado dele em 24/08, na manutenção NO LOCAL: "após escolher o cliente não
+# aparece o resumo do cliente escolhido, e ele está exigindo termo, mesmo sendo
+# um tipo que não usa termo".
+#
+# 🚨 E O PRIMEIRO NÃO ERA DOS PERFIS SEM TERMO: era de TODOS, desde a F2.
+# `conferirCliente` escondia o `#cliente` antes de consultar e ninguém o
+# mostrava de volta. Ficavam invisíveis a tabela que cruza os dois sistemas, o
+# recado da situação e o botão **Cadastrar na WESO** -- que é a ÚNICA ação da
+# tela para o caso `falta_na_weso`. Passou porque o campo do topo continuava
+# preenchendo, e era o `value` dele que os testes mediam: ninguém media a
+# VISIBILIDADE do bloco.
+checar("com termo, o bloco do cliente aparece",
+       v("ct_bloco_cliente") == "block", v("ct_bloco_cliente"))
+checar("e sem termo também",
+       v("st_bloco_cliente") == "block", v("st_bloco_cliente"))
+# O bloco do documento fala de TERMO -- "Este termo não traz o CNPJ/CPF" -- e
+# nasce escondido. A condição olhava só `documento_no_termo`, que é indefinido
+# quando não há termo nenhum: o bloco aparecia falando de um documento que não
+# existe. Era o "está exigindo termo".
+checar("o pedido de documento do termo NÃO aparece em perfil sem termo",
+       v("st_docwrap") == "none", v("st_docwrap"))
+checar("e continua escondido quando o termo traz o documento",
+       v("ct_docwrap") == "none", v("ct_docwrap"))
+
+print()
+print("== 🚨 OS TRES PERFIS SEM TERMO, e nao so o que eu tinha no duble ==")
+# ⚠️ O DUBLÊ DE `/perfis` TINHA UM PERFIL SEM TERMO SÓ (`manutencao_troca`), e
+# por isso a manutenção NO LOCAL nunca foi exercitada -- mesmo caminho, mesmo
+# defeito, zero cobertura. Perfil que a tela oferece e o exercício não roda é
+# perfil sem trava.
+sem_termo = v("sem_termo_etapa2") or {}
+esperados = ["manutencao_troca", "manutencao_local", "ressarcimento_sem_termo"]
+checar("o exercício roda os três perfis sem termo",
+       sorted(sem_termo) == sorted(esperados), str(sorted(sem_termo)))
+# O contrato contra a segunda verdade: se alguém criar um perfil sem termo no
+# config, ele entra aqui ou este teste reprova.
+checar("e são exatamente os que o config declara",
+       set(cfg.sem_termo()) == set(esperados),
+       f"config {sorted(cfg.sem_termo())} x exercício {sorted(esperados)}")
+for perfil in esperados:
+    d = sem_termo.get(perfil) or {}
+    checar(f"{perfil:24} mostra o cliente escolhido",
+           d.get("bloco") == "block" and "998063" in (d.get("campo") or ""),
+           str(d))
+    checar(f"{perfil:24} não pede documento de termo",
+           d.get("docwrap") == "none", str(d))
+    checar(f"{perfil:24} não mostra a linha 'No termo'",
+           d.get("tem_linha_no_termo") is False,
+           "sem termo, ela sairia vazia explicando nada")
+    checar(f"{perfil:24} libera o Avançar",
+           d.get("avancar_liberado") is True, str(d))
 
 print()
 print(f"== {ok} verificações OK, {len(falhas)} falha(s) ==")

@@ -183,11 +183,21 @@ global.fetch = async (url, opcoes) => {
   if (u.includes("__forcar_erro__")) return erro(422, "Não foi possível ler o PDF");
 
   if (u.includes("/operacoes/perfis")) {
+    /* 🚨 OS TRES PERFIS SEM TERMO ESTAO AQUI, e nao so um. Ate 24/08 o mock
+       tinha `manutencao_troca` sozinha, e por isso a MANUTENCAO NO LOCAL nunca
+       foi exercitada -- o defeito do bloco do documento aparecendo em perfil
+       sem termo passou por aqui sem ninguem ver. Perfil que a tela oferece e
+       o exercicio nao roda e perfil sem trava. */
     return ok({ perfis: [
       { id: "aditivo", label: "Aditivo ou teste upgrade", sem_termo: false,
         etapa_placas: "cria", recipiente: null, sem_financeira: false },
       { id: "manutencao_troca", label: "Manutenção com troca", sem_termo: true,
         etapa_placas: "cria", recipiente: "-MANUT", sem_financeira: true },
+      { id: "manutencao_local", label: "Manutenção no local", sem_termo: true,
+        etapa_placas: "confere", recipiente: null, sem_financeira: true },
+      { id: "ressarcimento_sem_termo", label: "Ressarcimento sem termo",
+        sem_termo: true, etapa_placas: "confere", recipiente: null,
+        sem_financeira: false, hibrida: true },
       { id: "substituicao", label: "Substituição (troca de equipamento)",
         sem_termo: false, etapa_placas: "cria_entrada", recipiente: null,
         sem_financeira: false },
@@ -474,6 +484,13 @@ function registrarCelulas(quantas) {
     await espera(60);
     r.st_cliente_resolvido = !!estado().cliente;
     r.st_campo_cliente = elemento("clienteCampo").value;
+    /* 🚨 O RESUMO DO CLIENTE APARECE? Ate 24/08 ninguem media a VISIBILIDADE
+       do bloco -- so o `cliente` do estado e o texto do campo. O bloco
+       `#cliente` (tabela dos dois sistemas, recado e o botao de cadastrar na
+       WESO) era escondido antes da consulta e nunca mais mostrado. */
+    r.st_bloco_cliente = elemento("cliente").style.display;
+    /* E o bloco do documento do TERMO nao pode aparecer em perfil sem termo. */
+    r.st_docwrap = elemento("docWrap").style.display;
 
     irPara(3);
     await espera(60);
@@ -538,6 +555,10 @@ function registrarCelulas(quantas) {
     await lerTermo();
     await espera(20);
     irPara(2); await espera(60);
+    /* O mesmo bloco, agora num perfil COM termo: o defeito de 24/08 nao era
+       dos perfis sem termo, era de todos. */
+    r.ct_bloco_cliente = elemento("cliente").style.display;
+    r.ct_docwrap = elemento("docWrap").style.display;
     irPara(3); await espera(60);
     registrarCelulas(estado().linhasPlacas.length);
     await processarPlacas();
@@ -755,6 +776,30 @@ function registrarCelulas(quantas) {
     r.fim_previa_limpa = elemento("previaOS").innerHTML === "";
     r.fim_marca_1 = elemento("marca-1").textContent;
     r.fim_contador = elemento("contadorEtapa").textContent;
+
+    /* ── 20. 🚨 OS TRES PERFIS SEM TERMO, NA ETAPA 2 ─────────────────────
+       Ele achou na manutencao NO LOCAL, e ate 24/08 o exercicio so rodava a
+       manutencao COM TROCA -- as duas sao `sem_termo`, o caminho e o mesmo, e
+       mesmo assim ninguem media. Agora os tres passam por aqui. */
+    r.sem_termo_etapa2 = {};
+    for (const perfil of ["manutencao_troca", "manutencao_local",
+                          "ressarcimento_sem_termo"]) {
+      await escolherPerfil(perfil);
+      await espera(20);
+      irPara(2);
+      await espera(20);
+      escolherCliente({ id: 998063, nome: "Velasco Leite Pastelaria ME",
+                        documento: "32020313000106" });
+      await espera(60);
+      r.sem_termo_etapa2[perfil] = {
+        bloco: elemento("cliente").style.display,
+        docwrap: elemento("docWrap").style.display,
+        campo: elemento("clienteCampo").value,
+        avancar_liberado: elemento("btnAvancar").disabled === false,
+        tem_linha_no_termo:
+          elemento("clienteCorpo").innerHTML.indexOf("No termo") >= 0,
+      };
+    }
 
     r.chamadas = chamadas;
   } catch (e) {

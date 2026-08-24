@@ -894,8 +894,15 @@ async function conferirCliente() {
     document.getElementById('docWrap').style.display = 'block';
     return;
   }
+  /* 🚨 O BLOCO DO DOCUMENTO SÓ EXISTE PARA QUEM TEM TERMO. Ele diz "Este termo
+     não traz o CNPJ/CPF" e pede "o documento do cliente do termo" -- e é o
+     caso da rescisão, cujo PDF vem só com o nome. Em perfil SEM TERMO não há
+     documento nenhum de onde tirar: o cliente veio do Buscar, com o documento
+     dele. A condição era só `documento_no_termo`, que nasce indefinido quando
+     não há termo, e o bloco aparecia falando de um documento que não existe.
+     Foi o "está exigindo termo" que ele viu na manutenção no local em 24/08. */
   document.getElementById('docWrap').style.display =
-    extraido.documento_no_termo ? 'none' : 'block';
+    (!perfilAtual().sem_termo && !extraido.documento_no_termo) ? 'block' : 'none';
   const pararEspera = iniciarEspera('msgEtapa2', 'Consultando os dois sistemas');
   document.getElementById('cliente').style.display = 'none';
   try {
@@ -921,9 +928,13 @@ function desenharCliente(d) {
                 : '<span class="badge badge-red">não existe</span>'}</td>
     <td>${dados ? escapeHtml(String(dados.id)) : '—'}</td>
   </tr>`;
+  /* A linha "No termo" só existe quando há termo. Nos perfis sem termo ela
+     saía como "No termo — —", duas colunas vazias explicando nada. */
+  const doTermo = perfilAtual().sem_termo ? '' :
+    `<tr><td><strong>No termo</strong></td>
+         <td>${escapeHtml(extraido.nome_no_termo || '—')}</td><td>—</td></tr>`;
   document.getElementById('clienteCorpo').innerHTML =
-    `<tr><td><strong>No termo</strong></td><td>${escapeHtml(extraido.nome_no_termo || '—')}</td><td>—</td></tr>` +
-    linha('Harmonit', d.harmonit) + linha('WESO', d.weso);
+    doTermo + linha('Harmonit', d.harmonit) + linha('WESO', d.weso);
 
   /* O campo do topo diz, numa linha, quem é o cliente confirmado -- é o que
      o operador lê antes de seguir, sem ter de interpretar a tabela. */
@@ -940,6 +951,16 @@ function desenharCliente(d) {
     `<button class="btn btn-primary" id="btnCriarCliente" onclick="criarClienteNaWeso()">
        Cadastrar na WESO com os dados do Harmonit
      </button>`;
+
+  /* 🚨 E O BLOCO APARECE. `conferirCliente` escondia o `#cliente` antes de
+     consultar e NINGUÉM o mostrava de volta -- em nenhum perfil, desde a F2.
+     Ficavam invisíveis as três coisas que moram aqui: a tabela que cruza os
+     dois sistemas, o recado da situação e o botão **Cadastrar na WESO**, que
+     é a única ação da tela para `falta_na_weso`. O campo do topo continuava
+     preenchendo, e foi por isso que passou -- os testes mediam o `value` do
+     campo, nunca a VISIBILIDADE do bloco. Achado por ele em 24/08, na
+     manutenção no local: "não aparece o resumo do cliente escolhido". */
+  document.getElementById('cliente').style.display = 'block';
 }
 
 async function criarClienteNaWeso() {
