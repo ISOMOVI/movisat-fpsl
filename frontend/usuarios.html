@@ -180,7 +180,23 @@ async function carregarAbas() {
   ABAS = await res.json();
 }
 
-function desenharAbas(marcadas) {
+/* 🚨 O NOME ERA `desenharAbas`, E ELE JÁ EXISTIA NO `sidebar.js`. As duas
+   moram no MESMO escopo global, e a declaração desta página -- que é avaliada
+   depois -- apagava a de lá. Resultado: `montarSidebar('usuarios')` chamava
+   ESTA função, que escreve na caixa de checkboxes do modal e não no
+   `sidebarNav`, e ainda toca em `ABAS`, que é `let` declarado ABAIXO da
+   chamada: zona morta temporal, `ReferenceError`, a promessa do
+   `montarSidebar` rejeitada -- e o `/painel/api/me` nunca chegava a ser
+   pedido. O menu lateral desta tela ficava VAZIO, sem erro no servidor: no
+   journal a página aparece 200 e sem o `/me` que toda outra tem em seguida.
+
+   Vale desde 19/08, quando o `sidebar.js` ganhou a `desenharAbas` do cache
+   (`52f47dd`); esta aqui existe desde 04/08. Ninguém notou porque a tela de
+   Usuários só é usada quando se mexe em conta -- e foi mexendo no perfil da
+   Erika que ele viu.
+
+   O nome novo diz o que ela desenha: as abas CONCEDIDAS a alguém. */
+function desenharAbasConcedidas(marcadas) {
   const set = new Set(marcadas || []);
   document.getElementById('abasBox').innerHTML = ABAS.map((a) => `
     <div class="aba-row${a.sensivel ? ' sensivel' : ''}">
@@ -208,7 +224,7 @@ function abrirModalNovo() {
   document.getElementById('novaSenha').value = '';
   document.getElementById('novoEmail').value = '';
   document.getElementById('erroNovo').style.display = 'none';
-  desenharAbas([]);   // nasce sem nenhuma aba: falhar fechado
+  desenharAbasConcedidas([]);   // nasce sem nenhuma aba: falhar fechado
   document.getElementById('modalNovo').classList.add('open');
 }
 
@@ -219,7 +235,7 @@ function abrirModalPerfil(id, login, abas, email) {
   document.getElementById('btnSalvar').textContent = 'Salvar perfil';
   document.getElementById('novoEmail').value = email || '';
   document.getElementById('erroNovo').style.display = 'none';
-  desenharAbas(abas);
+  desenharAbasConcedidas(abas);
   document.getElementById('modalNovo').classList.add('open');
 }
 

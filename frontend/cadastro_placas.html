@@ -251,7 +251,11 @@ const token = localStorage.getItem('fpsl_painel_token');
 if (!token) window.location.href = '/painel';
 montarSidebar('cadastro_placas');
 function auth() { return { 'Authorization': 'Bearer ' + token }; }
-function logout() { localStorage.removeItem('fpsl_painel_token'); window.location.href = '/painel'; }
+/* 🚨 O `logout` VEM DO `sidebar.js`, e esta página não redefine. A cópia local
+   apagava SÓ o token e deixava `fpsl_painel_abas` no navegador -- o menu de
+   quem saiu ficaria pintado para quem entrasse depois, que é a estrutura do
+   painel de outra pessoa. E redefinir um nome que o `sidebar.js` declara é o
+   que quebrou a sidebar da tela de Usuários (24/08). */
 
 let ultimoCorpo = null;
 let extraido = null;   // o que o termo devolveu, antes da edição
