@@ -269,6 +269,26 @@
   </div>
 </div>
 
+<!-- Modal: o que a etapa 3 acabou de gravar. Pedido dele em 24/08: "depois de
+     criar a placa recipiente não tem confirmação se ela foi criada; só um
+     modal automático de 'Criado' já serve".
+     🚨 O sucesso NÃO falava. O comentário do código dizia que os badges verdes
+     da coluna Situação bastavam -- e não bastam: eles ficam numa coluna
+     lateral, do lado de fora do caminho do olho, e a escrita em dois sistemas
+     é a parte irreversível da tela. -->
+<div class="modal-bg" id="modalPlacasOk"
+     onclick="if(event.target===this)fecharModal('modalPlacasOk')">
+  <div class="modal modal-largo">
+    <div class="modal-header"><h3 id="tituloPlacasOk">Criado</h3>
+      <button onclick="fecharModal('modalPlacasOk')">&#10005;</button></div>
+    <div class="modal-corpo" id="resumoPlacasOk"></div>
+    <div class="modal-rodape">
+      <button class="btn btn-primary" id="okPlacas"
+              onclick="fecharModal('modalPlacasOk')">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: o resumo do fim da rodada. Pedido dele em 24/08: "resumo rápido em
      modal só para OK, e depois retorna para o início". É o único modal da tela
      que não busca nada -- ele FECHA um ciclo. -->
@@ -1461,12 +1481,59 @@ async function processarPlacas() {
      listas de `acao` em dois lugares divergem na primeira vez que alguém
      acrescentar um estado novo. */
   const ruins = linhasPlacas.filter((l) => placaFalhou(l.situacao));
-  /* So o erro fala. O sucesso ja esta nos badges verdes da coluna Situacao --
-     repeti-lo em prosa e dizer duas vezes a mesma coisa. */
   msg('msgEtapa3', ruins.length
       ? `<strong>${ruins.length} linha(s) com problema.</strong> Corrija e clique de novo.`
       : '', ruins.length ? 'msg-erro' : '');
   atualizarAvancar();
+
+  /* 🚨 DEU CERTO, ENTÃO DIZ QUE DEU CERTO. Este trecho dizia em comentário que
+     "só o erro fala, porque o sucesso já está nos badges verdes da coluna
+     Situação". Não estava: o badge fica numa coluna lateral, fora do caminho
+     do olho, e o que acabou de acontecer é a parte IRREVERSÍVEL da tela --
+     escrita em dois sistemas, num deles sem DELETE. Ele apontou no recipiente,
+     que é o caso extremo: nasce só na WESO e o operador não tem como saber se
+     nasceu. Pedido dele: "só um modal automático de 'Criado' já serve".
+
+     ⚠️ SÓ QUANDO NÃO HÁ FALHA. Com linha ruim, quem fala é a mensagem
+     vermelha; um modal dizendo "Criado" por cima de um erro é aviso falso, e
+     aviso falso treina a equipe a ignorar aviso. */
+  const processadas = pendentes.map(({ l }) => l);
+  if (!ruins.length && processadas.length) mostrarPlacasCriadas(processadas);
+}
+
+/* O que cada linha virou, em uma frase, por SISTEMA. O recipiente aparece como
+   bancada e SÓ com a WESO -- é a pergunta que ele fez. */
+function resumoDaLinha(l) {
+  const verbo = { criado: 'criado', ja_existia: 'já existia',
+                  confere_ok: 'conferido' };
+  const partes = [];
+  ['harmonit', 'weso'].forEach((sis) => {
+    const r = (l.situacao || {})[sis];
+    if (!r || !verbo[r.acao]) return;      // `ignorado` não vira frase
+    const onde = sis === 'harmonit' ? 'no Harmonit' : 'na WESO';
+    partes.push(`${verbo[r.acao]} ${onde}`
+                + (r.id ? ` (#${escapeHtml(String(r.id))})` : ''));
+  });
+  return partes.join(' · ') || 'sem gravação';
+}
+
+function mostrarPlacasCriadas(linhas) {
+  const bancadas = linhas.filter((l) => l.recipiente).length;
+  document.getElementById('tituloPlacasOk').textContent =
+    linhas.length === 1 ? 'Criado' : `${linhas.length} linhas gravadas`;
+  document.getElementById('resumoPlacasOk').innerHTML =
+    `<table><thead><tr><th>Placa</th><th>O que aconteceu</th></tr></thead>
+     <tbody>${linhas.map((l) => `<tr>
+       <td><code>${escapeHtml(l.placa || '')}</code>${l.recipiente
+         ? ' <span class="badge badge-ambar">bancada</span>' : ''}</td>
+       <td>${resumoDaLinha(l)}</td></tr>`).join('')}</tbody></table>`
+    + (bancadas
+        ? `<div class="aviso-info">${bancadas} recipiente(s) de bancada: só na
+           WESO, o Harmonit não recebe nada.</div>`
+        : '');
+  abrirModal('modalPlacasOk');
+  const ok = document.getElementById('okPlacas');
+  if (ok && ok.focus) ok.focus();
 }
 
 /* ── etapa 4: as OS ─────────────────────────────────────────────────────────

@@ -261,12 +261,21 @@ global.fetch = async (url, opcoes) => {
   }
   if (u.includes("/operacoes/lote")) return ok({ lote: "loteDeMentira01" });
   if (u.includes("/operacoes/placas/uma")) {
+    /* 🚨 O DUBLE PRECISA SEPARAR OS DESTINOS, COMO O ROUTER SEPARA. Ele
+       devolvia `harmonit: criado` para TODA linha, inclusive o recipiente --
+       e o router real registra o Harmonit como `ignorado`, motivo "recipiente
+       e bancada, nao veiculo do cliente" (`operacoes_router.py:500`). Com o
+       duble mentindo, a tela podia dizer "criado no Harmonit" para uma
+       bancada e o exercicio aprovava: duble complacente aprova tela errada. */
+    const corpo = JSON.parse((opcoes && opcoes.body) || "{}");
+    const noHarmonit = corpo.recipiente
+      ? { acao: "ignorado", motivo: "recipiente é bancada, não veículo do cliente" }
+      : { acao: "criado", id: 1 };
     if (placasFalham) {
-      return ok({ harmonit: { acao: "criado", id: 1 },
+      return ok({ harmonit: noHarmonit,
                   weso: { acao: "falhou", erro: "timeout" } });
     }
-    return ok({ harmonit: { acao: "criado", id: 1 },
-                weso: { acao: "criado", id: 2 } });
+    return ok({ harmonit: noHarmonit, weso: { acao: "criado", id: 2 } });
   }
   if (u.includes("/operacoes/placas/do-cliente")) {
     return ok({ veiculos: [
@@ -532,6 +541,14 @@ function registrarCelulas(quantas) {
     const _antesConf = global.__confirms.length;
     await processarPlacas();
     r.st_confirm_manut = global.__confirms.slice(_antesConf)[0] || "";
+    /* 🚨 GRAVOU, ENTAO DISSE QUE GRAVOU. Ate 24/08 o sucesso era mudo -- o
+       comentario do codigo afirmava que os badges verdes da coluna Situacao
+       bastavam. O recipiente e o caso extremo: nasce so na WESO. */
+    r.st_modal_criado = elemento("modalPlacasOk")._classes.has("open");
+    r.st_modal_titulo = elemento("tituloPlacasOk").textContent;
+    r.st_modal_resumo = elemento("resumoPlacasOk").innerHTML;
+    r.st_modal_focou_ok = global.__foco === elemento("okPlacas");
+    fecharModal("modalPlacasOk");
     r.st_linhas_reais = estado().linhasPlacas.filter((l) => !l.recipiente).length;
     r.st_linhas_recipiente = estado().linhasPlacas.filter((l) => l.recipiente).length;
     await espera(30);

@@ -467,6 +467,35 @@ checar("e o contador acompanha",
        v("fim_contador") == "Etapa 1 de 4", v("fim_contador"))
 
 print()
+print("== 🚨 GRAVOU, ENTAO DISSE QUE GRAVOU ==")
+# Achado dele em 24/08: "depois de criar a placa recipiente não tem confirmação
+# se ela foi criada; só um modal automático de 'Criado' já serve".
+#
+# 🚨 O SUCESSO ERA MUDO POR ESCRITO. O comentário do código afirmava que os
+# badges verdes da coluna Situação bastavam -- e não bastam: ficam numa coluna
+# lateral, fora do caminho do olho, e o que acabou de acontecer é a parte
+# IRREVERSÍVEL da tela. O recipiente é o caso extremo: nasce SÓ na WESO.
+resumo_ok = v("st_modal_resumo") or ""
+checar("o modal abre sozinho quando a gravação dá certo",
+       v("st_modal_criado") is True)
+checar("o foco vai para o OK", v("st_modal_focou_ok") is True)
+checar("ele diz quantas linhas foram",
+       "2 linhas gravadas" == (v("st_modal_titulo") or ""), v("st_modal_titulo"))
+checar("a placa real aparece com os DOIS sistemas",
+       "criado no Harmonit" in resumo_ok and "criado na WESO" in resumo_ok,
+       resumo_ok[:200])
+# 🚨 A PERGUNTA DELE ERA O RECIPIENTE. Ele não pode aparecer como criado no
+# Harmonit -- lá ele é `ignorado`, e o dublê agora separa os destinos como o
+# router separa.
+recip = resumo_ok.split("MANUT")[-1] if "MANUT" in resumo_ok else ""
+checar("o recipiente aparece no resumo", bool(recip), resumo_ok[:200])
+checar("e NÃO diz que foi criado no Harmonit",
+       "criado no Harmonit" not in recip, recip[:200])
+checar("diz que foi criado na WESO", "criado na WESO" in recip, recip[:200])
+checar("e a nota explica que o Harmonit não recebe nada",
+       "não recebe nada" in resumo_ok, resumo_ok[-160:])
+
+print()
 print("== 🚨 A ETAPA 2 MOSTRA QUEM E O CLIENTE, e nao pede termo a quem nao tem ==")
 # Achado dele em 24/08, na manutenção NO LOCAL: "após escolher o cliente não
 # aparece o resumo do cliente escolhido, e ele está exigindo termo, mesmo sendo
