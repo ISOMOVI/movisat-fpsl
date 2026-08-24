@@ -1270,3 +1270,132 @@ que ficam. A F7 é **partir o arquivo em dois**.
 (24/08). ⚠️ A contagem soma os **dois formatos de rodapé** que os arquivos usam
 (`N verificações` e `N passaram`) — comparar com número antigo só medindo do
 mesmo jeito.
+
+---
+
+## 🚨 24/08, segunda metade — o que a rodada de uso continuou achando
+
+### O bloco do cliente estava INVISÍVEL desde a F2, em todos os perfis
+
+Ele apontou na manutenção no local: *"após escolher o cliente, não aparece o
+resumo do cliente escolhido"*. Medido, e não era dos perfis sem termo — era de
+**todos**.
+
+`conferirCliente` escondia o `#cliente` antes de consultar os dois sistemas e
+**ninguém o mostrava de volta**. Ficavam invisíveis as três coisas que moram
+ali: a tabela que cruza Harmonit e WESO, o recado da situação, e o botão
+**Cadastrar na WESO** — que é a **única** ação da tela para o caso
+`falta_na_weso`.
+
+⚠️ **Por que passou:** o campo do topo continuava preenchendo com o nome e o id,
+e era o `value` dele que os testes mediam. **Ninguém media a visibilidade do
+bloco.** Medição antes do conserto: `none` nos dois perfis; depois, `block`.
+
+### E o bloco do documento aparecia em perfil que não tem termo
+
+Ele diz *"Este termo não traz o CNPJ/CPF"* e existe para a rescisão. A condição
+olhava só `documento_no_termo`, que nasce **indefinido** quando não há termo
+nenhum. Era o *"está exigindo termo"* do relato. Agora exige também que o perfil
+tenha termo, e a linha "No termo" some da tabela nos perfis sem termo.
+
+🚨 **E o dublê de `/perfis` tinha UM perfil sem termo só** (`manutencao_troca`),
+por isso a manutenção **no local** nunca tinha sido exercitada. Agora os três
+estão no dublê, o exercício roda os três na etapa 2, e há contrato: o conjunto
+de `cfg.sem_termo()` tem de bater com a lista do dublê.
+
+### A lista de placas do cliente sai em ordem alfabética
+
+A consulta **já tinha** `ORDER BY placa` — quem conferisse lendo o código diria
+que estava certo. O defeito era o **dado**: a base do Harmonit tem placa com
+**espaço à esquerda** (`' 280574'`, `' AHQ 7266'`), que ordena antes de qualquer
+letra, e **902 das 9.114** sem espaço nenhum (`AAA1234`), que se intercalam com
+as que têm.
+
+Agora ordena pela placa normalizada, e o `TRIM` sai também no valor devolvido —
+o espaço ia para o `<option>`, para a linha da etapa 3 e para o payload.
+
+---
+
+## 🚨 De onde vem a lista da etapa 3, e por que ela mudou de fonte (24/08)
+
+📁 Detalhe dos dois caches em `caches/README.md`.
+
+A lista dos perfis **sem termo** saía de `harmonit_veiculos`, dentro do banco do
+app, e **nada a atualizava** — nenhum cron, nenhum caminho no código.
+
+Medido no dia: Harmonit ao vivo **9.116** × espelho **9.114**. Uma das duas
+ausentes, `FWB 0E36`, tinha sido criada **pelo próprio painel três horas antes**.
+
+⚠️ **A regra da operação depende disso sem saber.** Manutenção só acontece em
+placa que já está na WESO há pelo menos um dia. A regra é boa, mas só se
+sustenta se a base for refeita todo dia: a placa criada hoje não é elegível
+hoje; amanhã, quando passa a ser, continuava fora da lista. **Não era a placa
+que era nova demais — era o espelho que nunca deixava de ser velho.**
+
+Agora vem de `/home/claude/harmonit_cache/`, cron diário às 04:50, com
+`meta.atualizado_em`. O endpoint devolve `atualizado_em` e `origem`; a tela
+ainda não os exibe.
+
+### ⏸️ A divergência que ficou, por decisão dele
+
+**A lista vem do Harmonit, e a regra dele diz WESO.** Não dá para inverter: o
+`/Veiculos/Consultar` **não devolve cliente nenhum** — no cache são 0 de 1.955
+veículos com `cliente_id`, e o limite está documentado no `weso_cache/cache.py`
+desde 29/07. Só o Harmonit sabe de quem é cada veículo.
+
+**Decisão dele em 24/08: "deixe como está".** Quem filtra placa que não está na
+WESO é o operador. **Não reabrir.**
+
+---
+
+## O cadastro consulta o espelho primeiro (24/08)
+
+`_existe_no_harmonit` baixava a base **inteira** duas vezes por placa. Num lote
+de manutenção, em que todas as placas já existem, eram 11 leituras completas.
+
+**Três camadas:**
+
+1. o espelho responde primeiro;
+2. rede só quando ele **não** acha — pode ter nascido depois das 04:50;
+3. **a releitura depois de gravar continua sempre ao vivo**, por
+   `_no_harmonit_ao_vivo`.
+
+🚨 **A camada 1 é segura porque o Harmonit não tem exclusão de veículo.** O
+espelho pode estar faltando coisa recente, mas nunca carrega fantasma: *"achei
+no espelho" é sempre verdade*; *"não achei"* é o único caso incerto, e é o que
+vai à rede.
+
+🚨 **A camada 3 é a que não pode cair**, e é a mais fácil de quebrar numa
+refatoração — basta trocar o nome. O espelho é das 04:50: ele diria "não está
+lá" para toda placa recém-criada, e a rodada inteira sairia como falha. A trava
+mede a **ligação**: põe no espelho justamente a placa que a rede diz existir e
+exige que a releitura, ainda assim, vá à rede.
+
+**Medido:** 0,5 ms pelo espelho × 2.548 ms ao vivo. Lote de 11 placas que já
+existem: **28,0 s → 0,005 s**.
+
+---
+
+## 🚨 A suíte escreveu numa pendência REAL (24/08)
+
+O `teste_laco` do F5b troca o tratador por um que estoura e chama
+`rot.rodar("recipiente")` — que lê a fila **global**, porque é a rotina de
+produção. Havia uma pendência real esperando (**OS 16797, placa TESTEIAGO**): o
+laço a processou com o tratador explosivo e gravou nela `ultimo_erro = "erro
+inesperado: estourei de proposito"`.
+
+**O placar vermelho foi o sintoma; o dano foi a escrita.**
+
+**Terceira variante do mesmo defeito no mesmo dia.** As duas primeiras eram
+*leitura* — `resumo()` e `pendentes()` afirmando sobre a fila inteira, e o
+`pendencia()[0]` pegando a primeira linha global. Esta é **escrita**, e entrou
+por uma porta que os consertos anteriores não cobriam: o próprio laço de
+produção, chamado de dentro do teste.
+
+**A regra que faltava:** *função que existe para varrer a fila INTEIRA não pode
+ser chamada por teste sem a fila ser dublada.*
+
+Corrigido dublando a **leitura da fila**, não o `rodar` — o que o teste prova é
+que o laço não morre quando um tratador estoura, e essa lógica tem de continuar
+sendo a de verdade. O contador da pendência real foi devolvido para 1, que é a
+tentativa que a rotina fez de verdade.

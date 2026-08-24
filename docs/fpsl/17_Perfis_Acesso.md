@@ -106,3 +106,61 @@ reconfirma, tenta desativar o owner (400) e remove o usuário de teste no fim.
 ```
 venv/bin/python teste_perfis.py
 ```
+
+---
+
+## 🚨 24/08 — dois defeitos na tela de Usuários, achados por ele usando
+
+### 1. O menu lateral sumia, e a causa era colisão de nome
+
+Ele inseriu uma opção no perfil da Erika e **o menu lateral desapareceu**. Não
+era o perfil, não era permissão, não era o backend.
+
+A tela de Usuários declarava a **sua própria `desenharAbas`**, e o `sidebar.js`
+declara uma com o **mesmo nome**. Os dois vivem no mesmo escopo global, e a
+declaração da página — avaliada depois — apagava a do arquivo compartilhado.
+
+A partir daí `montarSidebar('usuarios')` chamava a função **errada**: a da
+página, que escreve na caixa de checkboxes do modal e não no `sidebarNav`, e que
+ainda lê `ABAS` — um `let` declarado **abaixo** da chamada, portanto em zona
+morta temporal. `ReferenceError`, promessa rejeitada, e o `/painel/api/me` nunca
+chegava a ser pedido.
+
+🚨 **COMO SE ACHOU, E VALE PARA A PRÓXIMA VEZ.** No journal a página sai `200`
+e, **sozinha entre todas**, sem o `/painel/api/me` logo em seguida. Toda outra
+tela do painel tem o par. **Foi a ausência que denunciou** — não havia erro
+nenhum para procurar, nem no servidor nem no placar.
+
+A colisão valia desde 19/08, quando o `sidebar.js` ganhou a `desenharAbas` do
+cache (`52f47dd`); a da tela de Usuários existe desde 04/08. Cinco dias com a
+sidebar de uma tela morta, com o placar verde o tempo todo: **nenhum teste
+olhava a convivência entre os dois arquivos.**
+
+**E a varredura achou mais quatro, de outra família.** `cadastro_placas`,
+`cadastro_placas_historico`, `harmonit_historico` e `registro_telas` tinham um
+`logout` próprio que apagava **só o token**, deixando `fpsl_painel_abas` no
+navegador — o menu de quem saiu ficaria pintado para quem entrasse depois. As
+quatro cópias saíram; vale a do `sidebar.js`, que apaga as duas chaves.
+
+**Trava:** `tests/teste_colisao_de_globais.py` extrai **do próprio
+`sidebar.js`** os nomes que vão para o escopo global e reprova qualquer página
+que redeclare um deles no topo. A lista não é escrita no teste — escrevê-la
+criaria a segunda verdade que ele existe para impedir. Conferido que **reprova
+sem a correção**: 5 falhas, exatamente as cinco páginas.
+
+### 2. O campo de e-mail existia e nunca era enviado
+
+Ele viu na Aline: e-mail que não fica. O modal **preenchia** o campo ao abrir o
+perfil, o operador digitava, e os **dois** caminhos mandavam o corpo sem ele —
+`{login, senha, abas}` ao criar e `{abas}` ao editar.
+
+O servidor sempre soube gravar (`definir_email_painel`); a tela é que jogava
+fora. **Campo que aceita e descarta é pior que campo que não existe:** os quatro
+usuários criados naquele dia ficaram sem vínculo, e **sem vínculo não há login
+Google**.
+
+⚠️ **E o conserto quase virou outro defeito.** Gravar e-mail **zera o
+`google_sub`**, para a conta Google antiga não continuar entrando depois de o
+vínculo passar de mão. Mandando o e-mail em toda edição, mexer numa permissão da
+Erika **desligaria o login Google dela em silêncio**. Agora o e-mail só vai
+quando o campo **muda** — o modal guarda o valor com que abriu.
