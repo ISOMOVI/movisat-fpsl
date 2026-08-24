@@ -396,8 +396,25 @@ async def teste_laco():
 
     original = rot._TRATADORES["recipiente"]
     rot._TRATADORES["recipiente"] = _explode
+    # 🚨 A FILA QUE O LAÇO LÊ TEM DE SER SÓ A MINHA. `rot.rodar()` chama
+    # `esp.pendentes()`, que é GLOBAL de propósito -- é a rotina de produção.
+    # Em 24/08 este teste rodou com uma pendência REAL esperando (OS 16797,
+    # placa TESTEIAGO): o laço a processou com o tratador que estoura, marcou
+    # falha e gravou "erro inesperado: estourei de proposito" NELA. O `lidas`
+    # virou 2 e o teste reprovou -- mas o vermelho foi o sintoma; o dano foi a
+    # escrita em dado de operação.
+    #
+    # ⚠️ O DUBLÊ É NA LEITURA DA FILA, não no `rodar`: o que este teste prova é
+    # que o LAÇO não morre quando um tratador estoura, e essa lógica tem de
+    # continuar sendo a de verdade.
+    pendentes_original = rot.esp.pendentes
     try:
-        await pendencia("recipiente", recipiente_placa="AAA0A00-UPGRADE")
+        minha = await pendencia("recipiente", recipiente_placa="AAA0A00-UPGRADE")
+
+        async def _so_a_minha(caso=None):
+            return [dict(minha)]
+
+        rot.esp.pendentes = _so_a_minha
         r = await rot.rodar("recipiente")
         checar("a passada termina mesmo com pendência que estoura",
                r["lidas"] == 1 and r["concluidas"] == 0, str(r))
@@ -406,6 +423,7 @@ async def teste_laco():
                str(r["resultados"]))
     finally:
         rot._TRATADORES["recipiente"] = original
+        rot.esp.pendentes = pendentes_original
 
 
 async def main():
