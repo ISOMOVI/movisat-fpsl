@@ -48,7 +48,10 @@ def checar(nome, cond, detalhe=""):
 
 
 CACHE = opr.CACHE_HARMONIT
-CRON = pathlib.Path("/home/claude/harmonit_cache/rodar.sh")
+# 🚨 O SCRIPT MORA NO REPOSITORIO, O DADO MORA FORA (24/08, decisão dele: "não
+# precisa de novo repo, use o mesmo"). Esta trava pegou a mudança de caminho no
+# minuto em que ela aconteceu -- que é exatamente o que ela existe para fazer.
+CRON = pathlib.Path(__file__).resolve().parent.parent / "caches" / "harmonit_rodar.sh"
 
 print("== o endpoint aponta para o cache, e não para a tabela parada ==")
 # 🚨 MEDE A LIGAÇÃO: é a constante que o router REALMENTE usa, importada dele.
