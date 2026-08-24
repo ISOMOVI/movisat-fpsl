@@ -15,9 +15,17 @@ async def start_client():
     # 6,0 s a 30,7 s, mediana 23,8 s. O teto cortava o que o fornecedor chama
     # de normal, e foi ele que gerou a OS 16775 sem equipamento.
     #
-    # ⚠️ ISTO SÓ VALE ATÉ O NGINX. O `location /` está em 35 s nos dois server
-    # blocks: passando disso, quem corta é ele, com uma PÁGINA HTML de 504 que
-    # a tela lê como JSON. Subir o nginx exige root e está pendente.
+    # ⚠️ ISTO SÓ VALE ATÉ O NGINX, e a ORDEM É O DESENHO: o `location /` está
+    # em 90 s nos dois server blocks (aplicado em 21/08, com autorização), e o
+    # nosso teto de 60 s dispara PRIMEIRO. É o que faz o operador receber erro
+    # nosso em JSON, com explicação, em vez da página HTML de 504 do nginx --
+    # que a tela lê como JSON e foi o "erro json" de 14/08. Invertendo os dois
+    # números, o defeito volta.
+    #
+    # 🚨 ESTE COMENTÁRIO ESTEVE ERRADO POR TRÊS DIAS: dizia 35 s e "subir o
+    # nginx exige root e está pendente", depois de a mudança ter sido aplicada.
+    # Comentário que descreve tarefa já feita aponta para o lado errado, e é a
+    # mesma família do defeito que fez a trava de etapas viver só no texto.
     _client = httpx.AsyncClient(base_url=settings.weso_base_url, timeout=60)
 
 

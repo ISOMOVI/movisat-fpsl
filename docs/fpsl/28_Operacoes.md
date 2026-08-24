@@ -1266,7 +1266,7 @@ foi removido antes da garantia do que dependia dele.
 🚨 **O `os_router.py` NÃO pode ser apagado** — ele hospeda as rotas de Vínculos,
 que ficam. A F7 é **partir o arquivo em dois**.
 
-**Suíte do FPSL: 1.552 verificações em 39 arquivos de teste, zero reprovações**
+**Suíte do FPSL: 1.590 verificações em 40 arquivos de teste, zero reprovações**
 (24/08). ⚠️ A contagem soma os **dois formatos de rodapé** que os arquivos usam
 (`N verificações` e `N passaram`) — comparar com número antigo só medindo do
 mesmo jeito.
