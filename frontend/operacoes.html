@@ -219,6 +219,12 @@
           <button class="btn btn-perigo" id="btnGerar" onclick="gerarOS()" disabled>
             Gerar as OS</button>
           <span id="progressoOS" class="dim-pequeno"></span>
+          <!-- 🚨 SÓ NASCE DEPOIS DE AS OS SAÍREM. Até 24/08 a rodada terminava
+               e a tela ficava parada no resultado: para começar outra, só
+               recarregando a página ou trocando o tipo de operação -- que zera
+               por efeito colateral, não por escolha. -->
+          <button class="btn btn-primary btn-fim" id="btnConcluir"
+                  onclick="abrirConcluir()" hidden>Concluir</button>
         </div>
       </div>
 
@@ -227,6 +233,7 @@
       <div class="footer-nav">
         <button class="btn btn-ghost" id="btnVoltar" onclick="irPara(etapaAtual - 1)"
                 style="visibility:hidden">← Voltar</button>
+        <span id="contadorEtapa" class="contador-etapa"></span>
         <span id="faltaDica" class="falta-dica"></span>
         <button class="btn btn-primary" id="btnAvancar" onclick="irPara(etapaAtual + 1)">
           Avançar →
@@ -259,6 +266,22 @@
       <button onclick="fecharModal('modalServico')">&#10005;</button></div>
     <input type="text" id="buscaServico" placeholder="Nome do serviço">
     <div class="modal-lista" id="servicosResultado"></div>
+  </div>
+</div>
+
+<!-- Modal: o resumo do fim da rodada. Pedido dele em 24/08: "resumo rápido em
+     modal só para OK, e depois retorna para o início". É o único modal da tela
+     que não busca nada -- ele FECHA um ciclo. -->
+<div class="modal-bg" id="modalConcluir"
+     onclick="if(event.target===this)fecharModal('modalConcluir')">
+  <div class="modal modal-largo">
+    <div class="modal-header"><h3>Rodada concluída</h3>
+      <button onclick="fecharModal('modalConcluir')">&#10005;</button></div>
+    <div class="modal-corpo" id="resumoConcluir"></div>
+    <div class="modal-rodape">
+      <button class="btn btn-primary" id="okConcluir"
+              onclick="concluirRodada()">OK</button>
+    </div>
   </div>
 </div>
 
@@ -396,6 +419,20 @@ function irPara(n) {
   atualizarAvancar();
 }
 
+/* 🚨 O QUE VAI DENTRO DO CÍRCULO, NUM LUGAR SÓ. `pintarEtapa` e
+   `pintarCabecalhos` escreviam a marca cada uma com a sua expressão -- duas
+   verdades sobre a mesma coisa, que só divergem quando alguém mexe numa e
+   esquece a outra. É o mesmo motivo de o cabeçalho não ter lógica própria de
+   navegação.
+
+   O número fica à mostra o tempo todo: é ele que diz QUAL etapa é. Só a etapa
+   concluída troca o número pelo ✓ -- aí o número já não informa nada que a
+   posição na tela não diga, e o ✓ informa. O resto do estado (aqui, trancada)
+   é COR, e a cor está no CSS. */
+function glifoDaEtapa(i, ehAtual, pronta) {
+  return (pronta && !ehAtual) ? '✓' : String(i);
+}
+
 /* Só os cabeçalhos, sem mexer em qual painel está aberto. */
 function pintarCabecalhos() {
   for (let i = 1; i <= TOTAL_ETAPAS; i++) {
@@ -403,11 +440,8 @@ function pintarCabecalhos() {
     const marca = document.getElementById('marca-' + i);
     if (!valor || !marca) return;
     const pronta = !faltaNaEtapa(i);
-    if (i === etapaAtual) { valor.textContent = ''; marca.textContent = '●'; continue; }
-    valor.textContent = resumoDaEtapa(i);
-    const alcancavel = Array.from({ length: i - 1 }, (_, k) => k + 1)
-      .every((k) => !faltaNaEtapa(k));
-    marca.textContent = pronta ? '✓' : (alcancavel ? '○' : '·');
+    marca.textContent = glifoDaEtapa(i, i === etapaAtual, pronta);
+    valor.textContent = i === etapaAtual ? '' : resumoDaEtapa(i);
   }
 }
 
@@ -476,12 +510,16 @@ function pintarEtapa(n) {
       .every((k) => !faltaNaEtapa(k));
     secao.classList.toggle('trancada', !alcancavel && i !== n);
 
-    marca.textContent = i === n ? '●' : (pronta ? '✓' : (alcancavel ? '○' : '·'));
+    marca.textContent = glifoDaEtapa(i, i === n, pronta);
     valor.textContent = i === n ? '' : resumoDaEtapa(i);
   }
   document.getElementById('btnVoltar').style.visibility = n === 1 ? 'hidden' : 'visible';
   document.getElementById('btnAvancar').style.visibility =
     n === TOTAL_ETAPAS ? 'hidden' : 'visible';
+  /* O círculo diz onde estou; este diz quanto falta. São as duas perguntas de
+     quem está no meio de um formulário em passos. */
+  const contador = document.getElementById('contadorEtapa');
+  if (contador) contador.textContent = `Etapa ${n} de ${TOTAL_ETAPAS}`;
 }
 
 /* O botão diz o que falta ANTES do clique. Botão que só reclama depois de
@@ -558,6 +596,13 @@ function zerarRodada() {
   ['msgEtapa1', 'msgEtapa2', 'msgEtapa3', 'msgEtapa4'].forEach((id) => msg(id, '', ''));
   document.getElementById('btnGerar').disabled = true;
   document.getElementById('previaOS').innerHTML = '';
+  /* ⚠️ A TABELA DE PLACAS FICAVA NA TELA depois de a rodada ser zerada:
+     `linhasPlacas` esvaziava e o HTML dela continuava lá até alguém abrir a
+     etapa 3 de novo. Trocar de perfil deixava as placas do perfil anterior à
+     vista, que é o oposto do que zerar promete. */
+  desenharPlacas();
+  ultimoResultado = null;
+  document.getElementById('btnConcluir').hidden = true;
   servicoSelecionado = null;
   placasDoCliente = [];
   esquecerLote();
@@ -1039,7 +1084,7 @@ function aplicarResolvidas(resolvidas) {
 let proximaLinha = 1;
 function novaLinha(dados) {
   return Object.assign({ id: proximaLinha++, recipiente: false, entrada: false,
-                         situacao: null }, dados);
+                         daBase: false, situacao: null }, dados);
 }
 
 function perfilAtual() {
@@ -1185,7 +1230,12 @@ function adicionarPlaca() {
     msg('msgEtapa3', `A placa ${escapeHtml(v.placa)} já está na lista.`, 'aviso');
     return;
   }
-  const saida = novaLinha({ veiculo: v.veiculo, placa: v.placa });
+  /* 🚨 `daBase` = ESTA PLACA VEIO DO CADASTRO DO HARMONIT. É o que permite a
+     confirmação dizer "confere lá" em vez de "cria lá" -- e foi a metade do
+     defeito de 24/08 que não era o alerta fixo. A marca vem daqui porque é
+     aqui que a origem se sabe com certeza: `v` é um item de
+     `placasDoCliente`, que é a resposta de `/placas/do-cliente`. */
+  const saida = novaLinha({ veiculo: v.veiculo, placa: v.placa, daBase: true });
   linhasPlacas.push(saida);
 
   /* 🚨 O RECIPIENTE ACOMPANHA A PLACA, igual ao caminho do termo. A manutenção
@@ -1311,20 +1361,42 @@ async function processarPlacas() {
       (l) => !l.situacao || placaFalhou(l.situacao));
     if (!pendentes.length) return;
 
-    /* 🚨 OS DOIS DESTINOS SAO DIFERENTES, e a caixa tem de dizer qual e qual.
-       O recipiente (`-MANUT`, `-UPGRADE`) e bancada do setor de configuracao,
-       nao veiculo do cliente: ele nasce SO na WESO. Ate hoje esta caixa dizia
-       "N registro(s) no Harmonit e na WESO" contando os dois tipos juntos --
-       e foi o que fez parecer que a manutencao ia criar recipiente no
-       Harmonit. */
-    const veiculos = pendentes.filter((l) => !l.recipiente).length;
+    /* 🚨 CADA GRUPO DIZ O SEU DESTINO, E O ALERTA SEGUE O DESTINO. Ele apontou
+       em 24/08: "ao cadastrar placa de manutenção (recipiente) a caixa ainda
+       induz ao erro, por informar Harmonit". Induzia por DOIS caminhos, e
+       separar os grupos em 21/08 só tinha resolvido metade do primeiro:
+
+       1. a linha de alerta -- "o Harmonit não tem exclusão de veículo" -- era
+          FIXA. Aparecia inteira numa rodada que não escreve uma linha no
+          Harmonit, que é o caso da manutenção com troca;
+       2. o verbo era "Criar" para todo mundo. Nos perfis SEM TERMO a placa
+          real saiu da BASE DO HARMONIT -- o `<select>` da etapa 3 é ela --,
+          então ela já existe lá e o que a etapa faz é CONFERIR. Quem nasce é o
+          recipiente, e só na WESO.
+
+       A regra que fica: a caixa afirma criação onde a criação é possível, e o
+       aviso do Harmonit só existe quando alguma linha pode nascer lá. */
     const bancadas = pendentes.filter((l) => l.recipiente).length;
+    const daBase = pendentes.filter((l) => !l.recipiente && l.daBase).length;
+    const novos = pendentes.filter((l) => !l.recipiente && !l.daBase).length;
     const partes = [];
-    if (veiculos) partes.push(`${veiculos} veículo(s) no Harmonit e na WESO`);
-    if (bancadas) partes.push(`${bancadas} recipiente(s) SÓ na WESO`);
-    if (!confirm(
-        `Criar ${partes.join('\ne ')}?\n\n` +
-        `O Harmonit nao tem exclusao de veiculo: o que for criado por engano fica.`)) {
+    if (novos) {
+      partes.push(`${novos} veículo(s): cria no Harmonit e na WESO se faltar`);
+    }
+    if (daBase) {
+      partes.push(`${daBase} veículo(s) da base do Harmonit: confere lá `
+                  + `e garante na WESO`);
+    }
+    if (bancadas) {
+      partes.push(`${bancadas} recipiente(s) de bancada: SÓ na WESO — `
+                  + `o Harmonit não recebe nada`);
+    }
+    const alerta = novos
+      ? '\n\nO Harmonit não tem exclusão de veículo: o que for criado lá por '
+        + 'engano fica.'
+      : '';
+    if (!confirm(`Prosseguir com ${pendentes.length} linha(s)?\n\n`
+                 + partes.join('\n') + alerta)) {
       return;
     }
   }
@@ -1384,6 +1456,10 @@ async function processarPlacas() {
 let modelosDePara = [];
 let previa = null;
 let apoioCarregado = false;
+/* O que a rodada produziu, para o resumo do fim. Fica aqui, com o resto do
+   estado da etapa 4, e não junto das funções lá embaixo: `gerarOS` escreve
+   nele antes de elas existirem no arquivo. */
+let ultimoResultado = null;
 
 async function carregarApoio() {
   if (apoioCarregado) return;
@@ -1711,11 +1787,73 @@ async function gerarOS() {
             ? ` ${d.pendencias.length} ficaram esperando a rotina (recipiente ou oficina).`
             : ''),
         d.com_erro ? 'msg-erro' : 'msg-ok');
+    /* A rodada acabou: o Concluir aparece e é a única ação que resta aqui.
+       Guardo o resultado porque o `previaOS` da tela vai ser jogado fora no
+       reinício, e é dele que sai o resumo. */
+    ultimoResultado = d;
+    document.getElementById('btnConcluir').hidden = false;
   } catch (e) {
     prog.textContent = '';
     btn.disabled = false;
     msg('msgEtapa4', escapeHtml(e.message), 'msg-erro');
   }
+}
+
+/* ── o fim da rodada ────────────────────────────────────────────────────────
+   🚨 A TELA NÃO TINHA FIM. As OS saíam, o resultado ficava na etapa 4 e
+   pronto: para começar outra rodada só recarregando a página, ou trocando o
+   tipo de operação -- que zera por EFEITO COLATERAL, não por escolha. E foi o
+   que ele pediu em 24/08: "botão Concluir, um resumo rápido em modal só para
+   OK, e depois retorna para o início". */
+
+/* 🚨 O RESUMO É LEITURA, NÃO DECISÃO. O que ia para produção já foi -- nada
+   aqui muda nada, e é por isso que o único botão é OK. Modal de fim com opção
+   de desfazer prometeria o que o Harmonit não tem. */
+function abrirConcluir() {
+  const d = ultimoResultado || {};
+  const feitas = (d.criadas || []).filter((r) => r.ok);
+  const ruins = (d.criadas || []).filter((r) => !r.ok);
+  const nome = (cliente && ((cliente.harmonit && cliente.harmonit.nome)
+                            || (cliente.weso && cliente.weso.nome))) || '';
+  const termo = (extraido && extraido.termo) ? ` · termo ${extraido.termo}` : '';
+  const contas = [linhaResumo('OS criadas', feitas.length)];
+  if (ruins.length) contas.push(linhaResumo('Com problema', ruins.length));
+  if ((d.pendencias || []).length) {
+    contas.push(linhaResumo('Esperando a rotina', d.pendencias.length));
+  }
+  const tabela = feitas.length
+    ? `<table><thead><tr><th>OS</th><th>Placa</th><th>Tipo</th></tr></thead>
+       <tbody>${feitas.map((r) => `<tr>
+         <td><strong>${escapeHtml(String(r.numero_ordem || ''))}</strong></td>
+         <td>${escapeHtml(r.placa || '')}</td>
+         <td>${escapeHtml(r.rotulo || '')}</td></tr>`).join('')}</tbody></table>`
+    : '';
+  document.getElementById('resumoConcluir').innerHTML =
+    `<div class="aviso-info">${escapeHtml((perfilAtual().label || '') + termo)}`
+    + `${nome ? ' · ' + escapeHtml(nome) : ''}</div>`
+    + contas.join('') + tabela;
+  abrirModal('modalConcluir');
+  /* O foco vai para o OK: é o único caminho a partir daqui, e quem chegou pelo
+     teclado não deveria ter de procurá-lo. Os outros modais focam o campo de
+     busca pelo mesmo motivo -- este não tem campo. */
+  const ok = document.getElementById('okConcluir');
+  if (ok && ok.focus) ok.focus();
+}
+
+function linhaResumo(rotulo, valor) {
+  return `<div class="resumo-linha"><span>${escapeHtml(rotulo)}</span>`
+       + `<strong>${escapeHtml(String(valor))}</strong></div>`;
+}
+
+/* 🚨 VOLTA AO INÍCIO PELO MESMO CAMINHO DE QUEM TROCA O TIPO DE OPERAÇÃO.
+   `zerarRodada` já é a única função que sabe o que uma rodada nova precisa
+   esquecer -- um segundo reset escrito aqui viraria a segunda verdade, e
+   envelheceria no primeiro campo que alguém acrescentasse à tela. */
+function concluirRodada() {
+  fecharModal('modalConcluir');
+  zerarRodada();
+  pintarEtapa(1);
+  atualizarAvancar();
 }
 
 irPara(1);

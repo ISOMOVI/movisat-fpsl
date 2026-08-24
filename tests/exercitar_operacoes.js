@@ -130,7 +130,13 @@ global.document = {
        Esc faz. Responder com um anonimo faria o Esc fechar um modal que nao
        existe e o teste passar sem nada acontecer. */
     if (sel === '.modal-bg.open') {
-      for (const id of ['modalCliente', 'modalServico']) {
+      /* 🚨 A LISTA VEM DO HTML, NAO DE UM ARRAY ESCRITO AQUI. Ela era fixa em
+         ['modalCliente','modalServico'], entao o primeiro modal novo da tela
+         ficaria fora do exercicio sem ninguem notar -- exatamente o defeito
+         que o proprio Esc evita ao ter UM ouvinte no documento. O modal do
+         fim da rodada (24/08) foi o primeiro a cair nisso. */
+      for (const id of IDS_DA_PAGINA) {
+        if (id.indexOf('modal') !== 0) continue;
         const m = elemento(id);
         if (m && m._classes.has('open')) return m;
       }
@@ -275,8 +281,13 @@ global.fetch = async (url, opcoes) => {
     return ok({ resultados: [{ id: 6967, descricao: "SUBSTITUIÇÃO" }] });
   }
   if (u.includes("/operacoes/os/gerar")) {
-    return ok({ criadas: [{ ok: true, os_id: 17001, placa: "TST 0E55",
-                            rotulo: "Instalação" }],
+    /* 🚨 `numero_ordem` FALTAVA NO DUBLE, e a tela le ele -- nao o `os_id`.
+       O router devolve os DOIS (`operacoes_router.py:985`); o mock so mandava
+       o id, entao a tabela de resultado renderizava numero VAZIO e o
+       exercicio aprovava. Duble incompleto aprova tela quebrada, que e a
+       licao do `exercitar_tela.js` de 14/08. */
+    return ok({ criadas: [{ ok: true, os_id: 17001, numero_ordem: 16901,
+                            placa: "TST 0E55", rotulo: "Instalação" }],
                 avisos: [], pendencias: [], falhas_de_leitura: [],
                 total: 1, com_erro: 0 });
   }
@@ -699,6 +710,51 @@ function registrarCelulas(quantas) {
     r.mod_outra_tecla_nao_fecha = elemento("modalServico")._classes.has("open");
     global.__tecla("Escape");
     r.mod_servico_fechou = !elemento("modalServico")._classes.has("open");
+
+    /* ── 19. 🚨 A RODADA TEM FIM: Concluir → resumo → volta ao inicio ─────
+       Ate 24/08 as OS saiam e a tela ficava parada no resultado: comecar
+       outra rodada era recarregar a pagina ou trocar o tipo de operacao --
+       que zera por efeito colateral. Aqui o exercicio CLICA no Concluir e
+       confere onde a tela parou, que e a licao de 21/08: fonte que descreve
+       o comportamento nao e o comportamento. */
+    await escolherPerfil("aditivo");
+    await espera(20);
+    elemento("arquivo").files = [{ name: "t.pdf" }];
+    await lerTermo();
+    await espera(20);
+    irPara(2); await espera(60);
+    irPara(3); await espera(60);
+    registrarCelulas(estado().linhasPlacas.length);
+    await processarPlacas();
+    await espera(30);
+    irPara(4); await espera(60);
+    await conferirOS();
+    await espera(30);
+    /* Antes de gerar o botao NAO existe: rodada sem OS nao tem o que concluir. */
+    r.fim_botao_antes = elemento("btnConcluir").hidden;
+    await gerarOS();
+    await espera(30);
+    r.fim_botao_apareceu = elemento("btnConcluir").hidden === false;
+
+    global.__foco = elemento("btnConcluir");    // como se ele tivesse clicado
+    abrirConcluir();
+    await espera(10);
+    r.fim_modal_abriu = elemento("modalConcluir")._classes.has("open");
+    r.fim_resumo = elemento("resumoConcluir").innerHTML;
+    r.fim_focou_ok = global.__foco === elemento("okConcluir");
+
+    concluirRodada();
+    await espera(20);
+    r.fim_modal_fechou = !elemento("modalConcluir")._classes.has("open");
+    r.fim_etapa = estado().etapaAtual;
+    r.fim_lote = estado().lote;
+    r.fim_linhas = estado().linhasPlacas.length;
+    r.fim_botao_sumiu = elemento("btnConcluir").hidden === true;
+    r.fim_tabela_limpa =
+      document.querySelector("#tabelaPlacas tbody").innerHTML === "";
+    r.fim_previa_limpa = elemento("previaOS").innerHTML === "";
+    r.fim_marca_1 = elemento("marca-1").textContent;
+    r.fim_contador = elemento("contadorEtapa").textContent;
 
     r.chamadas = chamadas;
   } catch (e) {

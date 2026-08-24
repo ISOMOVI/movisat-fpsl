@@ -253,6 +253,36 @@ print("== 🚨 AS DUAS ESCRITAS PERGUNTAM ANTES ==")
 checar("criar placa pergunta antes", v("confirmou_placas") is True,
        str(v("confirms"))[:200])
 checar("gerar OS pergunta antes", v("confirmou_os") is True)
+
+print()
+print("== 🚨 A CAIXA DA MANUTENCAO NAO PROMETE ESCRITA NO HARMONIT ==")
+# Achado dele em 24/08, usando a tela: "ao cadastrar placa de manutenção
+# (recipiente) a caixa de diálogo ainda induz ao erro, por informar Harmonit".
+# Na manutenção com troca NADA nasce no Harmonit -- a placa real saiu da BASE
+# do Harmonit (o `<select>` da etapa 3 é ela, e por isso a linha vem com
+# `daBase`) e o recipiente é bancada, que só existe na WESO.
+#
+# ⚠️ A TRAVA MEDE O QUE A FRASE PROMETE, NAO A PALAVRA "Harmonit". Dizer "o
+# Harmonit não recebe nada" é a CORREÇÃO do engano, não o engano: travar na
+# palavra reprovaria justamente o texto certo. É o M7, que já voltou cinco
+# vezes desde 19/08.
+conf_manut = v("st_confirm_manut") or ""
+checar("a caixa da manutenção aparece", bool(conf_manut))
+checar("ela NÃO promete criação no Harmonit",
+       "cria no Harmonit" not in conf_manut, conf_manut)
+checar("e NÃO traz o alerta de exclusão do Harmonit",
+       "exclusão de veículo" not in conf_manut, conf_manut)
+checar("a placa vinda da base é CONFERIDA, não criada",
+       "confere lá" in conf_manut, conf_manut)
+checar("e o recipiente diz para onde vai e para onde não vai",
+       "SÓ na WESO" in conf_manut and "não recebe nada" in conf_manut,
+       conf_manut)
+# 🚨 O CONTRAPESO. Sem isto a trava acima seria satisfeita apagando o alerta de
+# todo lugar -- e o alerta EXISTE por um motivo: o Harmonit não tem DELETE de
+# veículo, e placa criada lá por engano fica. No perfil que cria, ele continua.
+checar("mas no perfil que CRIA, o alerta continua de pé",
+       any("exclusão de veículo" in c for c in (v("confirms") or [])),
+       str(v("confirms"))[:300])
 checar("e a pergunta da OS traz o NUMERO",
        any("Gerar 3 OS" in m for m in (v("confirms") or [])),
        "o numero e a ultima chance de ver que sao 3 e deveriam ser 2")
@@ -323,10 +353,15 @@ checar("a seção 2 mostra o cliente e os DOIS ids",
        and "WESO #13624" in (v("sec_valor_2") or ""), v("sec_valor_2"))
 checar("a seção 3 mostra quantas placas fecharam",
        v("sec_valor_3") == "2 de 2", v("sec_valor_3"))
-checar("etapa concluída fica marcada com ✓",
+# 🚨 O CIRCULO MOSTRA O NUMERO DA ETAPA (24/08, pedido dele: "deixe as etapas
+# mais destacadas"). Antes eram quatro glifos -- ●, ✓, ○, · -- que dizem
+# ESTADO e nao dizem QUAL etapa e. Agora o numero fica a vista o tempo todo e
+# so a etapa concluida o troca pelo ✓; o resto do estado e cor, no CSS.
+checar("etapa concluída troca o número pelo ✓",
        v("sec_marca_1") == "✓" and v("sec_pronta_1") is True)
-checar("a etapa aberta fica marcada com ●",
-       v("sec_marca_4") == "●" and v("sec_aberta_4") is True)
+checar("a etapa aberta mostra o próprio número",
+       v("sec_marca_4") == "4" and v("sec_aberta_4") is True,
+       v("sec_marca_4"))
 
 print()
 print("== 🚨 E A TRAVA VALE NO CLIQUE DO CABECALHO ==")
@@ -385,6 +420,44 @@ checar("tecla que NÃO é Esc não fecha nada",
        v("mod_outra_tecla_nao_fecha") is True)
 checar("e vale para o modal de serviço também",
        v("mod_servico_fechou") is True)
+
+print()
+print("== 🚨 A RODADA TEM FIM: Concluir, resumo, e volta ao inicio ==")
+# Pedido dele em 24/08: "depois de OS gerada com êxito, botão direito chamado
+# 'Concluir' que exibe um resumo rápido em modal só para 'ok' e depois retorna
+# para o início". Até aqui a tela não tinha fim: as OS saíam, o resultado
+# ficava na etapa 4 e a única forma de começar outra rodada era recarregar a
+# página -- ou trocar o tipo de operação, que zera por EFEITO COLATERAL.
+checar("antes de gerar não há o que concluir",
+       v("fim_botao_antes") is True,
+       "o botão nasce escondido: rodada sem OS não tem resumo")
+checar("geradas as OS, o Concluir aparece", v("fim_botao_apareceu") is True)
+checar("ele abre o resumo em modal", v("fim_modal_abriu") is True)
+checar("com a contagem de OS criadas",
+       "OS criadas" in (v("fim_resumo") or ""), (v("fim_resumo") or "")[:200])
+# 🚨 O NUMERO DA OS E O QUE O OPERADOR ANOTA. O duble mandava so `os_id` e a
+# tela le `numero_ordem` -- os dois campos existem no router, e o exercicio
+# aprovava numero vazio.
+checar("e com o NÚMERO da OS, que é o que se anota",
+       "16901" in (v("fim_resumo") or ""), (v("fim_resumo") or "")[:200])
+checar("o foco vai para o OK, único caminho daqui",
+       v("fim_focou_ok") is True)
+checar("OK fecha o modal", v("fim_modal_fechou") is True)
+checar("e devolve a tela para a etapa 1",
+       v("fim_etapa") == 1, f"parou na {v('fim_etapa')}")
+checar("o lote foi esquecido", v("fim_lote") is None)
+checar("as linhas de placa saíram", v("fim_linhas") == 0)
+# ⚠️ A TABELA FICAVA NA TELA depois de zerar: `linhasPlacas` esvaziava e o HTML
+# dela continuava lá até alguém reabrir a etapa 3. Trocar de perfil deixava as
+# placas do perfil anterior à vista.
+checar("e a tabela de placas foi apagada da TELA, não só do estado",
+       v("fim_tabela_limpa") is True)
+checar("a prévia também saiu", v("fim_previa_limpa") is True)
+checar("o botão some junto", v("fim_botao_sumiu") is True)
+checar("a etapa 1 volta a mostrar o número 1",
+       v("fim_marca_1") == "1", v("fim_marca_1"))
+checar("e o contador acompanha",
+       v("fim_contador") == "Etapa 1 de 4", v("fim_contador"))
 
 print()
 print(f"== {ok} verificações OK, {len(falhas)} falha(s) ==")

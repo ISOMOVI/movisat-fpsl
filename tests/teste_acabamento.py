@@ -131,6 +131,44 @@ checar("os quatro badges continuam",
 checar("a barra de retomada continua", ".retomar" in css)
 
 print()
+print("== 8. as etapas se destacam, ou sao quatro linhas iguais? ==")
+# Pedido dele em 24/08: "deixe as etapas mais destacadas". A marca era um glifo
+# de 0,8rem -- ●, ✓, ○ ou · -- e a unica diferenca entre "estou aqui" e "ja
+# passei" era a COR desse glifo. Agora e um circulo numerado, e a secao aberta
+# ganha trilho a esquerda e fundo proprio.
+checar("a marca da etapa é um círculo",
+       ".secao-marca" in css and "border-radius:50%" in css)
+checar("a seção aberta tem trilho próprio",
+       ".secao.aberta { border-left-color" in css)
+checar("e a fechada não (o trilho nasce transparente)",
+       "border-left:3px solid transparent" in css)
+# 🚨 MEDE A LIGACAO, NAO O NOME. O que importa e que os DOIS pintores usem a
+# mesma funcao -- eram duas expressoes diferentes para a mesma marca, e duas
+# verdades so divergem quando alguem mexe numa. Comentario nao conta: por isso
+# a contagem e de CHAMADAS, com parentese.
+sem_comentario = re.sub(r"/\*.*?\*/", " ", html, flags=re.S)
+checar("os dois pintores escrevem a marca pela mesma função",
+       sem_comentario.count("glifoDaEtapa(") >= 3,
+       f"{sem_comentario.count('glifoDaEtapa(')} ocorrências")
+checar("e o glifo antigo não sobrou solto em nenhum",
+       "'●'" not in sem_comentario)
+checar("o contador diz quanto falta", "contador-etapa" in css)
+
+print()
+print("== 9. o que ja estava torto e passou batido ate agora ==")
+# 🚨 A AUDITORIA TOTAL QUE ELE PEDIU. Duas coisas de 21/08 que nenhuma
+# verificacao pegava porque ninguem tinha olhado o CSS inteiro de uma vez.
+bordas = set(re.findall(r"\.btn[\w-]*\s*\{[^}]*border:\s*([\d.]+)px", css))
+checar("os três pesos de botão têm a MESMA espessura de borda",
+       bordas == {"1.5"},
+       f"{bordas} -- o `.btn-perigo` estava em 1px e ficava 1px mais baixo "
+       f"que o `Ver prévia` ao lado, no mesmo `.acoes`")
+opacidades = re.findall(r":disabled\s*\{[^}]*opacity:\s*([\d.]+)", css)
+checar("e desabilitado tem UMA opacidade só",
+       len(set(opacidades)) <= 1,
+       f"{opacidades} -- dois cinzas para o mesmo estado")
+
+print()
 print(f"== {ok} verificações OK, {len(achados)} falha(s) ==")
 if achados:
     for a in achados:

@@ -105,7 +105,6 @@
   .btn:active:not(:disabled) { transform:translateY(1px); }
   .btn-primary { background:var(--blue); color:#fff; border-color:var(--blue); }
   .btn-primary:hover:not(:disabled) { background:#1d4ed8; border-color:#1d4ed8; }
-  .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
   .btn-ghost { background:var(--card); color:var(--text); border-color:var(--border); }
   .btn-ghost:hover:not(:disabled) { background:var(--bg2); border-color:var(--bg3); }
   .footer-nav { display:flex; justify-content:space-between; align-items:center;
@@ -114,6 +113,14 @@
   /* A dica do que falta fica ENTRE Voltar e Avancar, na linha do botao que
      ela explica. Aviso longe do botao vira decoracao. */
   .falta-dica { flex:1; text-align:right; font-size:.78rem; color:var(--text2); }
+  /* "Etapa 2 de 4" ao lado do Voltar: o circulo diz onde estou, este diz
+     quanto falta. Nao e clicavel de proposito -- um segundo caminho de
+     navegacao e um caminho que alguem esquece de proteger. */
+  .contador-etapa { font-size:.78rem; font-weight:600; color:var(--text2);
+                    white-space:nowrap; }
+  /* 🚨 UMA OPACIDADE SO PARA DESABILITADO. Conviviam .45 aqui e .5 no
+     `.btn-primary:disabled` -- dois cinzas para o mesmo estado, e o olho le
+     isso como se um estivesse "mais desligado" que o outro. */
   .btn:disabled { opacity:.45; cursor:not-allowed; }
   table { width:100%; border-collapse:collapse; font-size:.84rem; }
   th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase;
@@ -155,18 +162,46 @@
      na etapa 4 nao se via mais termo, cliente nem quantas placas. Agora cada
      etapa resolvida colapsa numa LINHA com o valor, e a trava de ordem
      continua -- secao trancada nao abre. */
-  .secao { border-bottom:1px solid var(--border); }
+  /* 🚨 A SECAO ABERTA TEM DE GANHAR DA FECHADA, e ate 24/08 nao ganhava: a
+     unica diferenca entre "estou aqui" e "ja passei" era a cor de um glifo de
+     14px. O trilho a esquerda e o fundo proprio dizem onde a pessoa esta sem
+     ela ter de procurar. Pedido dele: "deixe as etapas mais destacadas". */
+  .secao { border-bottom:1px solid var(--border);
+           border-left:3px solid transparent; padding-left:var(--e3);
+           transition:border-color .12s ease, background .12s ease; }
+  .secao.aberta { border-left-color:var(--blue); background:var(--bg); }
   .secao:last-of-type { border-bottom:none; }
   .secao-cab { display:flex; align-items:center; gap:var(--e3);
                padding:var(--e3) var(--e1); cursor:pointer; user-select:none;
                border-radius:6px;
                transition:background .12s ease; }
   .secao:not(.aberta):not(.trancada) .secao-cab:hover { background:var(--bg2); }
-  .secao-marca { width:14px; text-align:center; color:var(--text2);
-                 font-size:.8rem; }
-  .secao.pronta .secao-marca { color:var(--green); }
-  .secao.aberta .secao-marca { color:var(--blue); }
-  .secao-nome { font-weight:600; font-size:.9rem; min-width:150px; }
+
+  /* 🚨 A ETAPA VIRA UM NUMERO, E O NUMERO E O DESTAQUE. A marca era um glifo
+     de 14px -- ●, ✓, ○ ou · -- que nao se le de relance e nao diz QUAL etapa
+     e. O circulo numerado responde as duas perguntas ao mesmo tempo: em que
+     passo estou e quantos ainda faltam.
+
+     ⚠️ COR POR ESTADO, NAO POR ETAPA. Ele ofereceu uma cor para cada etapa
+     ("pode ser tambem"); a paleta desta tela ja carrega significado -- verde
+     aconteceu, azul ja estava, ambar olhe, vermelho impede -- e quatro cores
+     decorativas desfariam isso. E exatamente o defeito que 21/08 corrigiu,
+     quando o azul significava quatro coisas ao mesmo tempo. Entao a cor diz
+     ESTADO: cinza trancada, azul aqui, verde pronta. */
+  .secao-marca { width:28px; height:28px; flex-shrink:0;
+                 display:inline-flex; align-items:center; justify-content:center;
+                 border:1.5px solid var(--border); border-radius:50%;
+                 background:var(--card); color:var(--text2);
+                 font-size:.8rem; font-weight:700; line-height:1;
+                 transition:background .12s ease, color .12s ease,
+                            border-color .12s ease, box-shadow .12s ease; }
+  .secao.aberta .secao-marca { background:var(--blue); border-color:var(--blue);
+                 color:#fff; box-shadow:0 0 0 4px var(--blue-dim); }
+  .secao.pronta .secao-marca { background:var(--green-dim);
+                 border-color:var(--green); color:var(--green); }
+  .secao.trancada .secao-marca { background:var(--bg2); color:var(--bg3); }
+  .secao-nome { font-weight:700; font-size:.92rem; min-width:150px; }
+  .secao.aberta .secao-nome { color:var(--blue); }
   .secao-valor { color:var(--text2); font-size:.82rem;
                  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .secao.aberta .secao-cab { cursor:default; }
@@ -233,8 +268,16 @@
      perigo   = grava em producao e nao se desfaz em lote
      Ate 21/08 os tres eram o mesmo azul: Avancar, Cadastrar e Gerar as OS
      tinham o mesmo peso visual. */
-  .btn-perigo { background:var(--red); color:#fff; border:1px solid var(--red); }
+  /* ⚠️ 1.5px, IGUAL AOS OUTROS DOIS. Ele estava com `border:1px` e por isso
+     ficava 1px mais baixo que o Ver previa ao lado -- os dois vivem no mesmo
+     `.acoes`, e desalinhamento de 1px e do tipo que ninguem nomeia e todo
+     mundo sente. */
+  .btn-perigo { background:var(--red); color:#fff;
+                border:1.5px solid var(--red); }
   .btn-perigo:hover:not(:disabled) { filter:brightness(.93); }
+  /* O fim da rodada fica na PONTA DIREITA da linha de acoes, longe do Gerar:
+     e a unica acao que so existe depois de as OS terem saido. */
+  .btn-fim { margin-left:auto; }
 
   /* retomar: so aparece quando ha rodada pendente no navegador */
   .retomar { display:flex; align-items:center; justify-content:space-between;
@@ -265,6 +308,15 @@
   .modal-header { display:flex; justify-content:space-between; align-items:center; }
   .modal-header h3 { font-size:1rem; font-weight:700; }
   .modal-header button { background:none; border:none; font-size:1.1rem; cursor:pointer; color:var(--text2); }
+  /* O resumo do fim mostra uma tabela de OS; 460px quebrava cada linha em
+     duas. E o unico modal com conteudo tabular. */
+  .modal-largo { max-width:560px; }
+  .modal-corpo { overflow-y:auto; }
+  .modal-rodape { display:flex; justify-content:flex-end;
+                  padding-top:var(--e2); border-top:1px solid var(--border); }
+  .resumo-linha { display:flex; justify-content:space-between; gap:var(--e3);
+                  font-size:.86rem; padding:6px 0; }
+  .resumo-linha strong { font-variant-numeric:tabular-nums; }
   .modal-lista { overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
   .modal-item { padding:10px 12px; border:1px solid var(--border); border-radius:8px; cursor:pointer;
                 font-size:.86rem; display:flex; justify-content:space-between; }

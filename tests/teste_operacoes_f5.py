@@ -56,6 +56,25 @@ def limpar():
         c.execute("DELETE FROM operacoes_espera WHERE lote = ?", (LOTE,))
 
 
+async def meus(caso=None):
+    """A fila DESTE teste, não a fila do sistema.
+
+    🚨 `esp.pendentes()` E `esp.resumo()` NÃO FILTRAM POR LOTE, e é de
+    propósito: eles são a visão do Registro, que é global. Este arquivo limpa
+    só o próprio lote -- a docstring lá em cima promete exatamente isso -- e
+    depois afirmava sobre a tabela INTEIRA. As duas coisas só combinam
+    enquanto a fila real está vazia.
+
+    Em 24/08 ela deixou de estar: a rotina concluiu a pendência do recipiente
+    da OS 16793 (placa BCN 8I82), que é a rotina FUNCIONANDO pela primeira vez
+    fora de teste. O placar ficou vermelho porque o sistema passou a fazer o
+    que devia -- e teste que reprova quando o produto acerta ensina a ignorar
+    o placar, que é a decisão de 19/08 pelo avesso: lá o dado que sumia era de
+    outro sistema, aqui é dado que o nosso cria.
+    """
+    return [p for p in await esp.pendentes(caso) if p["lote"] == LOTE]
+
+
 def corpo(perfil, placas):
     return oos.MontarInput(perfil=perfil, cliente_id=998063, lote=LOTE,
                            termo="8800", produto_servico_id=777,
@@ -118,7 +137,7 @@ async def teste_falhou_nao_vira_pendencia():
         body, pre_de("upgrade"), [op("AAA 0A00")],
         [{"os_id": None, "ok": False, "erro": "o Harmonit recusou"}])
     checar("a OS que falhou não entra na fila", p == [], str(p))
-    checar("e nada foi gravado", len(await esp.pendentes()) == 0)
+    checar("e nada foi gravado", len(await meus()) == 0)
 
 
 # ── 3. a substituição: só a retirada carrega ─────────────────────────────────
@@ -134,7 +153,7 @@ async def teste_substituicao():
         [criada(7201), criada(7202)])
     checar("uma pendência só, e não duas", len(p) == 1, str(p))
     checar("e é a da placa que SAI", p and p[0]["placa"] == "AAA 0A00", str(p))
-    linhas = await esp.pendentes("substituicao")
+    linhas = await meus("substituicao")
     checar("a placa de ENTRADA viaja junto — é para lá que vincula",
            linhas and linhas[0]["placa_entrada"] == "BBB 0B00", str(linhas))
 
@@ -149,7 +168,7 @@ async def teste_dados_do_recipiente():
                                   "serie": "007933914"}})
     body = corpo("upgrade", [oos.PlacaOS(placa="AAA 0A00")])
     await opr._gravar_pendencias(body, pre, [op("AAA 0A00")], [criada(7301, 16999)])
-    linhas = await esp.pendentes("recipiente")
+    linhas = await meus("recipiente")
     checar("grava o veiculo_id do recipiente",
            linhas and linhas[0]["veiculo_id"] == 4242, str(linhas))
     checar("grava o rastreador_id",
@@ -174,7 +193,7 @@ async def teste_nao_duplica():
     checar("a primeira grava", len(p1) == 1)
     checar("a segunda não grava de novo", p2 == [], str(p2))
     checar("e a fila tem uma linha só",
-           len(await esp.pendentes("recipiente")) == 1)
+           len(await meus("recipiente")) == 1)
 
     # ⚠️ Mesma OS, caso DIFERENTE, pode coexistir: a unicidade é (os_id, caso).
     novo = await esp.registrar(lote=LOTE, perfil="upgrade", caso="rescisao",
@@ -187,6 +206,10 @@ async def teste_nao_duplica():
 async def teste_teto():
     print("\n6. O teto de tentativas corta o laço — e desistir não é sumir")
     limpar()
+    # 🚨 O `resumo()` É A VISÃO GLOBAL DO REGISTRO e não tem como filtrar por
+    # lote -- então o que se mede aqui é o DELTA, não o total. Afirmar o total
+    # é afirmar que a fila real está vazia, e ela não está mais.
+    desistiu_antes = (await esp.resumo())["desistiu"]
     ident = await esp.registrar(lote=LOTE, perfil="upgrade", caso="recipiente",
                                 os_id=7501, numero_os=1, placa="AAA 0A00")
     estado = None
@@ -194,17 +217,17 @@ async def teste_teto():
         estado = await esp.falhar(ident, "a série ainda não apareceu")
     checar(f"até {esp.TETO_TENTATIVAS - 1} tentativas continua esperando",
            estado == "esperando", str(estado))
-    checar("e segue na fila", len(await esp.pendentes("recipiente")) == 1)
+    checar("e segue na fila", len(await meus("recipiente")) == 1)
 
     estado = await esp.falhar(ident, "a série ainda não apareceu")
     checar(f"na tentativa {esp.TETO_TENTATIVAS} desiste", estado == "desistiu",
            str(estado))
     checar("sai da fila — não se tenta para sempre",
-           len(await esp.pendentes("recipiente")) == 0)
+           len(await meus("recipiente")) == 0)
 
     resumo = await esp.resumo()
     checar("mas FICA contado como desistiu, para virar aviso no Registro",
-           resumo["desistiu"] == 1, str(resumo))
+           resumo["desistiu"] - desistiu_antes == 1, str(resumo))
     with storage._connect() as c:
         r = c.execute("SELECT ultimo_erro FROM operacoes_espera WHERE id = ?",
                       (ident,)).fetchone()
@@ -222,20 +245,58 @@ async def teste_teto():
 async def teste_concluir():
     print("\n7. Concluir tira da fila")
     limpar()
+    # Delta, pelo mesmo motivo do teste 6: a fila real tem linha concluída de
+    # verdade -- a rotina agiu na OS 16793 em 24/08 -- e o total nunca mais
+    # será 1.
+    concluido_antes = (await esp.resumo())["por_estado"].get("concluido", 0)
     ident = await esp.registrar(lote=LOTE, perfil="rescisao", caso="rescisao",
                                 os_id=7601, numero_os=1, placa="AAA 0A00")
-    checar("entra na fila", len(await esp.pendentes("rescisao")) == 1)
+    checar("entra na fila", len(await meus("rescisao")) == 1)
     await esp.concluir(ident, ["devolveu ao estoque", "conferiu relendo"])
-    checar("sai da fila ao concluir", len(await esp.pendentes("rescisao")) == 0)
+    checar("sai da fila ao concluir", len(await meus("rescisao")) == 0)
     resumo = await esp.resumo()
     checar("e conta como concluido",
-           resumo["por_estado"].get("concluido") == 1, str(resumo))
+           resumo["por_estado"].get("concluido", 0) - concluido_antes == 1,
+           str(resumo))
+
+
+# ── 8. o teste não enxerga a fila de produção ───────────────────────────────
+
+async def teste_isolamento():
+    """🚨 PROVA QUE A CORREÇÃO DE 24/08 FUNCIONA, em vez de afirmá-la.
+
+    O defeito era este arquivo limpar só o próprio lote e afirmar sobre a
+    tabela inteira. Consertar trocando as chamadas não vale nada se ninguém
+    exercita o caso -- então aqui entra uma linha de OUTRO lote, igual às que
+    a rotina cria em produção, e o teste confere que ela não aparece.
+
+    Sem isto, a próxima pessoa que escrever `esp.pendentes(...)` direto
+    reintroduz o defeito e o placar continua verde até a fila real encher.
+    """
+    print("\n8. A fila do teste não é a fila do sistema")
+    limpar()
+    alheio = await esp.registrar(lote="LOTE-DE-OUTRO", perfil="upgrade",
+                                 caso="recipiente", os_id=999901,
+                                 numero_os=999901, placa="ZZZ 9Z99")
+    try:
+        checar("pendência de outro lote NÃO entra na minha fila",
+               len(await meus("recipiente")) == 0,
+               "o teste está lendo a fila de produção")
+        checar("mas ela existe de verdade na tabela",
+               len(await esp.pendentes("recipiente")) >= 1,
+               "se não existe, o próprio isolamento não foi exercitado")
+    finally:
+        # ⚠️ `finally`: linha de teste que sobra na fila vira a próxima falha
+        # misteriosa de outra pessoa.
+        with storage._connect() as c:
+            c.execute("DELETE FROM operacoes_espera WHERE id = ?", (alheio,))
 
 
 async def main():
     for t in (teste_caso_vem_do_perfil, teste_falhou_nao_vira_pendencia,
               teste_substituicao, teste_dados_do_recipiente,
-              teste_nao_duplica, teste_teto, teste_concluir):
+              teste_nao_duplica, teste_teto, teste_concluir,
+              teste_isolamento):
         await t()
     limpar()
     print(f"\n{'=' * 62}")

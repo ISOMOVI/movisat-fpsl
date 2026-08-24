@@ -161,13 +161,30 @@ def dubles(espiao, *, serie=None, rastreador_id=None, situacao="Instalado",
     return estado
 
 
+async def meus(caso=None):
+    """A fila DESTE teste, não a fila do sistema.
+
+    🚨 `esp.pendentes()` NÃO FILTRA POR LOTE -- é a visão do Registro, global
+    de propósito. Este arquivo limpa só o próprio lote e afirmava sobre a
+    tabela inteira: combina enquanto a fila real está vazia, e em 24/08 ela
+    deixou de estar.
+    """
+    return [p for p in await esp.pendentes(caso) if p["lote"] == LOTE]
+
+
 async def pendencia(caso, **extra):
     limpar()
     ident = await esp.registrar(lote=LOTE, perfil=extra.pop("perfil", "upgrade"),
                                 caso=caso, os_id=extra.pop("os_id", 900),
                                 numero_os=990001,
                                 placa=extra.pop("placa", "AAA 0A00"), **extra)
-    return (await esp.pendentes(caso))[0]
+    # 🚨 PELO `ident`, NUNCA "A PRIMEIRA DA FILA". Isto era
+    # `(await esp.pendentes(caso))[0]`, e `pendentes` ordena por id na tabela
+    # INTEIRA: com uma pendência REAL do mesmo caso esperando -- que é o
+    # estado normal desde que a rotina entrou em uso --, o teste pegaria a
+    # linha de produção e a `concluir()` dele fecharia trabalho de verdade.
+    # Não era placar errado: era escrita no lugar errado.
+    return next(p for p in await esp.pendentes(caso) if p["id"] == ident)
 
 
 def gravar_oficina(numero_os, status):
@@ -226,7 +243,7 @@ async def teste_recipiente():
            and eqp.MARCADOR_SERIE_A_PREENCHER
            not in e.os_salva["descricaoDetalhada"], str(e.os_salva))
     checar("e a pendência sai da fila",
-           len(await esp.pendentes("recipiente")) == 0)
+           len(await meus("recipiente")) == 0)
 
     e = Espiao()
     dubles(e, serie="007933914", rastreador_id=50171, liberar_ok=False)
@@ -235,7 +252,7 @@ async def teste_recipiente():
     checar("se a liberação falha, a pendência NÃO conclui",
            r["ok"] is False, str(r))
     checar("e continua na fila para a próxima rodada",
-           len(await esp.pendentes("recipiente")) == 1)
+           len(await meus("recipiente")) == 1)
 
 
 # ── 2b. a terceira prova: o equipamento nos MATERIAIS ────────────────────────
