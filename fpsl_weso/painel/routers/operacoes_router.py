@@ -25,7 +25,15 @@ desta aba muda de endereço.
 import io
 import asyncio
 import logging
+import sqlite3
 from datetime import datetime
+from pathlib import Path
+
+# 🚨 O CACHE DIÁRIO DO HARMONIT, irmão do `weso_cache/`. Um arquivo por
+# sistema, um cron por arquivo (decisão do usuário, 24/08). Lido em modo
+# somente-leitura: quem escreve é o cron, e a troca lá é atômica -- leitor
+# nunca vê meio caminho.
+CACHE_HARMONIT = Path("/home/claude/harmonit_cache/harmonit.db")
 
 from fastapi import (APIRouter, Depends, File, HTTPException, Query,
                      Request, UploadFile)
@@ -1142,44 +1150,71 @@ async def rodar_rotina(caso: str | None = Query(None),
 @router.get("/placas/do-cliente")
 async def placas_do_cliente(cliente_harmonit_id: int = Query(...),
                             _=Depends(requer_aba("operacoes"))):
-    """As placas do cliente, da base local, para os perfis SEM TERMO.
+    """As placas do cliente, do cache diário do Harmonit, para os perfis SEM
+    TERMO.
 
-    🚨 ESTA DOCSTRING PROMETIA `atualizada_em` E O CÓDIGO NUNCA DEVOLVEU. A
-    frase ficava boa -- "lista que não diz a própria idade é lista em que se
-    confia demais" -- e descrevia uma coisa que não existe. Removida em 24/08:
-    texto que descreve comportamento inexistente é pior que texto nenhum,
-    porque quem lê para de procurar.
+    🚨 ANTES DE 24/08 ISTO LIA UMA TABELA QUE NADA ATUALIZAVA. A
+    `harmonit_veiculos`, dentro do banco do app, foi populada à mão por um
+    script avulso e não tinha cron nem carimbo. Medido no dia: Harmonit ao vivo
+    **9.116** × espelho **9.114** — e uma das duas que faltavam, `FWB 0E36`,
+    tinha sido criada pelo PRÓPRIO painel três horas antes.
 
-    ⚠️ E A IDADE REALMENTE FALTA. `harmonit_veiculos` não tem carimbo nem
-    sync: foi populada uma vez por um script avulso, hoje arquivado em
-    `backups/scripts_avulsos_2026-07/baixar_veiculos.py`. Medido em 24/08:
-    Harmonit ao vivo 9.115 × espelho 9.114. A correção proposta é um cache
-    diário próprio, irmão do `weso_cache/`, com `meta.atualizado_em`.
+    A regra da casa é que manutenção só acontece em placa que já está na WESO
+    há pelo menos um dia. Essa regra só se sustenta se a base for refeita todo
+    dia -- e ela não era refeita nunca. Agora vem de
+    `/home/claude/harmonit_cache/`, irmão do `weso_cache/`, com cron diário e
+    `meta.atualizado_em`.
+
+    Devolve `atualizado_em` e `origem`. ⚠️ A tela ainda não os exibe: são o
+    dado, não a apresentação.
     """
     def _ler():
+        # 🚨 ORDEM ALFABÉTICA DE VERDADE, e ela não era (pedido dele, 24/08).
+        # O `ORDER BY placa` cru ordenava pelo texto como ele está na base -- e
+        # a base do Harmonit tem placa com ESPAÇO À ESQUERDA (`' 280574'`,
+        # `' AHQ 7266'`), que ordena antes de tudo, e 902 das 9.114 sem espaço
+        # nenhum (`AAA1234`), que se intercalam com as que têm. A tela mostrava
+        # uma lista que parecia embaralhada, com a consulta "certa".
+        #
+        # No cache a chave já vem normalizada (`chave_placa`, a MESMA do
+        # `weso_cache` -- duas normalizações diferentes não cruzariam).
+        # ⚠️ O `TRIM` sai também no valor devolvido: o espaço à esquerda ia
+        # para o `<option>`, para a lista da etapa 3 e para o payload.
+        if CACHE_HARMONIT.exists():
+            with sqlite3.connect(f"file:{CACHE_HARMONIT}?mode=ro", uri=True) as c:
+                # 🚨 VEÍCULO SEM PLACA NÃO ENTRA. A base do Harmonit tem dois
+                # (medido em 24/08): um `FORD F 4000` com placa vazia, num
+                # cliente real, e um registro inteiramente em branco. Sem este
+                # filtro o primeiro virava um `<option>` vazio na lista, e
+                # escolher ele levaria uma placa vazia para a gravação.
+                # ⚠️ O CACHE CONTINUA ESPELHANDO OS DOIS: espelho que edita a
+                # origem deixa de servir para conferir a origem.
+                linhas = c.execute(
+                    "SELECT TRIM(placa), veiculo FROM veiculos "
+                    "WHERE cliente_id = ? AND chave_placa <> '' "
+                    "ORDER BY chave_placa",
+                    (cliente_harmonit_id,)).fetchall()
+                quando = c.execute(
+                    "SELECT valor FROM meta WHERE chave = 'atualizado_em'"
+                ).fetchone()
+            return ([{"placa": p, "veiculo": v} for p, v in linhas],
+                    quando[0] if quando else None, "cache")
+        # ⚠️ SEM O CACHE, CAI NA TABELA VELHA -- e ela NÃO tem carimbo, então a
+        # idade volta como `None`. Falhar aqui deixaria a etapa 3 sem lista
+        # nenhuma, que é pior: o operador não teria como trabalhar, e a causa
+        # (um cron que não rodou) não aparece em lugar nenhum da tela.
         with storage._connect() as conn:
-            # 🚨 ORDEM ALFABÉTICA DE VERDADE, e ela não era (pedido dele,
-            # 24/08). O `ORDER BY placa` cru ordenava pelo texto como ele está
-            # na base -- e a base do Harmonit tem placa com ESPAÇO À ESQUERDA
-            # (`' 280574'`, `' AHQ 7266'`), que ordena antes de tudo, e 902 das
-            # 9.114 sem espaço nenhum (`AAA1234`), que se intercalam com as que
-            # têm. O resultado na tela era uma lista que parecia embaralhada.
-            #
-            # A chave de ordenação é a mesma normalização que o resto do
-            # projeto usa para comparar placa: sem espaço, em maiúscula.
             linhas = conn.execute(
                 "SELECT TRIM(placa), veiculo FROM harmonit_veiculos "
                 "WHERE clienteId = ? "
                 "ORDER BY UPPER(REPLACE(TRIM(placa), ' ', ''))",
-                (cliente_harmonit_id,)
-            ).fetchall()
-        # ⚠️ O `TRIM` também sai no valor devolvido: o espaço à esquerda ia
-        # para o `<option>`, para a lista da etapa 3 e para o payload da
-        # criação. Quem já limpava era só o servidor, no fim da linha.
-        return [{"placa": p, "veiculo": v} for p, v in linhas]
+                (cliente_harmonit_id,)).fetchall()
+        return ([{"placa": p, "veiculo": v} for p, v in linhas], None, "espelho")
 
-    veiculos = await asyncio.get_running_loop().run_in_executor(None, _ler)
-    return {"veiculos": veiculos, "total": len(veiculos)}
+    veiculos, atualizado_em, origem = await asyncio.get_running_loop(
+        ).run_in_executor(None, _ler)
+    return {"veiculos": veiculos, "total": len(veiculos),
+            "atualizado_em": atualizado_em, "origem": origem}
 
 
 @router.get("/clientes/buscar")
