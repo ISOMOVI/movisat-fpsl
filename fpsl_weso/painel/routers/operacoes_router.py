@@ -436,9 +436,53 @@ async def _existe_na_weso(texto: str) -> dict | None:
     return None
 
 
+def _no_espelho(texto: str) -> dict | None:
+    """A placa no cache diário do Harmonit, no formato da resposta ao vivo.
+
+    🚨 "ACHEI NO ESPELHO" É SEMPRE VERDADE, e é isto que sustenta a camada 1:
+    **o Harmonit não tem exclusão de veículo** (medido, e a API não expõe
+    DELETE). O espelho pode estar FALTANDO coisa criada depois das 04:50, mas
+    nunca carrega fantasma. Então o único caso incerto é "não achei" -- e esse
+    vai ao vivo.
+
+    ⚠️ O FORMATO TEM DE SER O DA RESPOSTA AO VIVO. O cache grava `cliente_id`
+    e a resposta do Harmonit devolve `clienteId`; quem chama lê o segundo. Sem
+    esta tradução o dono sairia nulo na tela, e nada acusaria.
+    """
+    if not CACHE_HARMONIT.exists():
+        return None
+    chave = "".join(str(texto or "").split()).upper()
+    try:
+        with sqlite3.connect(f"file:{CACHE_HARMONIT}?mode=ro", uri=True) as c:
+            r = c.execute(
+                "SELECT id, placa, veiculo, cliente_id, cliente FROM veiculos "
+                "WHERE chave_placa = ?", (chave,)).fetchone()
+    except Exception as exc:
+        log.warning("operacoes: espelho do Harmonit indisponivel: %s", exc)
+        return None
+    if not r:
+        return None
+    return {"id": r[0], "placa": r[1], "veiculo": r[2],
+            "clienteId": r[3], "cliente": r[4]}
+
+
 async def _existe_no_harmonit(texto: str) -> dict | None:
+    """A placa existe no Harmonit? Espelho primeiro, rede só se ele não achar.
+
+    🚨 NÃO USAR ESTA PARA CONFERIR O QUE ACABOU DE SER GRAVADO. Para isso
+    existe `_no_harmonit_ao_vivo`: o espelho é das 04:50 e provaria nada.
+    """
+    achou = _no_espelho(texto)
+    if achou:
+        return achou
+    # Não estar no espelho pode ser "nasceu depois das 04:50". Só este caso
+    # paga rede -- e ele é o raro.
+    return await _no_harmonit_ao_vivo(texto)
+
+
+async def _no_harmonit_ao_vivo(texto: str) -> dict | None:
     """⚠️ `/Veiculo/ObterVeiculos` IGNORA TODOS OS FILTROS (medido). Lê a base
-    e casa aqui. 9.114 registros, ~1,9s -- caro, mas é o que existe."""
+    e casa aqui. 9.118 registros, ~1,9s -- caro, mas é o que existe."""
     try:
         r = await harmonit_get("/Veiculo/ObterVeiculos")
     except Exception as exc:
@@ -549,7 +593,12 @@ async def criar_uma_placa(body: PlacaInput,
                 fora["weso"] = {"acao": "ignorado",
                                 "motivo": "o Harmonit falhou antes"}
                 return fora
-            conferido = await _existe_no_harmonit(texto)
+            # 🚨 AO VIVO, SEMPRE, E NUNCA PELO ESPELHO. Esta leitura é a PROVA
+            # de que a escrita aconteceu -- o projeto já viu sistema devolver
+            # erro e gravar, e devolver timeout com a gravação acontecendo
+            # depois. O espelho é das 04:50: ele diria "não está lá" para toda
+            # placa recém-criada, e a rodada inteira sairia como falha.
+            conferido = await _no_harmonit_ao_vivo(texto)
             if conferido:
                 await reg.registrar(body.lote, 3, "harmonit", "criado",
                                     id_externo=conferido.get("id"), **comum)

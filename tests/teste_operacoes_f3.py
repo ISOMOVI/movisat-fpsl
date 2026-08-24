@@ -87,8 +87,18 @@ def dubles(espiao, *, no_harmonit=False, na_weso=False,
             estado["w"] = True
         return {}
 
-    return {"_existe_no_harmonit": _eh, "_existe_na_weso": _ew,
-            "harmonit_post": _hpost, "weso_post": _wpost}
+    # 🚨 O DUBLE SUBSTITUI A PORTA DA REDE, NAO A FUNCAO DE CONSULTA. Ate 24/08
+    # ele trocava `_existe_no_harmonit`, que era quem ia a rede. Agora ela
+    # consulta o ESPELHO primeiro e so cai na rede pela
+    # `_no_harmonit_ao_vivo` -- trocar a de cima deixaria a releitura pos-
+    # gravacao sem duble, batendo no cliente de verdade.
+    #
+    # ⚠️ E O ESPELHO SAI DO CAMINHO: apontar o cache para um arquivo que nao
+    # existe faz este teste parar de depender do cache de PRODUCAO. Teste que
+    # le producao ja custou caro aqui (ver `teste_operacoes_f5`).
+    return {"_no_harmonit_ao_vivo": _eh, "_existe_na_weso": _ew,
+            "harmonit_post": _hpost, "weso_post": _wpost,
+            "CACHE_HARMONIT": pathlib.Path("/tmp/espelho_que_nao_existe.db")}
 
 
 def rodar(dub, **campos):
