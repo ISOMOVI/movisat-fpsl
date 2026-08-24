@@ -325,3 +325,62 @@ raiz da resposta, mas o envelope é `{"Data": {"veiculos": [...]}}`. Resultado:
 **base vazia, zero registros, nenhum erro** — o dry-run disse "0 a alterar" e
 parecia sucesso. Mesma família do `{sumario, lista}` do Harmonit. O script agora
 aborta se a base vier vazia.
+
+## Placa que não parece placa — a regra do traço (termo 8846, 2026-08-20)
+
+**A Erika não conseguiu gerar o 8846, seis vezes.** O termo traz
+`NISSAN, 2022, DIESEL - RZL H405`, e `RZL H405` é uma **placa chilena** (4
+letras + 2 dígitos, `RZ.LH40.5`) adaptada à força ao padrão Mercosul por quem
+escreveu o documento. Não casava com nenhum padrão brasileiro, ia para "não
+reconhecida", e a geração morria em `400 Nenhuma placa informada`.
+
+⚠️ **A tela velha avisava e não oferecia nenhuma forma de corrigir** — daí as
+seis tentativas.
+
+### 🚨 A REGRA (decisão do usuário, 20/08)
+
+> Na coluna **"Veículo e Placa ou Chassis do veículo"**, o que vem **depois do
+> traço é a placa**, não importa o formato.
+
+Corrigido no `pdf_extractor`, que é o **único arquivo que as três telas
+dividem** — Gerar OS, Cadastro de Placas e a aba Operações foram atendidas de
+uma vez. É também o único ponto do sistema em que a regra "clona × reusa" abre
+exceção, e por isso o risco de mexer nele é sempre triplo.
+
+### A guarda não mede FORMATO, mede se é linha de veículo
+
+Aceitar qualquer coisa depois do traço abriria a porta para texto corrido virar
+placa. A guarda que ficou exige: **até 2 blocos, 3 a 15 caracteres, ao menos um
+dígito e uma letra, sem vírgula nem parênteses.**
+
+🚨 **Sem ela, duas linhas de texto corrido do `transferencia_novo.pdf` viravam
+a placa `la também no contrato principal de`** — que é o `RFD 2447` renascendo.
+A regra foi medida nos **14 fixtures ANTES** de ser escrita, não depois.
+
+### ⚠️ A primeira hipótese estava errada, e medir salvou
+
+Achei que fossem o `4` e o `H` trocados de lugar. **`RZL4H05` não existe na
+WESO; `RZL H405` existe** — id `88440`, rastreador `48114`, cadastrado no mesmo
+dia às 09:10. Hipótese plausível não é fato medido.
+
+### 🚨 E a pergunta seguinte era "a OS sai completa?"
+
+Depois de desbloquear a geração, o defeito tinha só mudado de lugar: **o cache
+da WESO atualiza às 04:15 e o veículo nasceu às 09:10.** Não havia modelo, não
+havia produto no de-para, e a OS sairia **sem o equipamento nos materiais** —
+completa na aparência, vazia no conteúdo. Eu tinha trocado um bloqueio visível
+por uma OS incompleta e plausível.
+
+Corrigido em `a08fd9e`: **placa fora do cache é lida ao vivo.**
+
+⚠️ **A lição de método, e ela vale além deste caso:** depois de consertar,
+perguntar o que acontece **DEPOIS** do que foi consertado. Metade dos achados
+das seis auditorias de 20/08 veio dessa pergunta; a outra metade veio de
+comparar com a tela que já existe.
+
+### ⏸️ O que ficou com o usuário
+
+**A grafia oficial do veículo WESO `88440`.** O rastreador está vinculado a uma
+placa cuja grafia veio do mesmo termo, e o `chassi` é **nulo** — não há nada no
+cadastro que confirme qual das duas é a certa. Se a oficial for `RZ.LH40.5`, o
+cadastro na WESO precisa ser corrigido à mão.
