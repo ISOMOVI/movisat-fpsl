@@ -1144,15 +1144,38 @@ async def placas_do_cliente(cliente_harmonit_id: int = Query(...),
                             _=Depends(requer_aba("operacoes"))):
     """As placas do cliente, da base local, para os perfis SEM TERMO.
 
-    Devolve também `atualizada_em` para a tela poder dizer de quando é o dado.
-    Lista que não diz a própria idade é lista em que se confia demais.
+    🚨 ESTA DOCSTRING PROMETIA `atualizada_em` E O CÓDIGO NUNCA DEVOLVEU. A
+    frase ficava boa -- "lista que não diz a própria idade é lista em que se
+    confia demais" -- e descrevia uma coisa que não existe. Removida em 24/08:
+    texto que descreve comportamento inexistente é pior que texto nenhum,
+    porque quem lê para de procurar.
+
+    ⚠️ E A IDADE REALMENTE FALTA. `harmonit_veiculos` não tem carimbo nem
+    sync: foi populada uma vez por um script avulso, hoje arquivado em
+    `backups/scripts_avulsos_2026-07/baixar_veiculos.py`. Medido em 24/08:
+    Harmonit ao vivo 9.115 × espelho 9.114. A correção proposta é um cache
+    diário próprio, irmão do `weso_cache/`, com `meta.atualizado_em`.
     """
     def _ler():
         with storage._connect() as conn:
+            # 🚨 ORDEM ALFABÉTICA DE VERDADE, e ela não era (pedido dele,
+            # 24/08). O `ORDER BY placa` cru ordenava pelo texto como ele está
+            # na base -- e a base do Harmonit tem placa com ESPAÇO À ESQUERDA
+            # (`' 280574'`, `' AHQ 7266'`), que ordena antes de tudo, e 902 das
+            # 9.114 sem espaço nenhum (`AAA1234`), que se intercalam com as que
+            # têm. O resultado na tela era uma lista que parecia embaralhada.
+            #
+            # A chave de ordenação é a mesma normalização que o resto do
+            # projeto usa para comparar placa: sem espaço, em maiúscula.
             linhas = conn.execute(
-                "SELECT placa, veiculo FROM harmonit_veiculos "
-                "WHERE clienteId = ? ORDER BY placa", (cliente_harmonit_id,)
+                "SELECT TRIM(placa), veiculo FROM harmonit_veiculos "
+                "WHERE clienteId = ? "
+                "ORDER BY UPPER(REPLACE(TRIM(placa), ' ', ''))",
+                (cliente_harmonit_id,)
             ).fetchall()
+        # ⚠️ O `TRIM` também sai no valor devolvido: o espaço à esquerda ia
+        # para o `<option>`, para a lista da etapa 3 e para o payload da
+        # criação. Quem já limpava era só o servidor, no fim da linha.
         return [{"placa": p, "veiculo": v} for p, v in linhas]
 
     veiculos = await asyncio.get_running_loop().run_in_executor(None, _ler)
