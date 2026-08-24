@@ -173,6 +173,10 @@ function fecharModal() { document.getElementById('modalNovo').classList.remove('
 // única -- aba nova aparece aqui sozinha, sem mexer nesta tela).
 let ABAS = [];
 let editandoId = null;   // null = criando; id = editando o perfil de alguém
+/* O e-mail com que o modal abriu. Serve para saber se ele MUDOU -- gravar
+   e-mail zera o `google_sub`, então reenviar o mesmo desligaria o login Google
+   de quem já tem. */
+let emailOriginal = null;
 
 async function carregarAbas() {
   const res = await fetch('/painel/api/usuarios/abas', { headers: auth() });
@@ -217,6 +221,7 @@ function abasMarcadas() {
 
 function abrirModalNovo() {
   editandoId = null;
+  emailOriginal = null;
   document.getElementById('modalTitulo').textContent = 'Novo usuário';
   document.getElementById('camposConta').style.display = 'block';
   document.getElementById('btnSalvar').textContent = 'Criar';
@@ -234,6 +239,7 @@ function abrirModalPerfil(id, login, abas, email) {
   document.getElementById('camposConta').style.display = 'none';
   document.getElementById('btnSalvar').textContent = 'Salvar perfil';
   document.getElementById('novoEmail').value = email || '';
+  emailOriginal = email || '';
   document.getElementById('erroNovo').style.display = 'none';
   desenharAbasConcedidas(abas);
   document.getElementById('modalNovo').classList.add('open');
@@ -294,6 +300,14 @@ async function salvarUsuario() {
   erro.style.display = 'none';
   const abas = abasMarcadas();
 
+  /* 🚨 O CAMPO DE E-MAIL EXISTIA E NUNCA ERA ENVIADO. O modal preenchia
+     `novoEmail` ao abrir o perfil, o operador digitava, e os dois caminhos
+     mandavam o corpo SEM ele -- `{login, senha, abas}` ao criar e `{abas}` ao
+     editar. O servidor sempre soube gravar (`definir_email_painel`); a tela é
+     que jogava fora. Foi o que ele viu na Aline em 24/08: e-mail que não fica.
+     Campo que aceita e descarta é pior que campo que não existe. */
+  const email = document.getElementById('novoEmail').value.trim();
+
   let res;
   if (editandoId === null) {
     const login = document.getElementById('novoLogin').value.trim();
@@ -301,13 +315,20 @@ async function salvarUsuario() {
     res = await fetch('/painel/api/usuarios', {
       method: 'POST',
       headers: { ...auth(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login, senha, abas }),
+      body: JSON.stringify({ login, senha, abas, email: email || null }),
     });
   } else {
+    /* 🚨 SÓ MANDA O E-MAIL SE ELE MUDOU, e o motivo é grave: gravar e-mail
+       ZERA o `google_sub` (para a conta Google antiga não continuar entrando
+       depois de o vínculo passar para outra pessoa). Mandando o mesmo e-mail a
+       cada edição de abas, mexer numa permissão da Erika desligaria o login
+       Google dela em silêncio. */
+    const corpo = { abas };
+    if (email !== (emailOriginal || '')) corpo.email = email || null;
     res = await fetch(`/painel/api/usuarios/${editandoId}`, {
       method: 'PATCH',
       headers: { ...auth(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ abas }),
+      body: JSON.stringify(corpo),
     });
   }
 
