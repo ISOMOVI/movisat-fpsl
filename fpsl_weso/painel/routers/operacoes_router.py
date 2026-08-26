@@ -50,6 +50,7 @@ from ...harmonit_client import harmonit_get, harmonit_post
 from ... import placas as regra_placa
 from .. import operacoes_equipamentos as eqp
 from .. import operacoes_os as oos
+from .. import operacoes_extracao as extracao
 from ... import storage
 
 log = logging.getLogger("fpsl.operacoes")
@@ -133,6 +134,16 @@ async def extrair(pedido: Request,
                       type(exc).__name__)
         raise HTTPException(422, f"Não foi possível ler o PDF: {exc}")
 
+    # 🚨 O QUE SÓ ESTA ABA LÊ. Vive em `operacoes_extracao` e NÃO no
+    # `pdf_extractor`, que é compartilhado com a tela velha de Gerar OS e com o
+    # Cadastro de Placas -- o ajuste de 26/08 é só da aba nova.
+    #
+    # ⚠️ SEGUNDA LEITURA DO MESMO PDF, e só no perfil upgrade: medido em 90 ms
+    # no termo 8827 e 450 ms no 8800, o maior. Passar as páginas já lidas
+    # exigiria mexer na assinatura do extrator compartilhado -- editar o
+    # arquivo das três telas para poupar 450 ms num perfil não se paga.
+    extras, avisos_extras = extracao.itens_extras(io.BytesIO(conteudo), perfil)
+
     # 🚨 A SUBSTITUIÇÃO NÃO USA `placas`, USA `pares` (medido em 19/08). O
     # extrator devolve `{placa_saida, veiculo_saida, placa_entrada,
     # veiculo_entrada}` -- é o único perfil com dois veículos por linha, porque
@@ -201,7 +212,12 @@ async def extrair(pedido: Request,
         # eles que a etapa 4 resolve contra o catalogo do Harmonit. Sem eles a
         # OS sai so com o servico do cabecalho e o ENTREGA OS -- completa na
         # aparencia e vazia no conteudo.
-        "itens_contrato": campos.get("itens") or [],
+        # 🆕 `extras` traz o que só esta aba lê -- hoje a TAXA DE MIGRAÇÃO do
+        # Upgrade, cujo layout não tem tabela de itens. Sai como item comum: é
+        # o VÍNCULO que diz qual serviço do Harmonit ele é, e sem vínculo ele
+        # vira pendente e bloqueia, que é falha visível.
+        "itens_contrato": (campos.get("itens") or []) + extras,
+        "avisos_extracao": avisos_extras,
         "sem_placa": sem_placa,
         "recipiente_sufixo": (p.get("placa_teste_sufixo") or "").upper() or None,
         # 🆕 A SUBSTITUIÇÃO TRAZ AS DUAS TAXAS NO PRÓPRIO TERMO (medido em
@@ -732,6 +748,28 @@ def _achar_por_nome(lista: list[dict], nome: str) -> int | None:
     return None
 
 
+def _sem_acento_desc(item: dict) -> str:
+    return oos._sem_acento(item.get("descricao") or "")
+
+
+async def _conferir_ids_fixos() -> list[str]:
+    """Os ids fixados em código ainda existem no catálogo do Harmonit?
+
+    ⚠️ FALHA DE LEITURA NÃO ACUSA. Não saber é diferente de saber que sumiu, e
+    aviso falso treina a equipe a ignorar aviso — é a regra de 19/08.
+    """
+    try:
+        r = await harmonit_get("/Produto/ObterServicos",
+                               params={"skip": 0, "take": 30,
+                                       "search": "migra"})
+    except Exception:
+        log.info("operacoes: não deu para conferir os ids fixos no catálogo")
+        return []
+    vivos = (r.get("data") if isinstance(r, dict) else r) or []
+    recado = cfg.conferir_taxa_de_migracao(vivos)
+    return [recado] if recado else []
+
+
 async def _resolver_cabecalho_por_nome(perfil: dict) -> tuple[dict, list[str]]:
     """{tipo_id, problema_id} resolvidos pelo NOME contra a lista viva.
 
@@ -876,7 +914,8 @@ async def _preparar(body: "oos.MontarInput"):
 
     body.placas, _dedup = oos.dedup_placas(body.placas)
     avisos = _globais(_dedup)
-    resolvidos, pendentes, descartados = await oos.resolver_vinculos(body.itens)
+    resolvidos, pendentes, descartados, ocultados = \
+        await oos.resolver_vinculos(body.itens)
 
     # 🚨 SEPARA ANTES DE ALOCAR. A alocação por placa vale só para o que vai na
     # OS operacional; distribuir item de cobrança pelas placas o faria aparecer
@@ -888,8 +927,18 @@ async def _preparar(body: "oos.MontarInput"):
     avisos.extend(_globais(avisos_aloc))
     if descartados:
         avisos.append(oos.aviso(
-            "Itens marcados NÃO CONTRATADO no termo, fora da OS: "
+            "Itens marcados NÃO CONTRATADO ou NÃO POSSUI no termo, fora da OS: "
             + "; ".join(descartados)))
+    # 🚨 OCULTO NÃO PODE SER MUDO. Era a única forma de um item do termo
+    # desaparecer da OS sem deixar rastro na tela -- e foi por ela que os
+    # R$ 131,74 do termo 8848 saíram da financeira em 25/08. O texto diz onde
+    # se desfaz, porque quem lê o aviso é quem acabou de marcar o vínculo.
+    if ocultados:
+        avisos.append(oos.aviso(
+            "Itens com vínculo marcado OCULTO, fora das DUAS OS: "
+            + "; ".join(ocultados)
+            + " — se algum deles tem valor no termo, a cobrança não vai sair. "
+              "Conserte em Vínculos ligando o item ao catálogo."))
 
     ctx = await _ler_weso(body, perfil)
     # 🚨 A FALHA DE LEITURA VIRA AVISO NA TELA, NÃO SUMIÇO NO LOG. Não bloqueia
@@ -912,10 +961,21 @@ async def _preparar(body: "oos.MontarInput"):
         cabecalho, avisos_cab = await _resolver_cabecalho_por_nome(perfil)
         avisos.extend(_globais(avisos_cab))
 
+    # 🚨 A GUARDA DO ID FIXO, E ELA É CHAMADA DE VERDADE. A do serviço 6967,
+    # escrita em 21/08 com o mesmo propósito, nunca foi chamada em produção --
+    # um grep pelos chamadores devolve só testes. Guarda que ninguém chama é
+    # comentário caro.
+    #
+    # ⚠️ Custa UMA leitura do catálogo, e só quando o termo trouxe a taxa. Sem
+    # taxa no termo não há id para apodrecer, e a chamada não acontece.
+    if any(_sem_acento_desc(i) in cfg.ITENS_COM_ID_FIXO for i in resolvidos):
+        avisos.extend(_globais(await _conferir_ids_fixos()))
+
     return {"perfil": perfil, "alocacao": alocacao,
             "itens_financeiro": itens_financeiro, "resolvidos": resolvidos,
             "ctx": ctx, "avisos": avisos, "pendentes": pendentes,
-            "descartados": descartados, "cabecalho": cabecalho}
+            "descartados": descartados, "ocultados": ocultados,
+            "cabecalho": cabecalho}
 
 
 def _montar_tudo(body: "oos.MontarInput", pre: dict) -> list[dict]:
@@ -967,9 +1027,16 @@ async def previa_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
         # viraria OS sem o item, em silêncio.
         "pendentes": pre["pendentes"],
         "descartados": pre["descartados"],
+        # ⚠️ Já vai como aviso em `avisos`; o campo existe para quem quiser
+        # tratar diferente sem ter de reconhecer o item pelo texto do recado.
+        "ocultados": pre["ocultados"],
         "falhas_de_leitura": pre["ctx"]["falhas"],
+        # ⚠️ A PRÉVIA MOSTRA O MESMO TEXTO QUE SERÁ GRAVADO. Se ela rederivasse
+        # o contexto de outro jeito, a pessoa conferiria uma coisa e o Harmonit
+        # receberia outra -- prévia que diverge da gravação é pior que não ter.
         "solucao_tecnica_preview": oos.formatar_solucao_tecnica(
-            body.solucao_tecnica, body.observacao),
+            oos.contexto_da_os(body.solucao_tecnica, pre["resolvidos"]),
+            body.observacao),
         "pode_gerar": not pre["pendentes"],
     }
 
@@ -1061,7 +1128,9 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
             "sairia sem eles, e ninguém veria: " + "; ".join(pre["pendentes"]))
 
     operacoes = _montar_tudo(body, pre)
-    solucao = oos.formatar_solucao_tecnica(body.solucao_tecnica, body.observacao)
+    solucao = oos.formatar_solucao_tecnica(
+        oos.contexto_da_os(body.solucao_tecnica, pre["resolvidos"]),
+        body.observacao)
     numero_na_desc = bool(pre["perfil"].get("numero_na_descricao"))
 
     # 🚨 FASE DUPLA. Operacionais primeiro, colhendo os números; a financeira

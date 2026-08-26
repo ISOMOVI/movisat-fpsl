@@ -7,8 +7,10 @@ O que este arquivo PRENDE, e que reprova se alguém desfizer:
      zero saía com o corpo vazio e ninguém via o que tinha sido contratado --
      era por isso que "teste de tecnologia" precisava de perfil próprio.
 
-  2. **Regra 7 — o `nas_duas` saiu.** Cada item pertence a um lado só. Nenhuma
-     cópia de item de cobrança aparece na OS operacional.
+  2. **Regra 7 — cada item pertence a um lado só, exceto o `nas_duas`.**
+     Nenhuma cópia de item de COBRANÇA aparece na operacional. O item marcado
+     `nas_duas` no vínculo (a Central) vai para as duas OS desde 26/08, sempre
+     zerado e sem `cobrar` nem `comodato` -- ver `teste_central_nas_duas.py`.
 
   3. **A separação vem ANTES da alocação.** Alocar cobrança pelas placas a
      faria aparecer nas duas OS -- desfazendo a regra 7 por outro caminho.
@@ -72,9 +74,17 @@ def checar(nome, condicao, detalhe=""):
 # ⚠️ VALORES MEDIDOS E CONGELADOS, não inventados na hora. O de-para real tem
 # 24 modelos; aqui basta um, com a forma exata que `produto_do_modelo` devolve.
 
+# 🚨 `nas_duas` AQUI ESPELHA A PRODUÇÃO, e desde 26/08 isso importa. Até essa
+# data a coluna não era lida e o dublê podia dizer qualquer coisa: ele marcava
+# o RASTREADOR, que é COMODATO e nunca esteve marcado em `painel_vinculos_itens`
+# (lá são `CENTRAL 24 HORAS`, `CENTRAL 24H` e `BUZZER`). Quando a regra passou a
+# ler a coluna, o dublê fez o comodato virar linha informativa e zerou o valor
+# patrimonial -- 4 verificações reprovaram, e foi assim que se achou que a regra
+# precisava recusar comodato.
 CATALOGO = {
-    "RASTREADOR": {"harmonit_id": 501, "oculto": False, "nas_duas": True},
+    "RASTREADOR": {"harmonit_id": 501, "oculto": False, "nas_duas": False},
     "TAXA DE ADESAO": {"harmonit_id": 502, "oculto": False, "nas_duas": False},
+    "INSTALACAO": {"harmonit_id": 505, "oculto": False, "nas_duas": False},
     "CENTRAL 24H": {"harmonit_id": 503, "oculto": False, "nas_duas": True},
     "ITEM OCULTO": {"harmonit_id": 504, "oculto": True, "nas_duas": False},
 }
@@ -133,7 +143,11 @@ def descricoes(materiais):
 
 async def montar(body, perfil_nome=None, **ctx):
     p = cfg.PERFIS[perfil_nome or body.perfil]
-    resolvidos, pendentes, descartados = await oos.resolver_vinculos(body.itens)
+    # ⚠️ O 4º valor é `ocultados`, de 26/08: item com vínculo OCULTO deixou de
+    # sumir em silêncio. Aqui não interessa -- quem o transforma em aviso é o
+    # router, e `teste_aviso_previo.py` prende esse lado.
+    resolvidos, pendentes, descartados, _ocultados = \
+        await oos.resolver_vinculos(body.itens)
     op_itens, fin_itens = oos.separar_itens(p, resolvidos)
     alocacao, _ = oos.alocar_itens_por_placa(op_itens, body.placas)
     return oos.montar(body, ctx.get("perfil_obj", p), alocacao, fin_itens,
@@ -146,9 +160,12 @@ async def montar(body, perfil_nome=None, **ctx):
 async def teste_regra_4():
     print("\n1. Regra 4 — a financeira lista os itens SEMPRE")
     instalar_dubles()
+    # ⚠️ O ITEM "COM VALOR" NÃO PODE SER A CENTRAL. Ela virou a exceção que
+    # nunca cobra em 26/08; usá-la aqui faria a regra 4 medir a exceção.
     body = corpo("contrato_novo", [placa("AAA 0A00")], [
         item("RASTREADOR", "1", "480,00", "COMODATO"),
         item("TAXA DE ADESAO", "1", "0,00", "SERVICO"),
+        item("INSTALACAO", "1", "200,00", "SERVICO"),
         item("CENTRAL 24H", "1", "89,90", "SERVICO"),
     ])
     ops, resolvidos, _, _ = await montar(body)
@@ -156,7 +173,8 @@ async def teste_regra_4():
     checar("gera exatamente 1 financeira", len(fin) == 1, f"veio {len(fin)}")
     d = descricoes(fin[0]["materiais"])
     checar("financeira LISTA o item de valor zero", "TAXA DE ADESAO" in d, d)
-    checar("financeira lista o item com valor", "CENTRAL 24H" in d, d)
+    checar("financeira lista o item com valor", "INSTALACAO" in d, d)
+    checar("e lista a Central, que não cobra", "CENTRAL 24H" in d, d)
     # ⚠️ `.get` E NÃO `[...]`: quando a regra 4 é desfeita, o item some da
     # financeira e o acesso direto ESTOURA -- levando junto as outras 60
     # verificações, que passariam a não ser medidas. Teste que quebra diz menos
@@ -166,7 +184,10 @@ async def teste_regra_4():
            por_nome.get("TAXA DE ADESAO", {}).get("cobrar") is False,
            f"não achei o item na financeira: {d}")
     checar("item com valor vai com cobrar MARCADO",
-           por_nome.get("CENTRAL 24H", {}).get("cobrar") is True,
+           por_nome.get("INSTALACAO", {}).get("cobrar") is True,
+           f"não achei o item na financeira: {d}")
+    checar("mas a Central, mesmo com valor no termo, NÃO cobra",
+           por_nome.get("CENTRAL 24H", {}).get("cobrar") is False,
            f"não achei o item na financeira: {d}")
     checar("comodato NUNCA vai para a financeira", "RASTREADOR" not in d, d)
 
@@ -174,24 +195,42 @@ async def teste_regra_4():
 # ── 2. regra 7: o nas_duas saiu ──────────────────────────────────────────────
 
 async def teste_regra_7():
-    print("\n2. Regra 7 — o `nas_duas` saiu; cada item pertence a um lado só")
+    print("\n2. Regra 7 — um lado só, EXCETO o `nas_duas`, que não cobra")
     instalar_dubles()
     body = corpo("contrato_novo", [placa("AAA 0A00")], [
         item("RASTREADOR", "1", "480,00", "COMODATO"),
-        item("CENTRAL 24H", "1", "89,90", "SERVICO"),
+        item("TAXA DE ADESAO", "1", "150,00", "CONTRATADO"),
+        item("CENTRAL 24H", "1", "89,90", "CONTRATADO"),
     ])
     ops, resolvidos, _, _ = await montar(body)
-    checar("`nas_duas` não é sequer lido do vínculo",
-           all("nas_duas" not in i for i in resolvidos),
-           str(resolvidos))
     operacional = [o for o in ops if not o.get("eh_financeira")][0]
-    d = descricoes(operacional["materiais"])
-    checar("item de cobrança NÃO aparece na operacional",
-           "CENTRAL 24H" not in d, d)
-    checar("comodato aparece na operacional", "RASTREADOR" in d, d)
-    checar("nenhuma cópia de valor zero do item de cobrança",
-           sum(1 for m in operacional["materiais"]
-               if m["descricao"] == "CENTRAL 24H") == 0)
+    financeira = [o for o in ops if o.get("eh_financeira")][0]
+    d_op = descricoes(operacional["materiais"])
+    d_fin = descricoes(financeira["materiais"])
+
+    # 🚨 A REGRA CONTINUA VALENDO PARA TODO ITEM DE COBRANÇA. Só a Central
+    # escapa, e é o vínculo que diz quem escapa -- não o nome no código.
+    checar("item de cobrança comum NÃO aparece na operacional",
+           "TAXA DE ADESAO" not in d_op, d_op)
+    checar("e continua cobrando na financeira",
+           any(m["descricao"] == "TAXA DE ADESAO" and m["cobrar"]
+               for m in financeira["materiais"]), d_fin)
+    checar("comodato aparece na operacional", "RASTREADOR" in d_op, d_op)
+
+    # 🆕 26/08: a Central vai nas DUAS, e não flega em nenhuma.
+    checar("o `nas_duas` do vínculo é lido",
+           any(i.get("nas_duas") for i in resolvidos), str(resolvidos))
+    checar("a Central aparece na operacional", "CENTRAL 24H" in d_op, d_op)
+    checar("a Central aparece na financeira", "CENTRAL 24H" in d_fin, d_fin)
+    centrais = [m for m in operacional["materiais"] + financeira["materiais"]
+                if m["descricao"] == "CENTRAL 24H"]
+    checar("uma linha em cada OS, não mais", len(centrais) == 2, str(centrais))
+    checar("NUNCA com cobrar ou comodato, em nenhuma das duas",
+           all(not m["cobrar"] and not m["comodato"] for m in centrais),
+           str(centrais))
+    checar("e sempre com valor zerado, apesar dos 89,90 do termo",
+           all(float(m["valor_unitario"]) == 0.0 for m in centrais),
+           str(centrais))
 
 
 # ── 3. a separação vem antes da alocação ─────────────────────────────────────
@@ -200,22 +239,37 @@ async def teste_separa_antes_de_alocar():
     print("\n3. A separação vem ANTES da alocação")
     instalar_dubles()
     p = cfg.PERFIS["contrato_novo"]
+    # ⚠️ O EXEMPLO DE "ITEM DE COBRANÇA QUALQUER" NÃO PODE SER A CENTRAL. Ela
+    # virou a exceção em 26/08; usá-la aqui faria este teste medir a exceção e
+    # deixar a regra sem trava.
     itens = [
         {"descricao": "RASTREADOR", "harmonit_id": 1, "quantidade": 3,
          "valor_unitario": 480.0, "comodato": True, "cobrar": False},
-        {"descricao": "CENTRAL 24H", "harmonit_id": 3, "quantidade": 3,
-         "valor_unitario": 89.9, "comodato": False, "cobrar": True},
+        {"descricao": "TAXA DE ADESAO", "harmonit_id": 2, "quantidade": 3,
+         "valor_unitario": 150.0, "comodato": False, "cobrar": True},
     ]
     op_itens, fin_itens = oos.separar_itens(p, itens)
     checar("operacional recebe só o comodato",
            descricoes(op_itens) == ["RASTREADOR"], descricoes(op_itens))
     checar("financeira recebe o que não é comodato",
-           descricoes(fin_itens) == ["CENTRAL 24H"], descricoes(fin_itens))
+           descricoes(fin_itens) == ["TAXA DE ADESAO"], descricoes(fin_itens))
     alocacao, _ = oos.alocar_itens_por_placa(
         op_itens, [placa("A"), placa("B"), placa("C")])
     todos = [m["descricao"] for lista in alocacao for m in lista]
     checar("a alocação por placa não distribui item de cobrança",
-           "CENTRAL 24H" not in todos, todos)
+           "TAXA DE ADESAO" not in todos, todos)
+
+    # 🆕 E o informativo é PRESENÇA, não contagem: 1 unidade no termo, 3 placas,
+    # e mesmo assim entra nas três.
+    uma_central = [{"descricao": "CENTRAL 24H", "harmonit_id": 3,
+                    "quantidade": 1, "valor_unitario": 0.0, "comodato": False,
+                    "cobrar": False, "nas_duas": True}]
+    aloc2, avisos2 = oos.alocar_itens_por_placa(
+        uma_central, [placa("A"), placa("B"), placa("C")])
+    checar("o informativo entra em TODAS as placas, mesmo com quantidade 1",
+           [len(x) for x in aloc2] == [1, 1, 1], str(aloc2))
+    checar("e não dispara aviso de divergência de quantidade",
+           avisos2 == [], str(avisos2))
 
 
 # ── 4. regra 9: o seletor de modelo ──────────────────────────────────────────

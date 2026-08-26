@@ -1399,3 +1399,190 @@ Corrigido dublando a **leitura da fila**, não o `rodar` — o que o teste prova
 que o laço não morre quando um tratador estoura, e essa lógica tem de continuar
 sendo a de verdade. O contador da pendência real foi devolvido para 1, que é a
 tentativa que a rotina fez de verdade.
+
+---
+
+# 🔴 O que as duas OS de 25/08 acharam, e as quatro correções (26/08)
+
+Duas queixas do usuário sobre OS geradas em 25/08. **Causas diferentes**, e só
+uma era erro de execução.
+
+## O que se mediu antes de mexer
+
+| Queixa | O que a medição mostrou |
+|---|---|
+| "a OS 16736 não criou a central na parte OP" | A 16736 é a **financeira do termo 8827** (upgrade, 12/08). O defeito é real e sistemático, mas não é dela: **nenhuma** OS operacional da aba levava a Central. Nas 16803, 16804 e 16810 a Central foi acrescentada **à mão** no Harmonit depois — os ids de material saem fora da sequência do lote (1536630/1536631 contra 1536603-1536614) |
+| "o termo 8848 não criou a parte com o valor para cobrança" | A financeira 16805 saiu com **R$ 20,00 de Central** e nada de aviso prévio. Faltaram **R$ 131,74** |
+
+**A causa do 8848, no journal, minuto a minuto:** a prévia às 12:14:39 trouxe
+um item pendente; às 12:15:08 a operadora foi para Vínculos; às 12:15:27 gravou
+`(90) 30 DIAS DE AVISO PREVIO DE CANCELAMENTO` como **OCULTO**; às 12:15:59
+abriu a prévia de novo e às 12:16:05 gerou. **Seis segundos entre ver e
+gravar** — e a prévia mostrava a financeira com uma linha só.
+
+O termo escreve `(90) 30 DIAS` porque o modelo traz 90 e a cláusula 3 concedeu
+30 ("CONDIÇÃO DE 30 DIAS REALIZADA DE FORMA ESPECIAL"). O vínculo casa por
+**texto exato**, então a grafia nova virou pendente; pendente **bloqueia** a
+geração, e a única saída rápida da tela é "Ocultar". Oculto era **mudo**:
+`NÃO CONTRATADO` sempre virou aviso, oculto não.
+
+⚠️ **A taxa de retirada do 8848 NÃO é defeito.** Vem `R$ 299,00` riscado e
+`R$ 0,00*` vigente ("Retirada ficará sob responsabilidade do contratante"), e o
+extrator já descarta encargo zerado. Está certo como está.
+
+## A regra da Central, decidida em 26/08
+
+| Coluna do termo | OS operacional | OS financeira |
+|---|---|---|
+| `CONTRATADO` | entra: valor 0, sem `cobrar`, sem `comodato` | entra: valor 0, sem `cobrar`, sem `comodato` |
+| `DESATIVAR` / `DESATIVAR NO SISTEMA` | idem | idem |
+| `NÃO POSSUI` / `NÃO CONTRATADO` | não entra | não entra |
+
+Nas palavras dele: *"a central nunca vai ter flag de cobrar ou comodato em
+ambas OS, nunca"* — o técnico precisa ver que o veículo tem Central porque é
+ele quem desativa, e o financeiro precisa saber que ela existe **para parar de
+cobrar**.
+
+🚨 **NÃO É O `nas_duas` DE 14/08 DE VOLTA.** Aquele copiava um item de
+**cobrança** para a operacional com valor zero e mantinha a cobrança na
+financeira. Este não cobra em lado nenhum.
+
+**Efeito medido:** nas OS de 25/08 a Central somava **R$ 150,00** em cobrança
+(16802 R$ 110,00 · 16805 R$ 20,00 · 16811 R$ 10,00 · 16813 R$ 10,00). Passa a
+ser zero, **inclusive no contrato novo**, que é venda nova. O usuário viu o
+número antes de liberar.
+
+### Por que a regra nasce em `resolver_vinculos`, e não no corte
+
+Aplicar no `separar_itens` teria deixado de fora **quatro** perfis que montam a
+OS direto de `resolvidos`: transferência antigo titular, as duas manutenções e
+os dois ressarcimentos. E a transferência **novo titular** — que monta a
+operacional com `[i for i in resolvidos if i.get("comodato")]` — teria ficado
+sem a Central **com placar verde**. Nascendo na origem, os onze perfis herdam.
+
+🚨 **E a regra recusa comodato.** Item de comodato marcado `nas_duas` na tela de
+Vínculos perderia a flag e o **valor patrimonial** — a DANFE de comodato sairia
+zerada. Achado pelo `teste_operacoes_f4`, cujo dublê marcava o `RASTREADOR`
+assim: quando a coluna passou a ser lida, 4 verificações reprovaram. Em
+produção `nas_duas` nunca esteve num comodato (`CENTRAL 24 HORAS`, `CENTRAL 24H`
+e `BUZZER`).
+
+## As quatro correções
+
+| # | O que faz | Onde |
+|---|---|---|
+| C1 | Aviso prévio casa por **padrão** (qualquer prazo antes de `DIAS DE AVISO PRÉVIO DE CANCELAMENTO`) e o prazo vai para a **solução técnica**, acima do traço | `operacoes_os.py`, `operacoes_router.py` |
+| C2 | Item **oculto** vira aviso na prévia, como `NÃO CONTRATADO` já era | `operacoes_os.py`, `operacoes_router.py` |
+| C3 | A regra da Central, e `NÃO POSSUI` tratado como `NÃO CONTRATADO` | `operacoes_os.py` |
+| C4 | **Taxa de migração** do Upgrade vira item da financeira | `operacoes_extracao.py` (novo) |
+
+### C1 — o prazo na solução técnica
+
+A aba **nunca** preencheu `solucao_tecnica`: o campo existe no `MontarInput`
+desde sempre e todas as OS saíram com `[data] Contexto da extração automática:`
+seguido direto do traço. Mesma família do `valor_ressarcimento` de 21/08. Não
+foi preciso campo novo nem mexer na tela — o prazo se deriva do nome do item,
+que já viaja no corpo da OS.
+
+⚠️ **A descrição original não se perde.** A normalização é só a chave de busca;
+se ela sobrescrevesse a descrição, **toda** rescisão passaria a dizer "90 dias",
+inclusive as de 30.
+
+### C4 — a taxa de migração, e a armadilha do valor riscado
+
+O layout do Upgrade **não tem tabela de itens** — tem uma linha por veículo com
+`VEÍCULOS A MIGRAR`, `DOCUMENTO REFERÊNCIA`, `TAXA DE MIGRAÇÃO` e `NOVO VALOR
+MENSAL`. Por isso `itens` sempre voltou vazio e **toda** financeira de upgrade
+saiu `SEM CUSTO`: 8820 (16744), 8844 (16776), 8834 (16790) e 8827 (16736).
+
+🚨 **O TOTAL VEM RISCADO EM 2 DOS 3 TERMOS REAIS:**
+
+```
+8827   R$ 200,00 (Boleto a vista)                      ->  cobra 200,00
+8820   R$ 100,00 / R$ 0,00*  "Negociação especial"     ->  NÃO cobra
+8800   R$ 2.200,00 - R$ 0,00 "Condição especial ..."   ->  NÃO cobra
+```
+
+Ler o primeiro valor da célula cobraria **R$ 2.300,00** de dois clientes que o
+documento isentou. Mesma armadilha da taxa de retirada, mesmo remédio:
+`_valor_ativo` pega o **último** valor, e encargo zerado não vira item.
+
+**Detalhes do layout que custaram medição:**
+
+- o rótulo vem `TTOOTTAALL DDAA MMIIGGRRAAÇÇÃÃOO` (negrito sobreposto). O
+  desdobramento serve **só** para comparar rótulo e nunca vira dado: o mesmo
+  padrão existe em `Franquia mensal` de quatro termos de contrato novo, que
+  hoje leem certo;
+- a **posição do valor muda**: no 8827 é a 6ª coluna da tabela de veículos; no
+  8820 e no 8800, a 2ª de uma tabela própria. Por isso se procura da direita
+  para a esquerda, não por índice fixo;
+- sem a linha do total, **não se inventa**: nem item, nem soma das linhas por
+  veículo. Decisão do usuário — *"por termo é o total do termo, esta escrito"*;
+- o `NOVO VALOR MENSAL` não vira item: é mensalidade de contrato.
+
+**O serviço é o `79746`, FIXO em código** (`ITENS_COM_ID_FIXO` em
+`operacoes_config.py`). Decisão do usuário: *"pode deixar fixo, o objetivo do
+total do valor de migração é justamente esse"*. O catálogo tem um único
+candidato (`79746 TAXA DE MIGRAÇÃO [SERVIÇOS]`, conferido ao vivo), então não
+houve escolha a levar para ele — ele pediu a lista só se houvesse dúvida.
+
+🚨 **EU TINHA IMPLEMENTADO O CONTRÁRIO, E ELE PEGOU.** A primeira versão
+resolvia pelo vínculo, "porque id fixo apodrece em silêncio" — e com isso
+devolvia para a mesa dele a criação de um vínculo, que é exatamente o trabalho
+que a decisão de fixar existe para evitar. É o `M4` outra vez: a justificativa
+era minha, o custo era dele. Corrigido no mesmo dia.
+
+⚠️ **Contorno rotulado, com guarda que É CHAMADA.** Id fixo apodrece mesmo — foi
+assim que 7 das 14 OS de manutenção ficaram com `tipo = 55`. Por isso
+`conferir_taxa_de_migracao()` roda na preparação da OS, contra a lista viva do
+catálogo, e **só** quando o termo trouxe a taxa. Catálogo fora do ar não vira
+aviso falso.
+
+**Reavaliar se** — a guarda disparar.
+
+## 🚨 O ajuste é SÓ da aba nova — e isso foi medido, não presumido
+
+O usuário perguntou se estava considerando só a tela nova. **Não estava:** a C4
+como proposta editava o `pdf_extractor.py`, que é lido por **três** telas — a
+aba, a tela velha de Gerar OS e o Cadastro de Placas. Passou a viver em
+`operacoes_extracao.py`, que só a aba importa. Dali o `pdf_extractor` é apenas
+**lido** (`_ler_paginas`, `_valor_ativo`).
+
+Custo: o PDF é lido uma segunda vez, **só no perfil upgrade** — 90 ms no 8827,
+450 ms no 8800 (o maior). Passar as páginas já lidas exigiria mexer na
+assinatura do extrator compartilhado.
+
+⚠️ **Enquanto as telas velhas existirem, o mesmo termo gera OS diferentes
+conforme a tela usada.** Gerar OS continua cobrando a Central e ignorando a
+taxa de migração. Isso desaparece na F7.
+
+**Intactos, conferido por `git diff`:** `pdf_extractor.py`, `os_router.py`,
+`placas_router.py`, `storage.py` e todo o `frontend/`.
+
+## Achado de lado: a guarda do 6967 nunca rodou
+
+`conferir_servico_de_substituicao()` foi escrita em 21/08 para fazer o
+apodrecimento do id `6967` **aparecer**. Um `grep` pelos chamadores mostra
+apenas `teste_operacoes_f1` e `teste_operacoes_f4`: **nenhuma chamada em
+produção**. A guarda existe, é testada, e não protege nada.
+
+⚠️ **A guarda da taxa de migração NÃO repete isso** — `_conferir_ids_fixos()` é
+chamada em `_preparar`, e o teste prova a ligação **exercitando** a função com
+o catálogo dublado, não com `grep` no fonte (`M7`).
+
+🔴 **Ligar a guarda do 6967 continua pendente.** É item novo, fora do que foi
+liberado em 26/08.
+
+## Suíte
+
+**1.623 verificações em 43 arquivos → 1.784 em 46, zero reprovações.** Os três
+arquivos novos são `teste_aviso_previo.py`, `teste_central_nas_duas.py` e
+`teste_taxa_migracao.py`. Duas fixtures novas: `rescisao_8848.pdf` e
+`upgrade_8827.pdf`.
+
+⚠️ **A fixture nova entra na contagem de outros testes.** O
+`teste_operacoes_f2` varre `fixtures/*.pdf` com `glob`, e por isso subiu de 77
+para 83 sozinho — não é efeito das correções.
+
+🚨 **E placar verde continua não provando que a tela abre.** A prova é o
+usuário rodando um termo de cada perfil.

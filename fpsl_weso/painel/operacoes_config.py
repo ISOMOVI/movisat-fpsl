@@ -95,6 +95,54 @@ def conferir_servico_de_substituicao(servicos_vivos) -> str | None:
             "substituto — o id está fixado em `operacoes_config.py`.")
 
 
+# ── A taxa de migração do Upgrade ────────────────────────────────────────────
+#
+# ✅ FIXO POR DECISÃO DO USUÁRIO EM 26/08: "pode deixar fixo, o objetivo do
+# total do valor de migração é justamente esse". A alternativa que eu tinha
+# implementado -- resolver pelo vínculo, como todo item de termo -- devolvia
+# para a mesa dele a criação de um vínculo, que é exatamente o trabalho que a
+# decisão evitava. Corrigido no mesmo dia.
+#
+# O catálogo tem UM candidato, conferido ao vivo, e por isso não houve escolha
+# a levar para ele (ele pediu a lista só se houvesse dúvida):
+#
+#     79746  TAXA DE MIGRAÇÃO  [SERVIÇOS]
+#
+# ⚠️ É CONTORNO ROTULADO, e o motivo é o mesmo do 6967: id fixo em código
+# apodrece EM SILÊNCIO -- foi assim que 7 das 14 OS de manutenção ficaram com
+# `tipo = 55`. Por isso vem com guarda, e desta vez a guarda É CHAMADA na
+# geração (a do 6967 nunca foi: um grep pelos chamadores devolve só testes).
+TAXA_MIGRACAO_ID = 79746
+
+# Itens que o painel resolve por ID FIXO, sem passar pelo vínculo. A chave é a
+# descrição normalizada -- sem acento, caixa alta, espaço colapsado.
+#
+# 🚨 ENTRAR AQUI É DECISÃO DO USUÁRIO, ITEM A ITEM. O caminho normal do painel
+# é o vínculo, que ele edita na tela sem depender de mim; cada linha desta
+# tabela é um item que deixou de ser editável por ele.
+ITENS_COM_ID_FIXO = {
+    "TAXA DE MIGRACAO": TAXA_MIGRACAO_ID,
+}
+
+
+def conferir_taxa_de_migracao(servicos_vivos) -> str | None:
+    """Devolve o recado do problema, ou None se está tudo certo.
+
+    Mesmo desenho da guarda do 6967: lista vazia NÃO acusa, porque não saber é
+    diferente de saber que sumiu, e aviso falso treina a equipe a ignorar
+    aviso.
+    """
+    if not servicos_vivos:
+        return None
+    ids = {str(s.get("id")) for s in servicos_vivos if isinstance(s, dict)}
+    if str(TAXA_MIGRACAO_ID) in ids:
+        return None
+    return (f"O serviço {TAXA_MIGRACAO_ID} (TAXA DE MIGRAÇÃO) não está mais no "
+            "catálogo do Harmonit, e o id está fixado em "
+            "`operacoes_config.py`. A taxa do upgrade sairia apontando para um "
+            "serviço que não existe — confira antes de gerar.")
+
+
 PERFIS = {
     # ── 1 ─────────────────────────────────────────────────────────────────────
     # ⚠️ RENOMEADO (usuário, 19/08). Era "Cliente novo".

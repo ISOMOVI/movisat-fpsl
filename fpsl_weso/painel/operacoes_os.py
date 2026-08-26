@@ -18,9 +18,12 @@ O que muda em relação à montagem velha, e por quê:
            zero saía com o corpo vazio e ninguém via o que tinha sido
            contratado -- é por isso que "teste de tecnologia" precisava de um
            perfil só dele.
-  regra 7  o `nas_duas` SAI. Cada item pertence a um lado só. A coluna
-           continua no banco porque é da tela de Vínculos, que fica -- aqui ela
-           simplesmente não é lida.
+  regra 7  cada item pertence a um lado só -- COM UMA EXCEÇÃO, aberta pelo
+           usuário em 26/08: o item marcado `nas_duas` no vínculo (hoje só a
+           Central 24h) vai para os DOIS lados, sempre com valor zero e sem
+           `cobrar` nem `comodato`. Não é o `nas_duas` de 14/08 de volta:
+           aquele copiava um item de COBRANÇA para a operacional e mantinha a
+           cobrança na financeira. Este não cobra em lado nenhum.
   regra 9  a WESO manda no modelo; quando não há equipamento, o operador
            escolhe pelo de-para. Não escolheu, fica em branco COM AVISO.
   regra 10 transferência novo titular vira DUAS OS: 1 operacional de comodato
@@ -133,49 +136,207 @@ def formatar_solucao_tecnica(contexto: str | None, observacao: str = "") -> str:
     return "\n".join(linhas) + "\n-------------\n"
 
 
+# ── O aviso prévio, e a redação que muda a cada termo ────────────────────────
+#
+# 🚨 O VÍNCULO CASA POR TEXTO EXATO, E O TERMO NEGOCIA O PRAZO. O modelo traz
+# "90 DIAS DE AVISO PRÉVIO DE CANCELAMENTO"; quando o comercial concede prazo
+# menor, o mesmo campo vira "(90) 30 DIAS DE AVISO PRÉVIO DE CANCELAMENTO" --
+# outra grafia, mesmo encargo. Sem isto o item vira PENDENTE, bloqueia a
+# geração, e a saída fácil na tela de Vínculos é marcar OCULTO: foi assim que
+# os R$ 131,74 do termo 8848 sumiram da financeira, em silêncio (25/08).
+#
+# ⚠️ MEDE O SUFIXO E O QUE VEM ANTES DELE, não a ocorrência da palavra. Só
+# normaliza quando a parte à esquerda for exclusivamente número, parêntese,
+# barra ou espaço -- "SEM AVISO PRÉVIO DE CANCELAMENTO", se um dia existir,
+# NÃO é este item e continua pendente, que é o comportamento honesto.
+
+AVISO_PREVIO_SUFIXO = "DIAS DE AVISO PREVIO DE CANCELAMENTO"
+AVISO_PREVIO_CANONICO = "90 DIAS DE AVISO PREVIO DE CANCELAMENTO"
+_SO_PRAZO_RE = re.compile(r"^[\d()/\s.\-]*$")
+
+
+def _sem_acento(txt: str) -> str:
+    t = unicodedata.normalize("NFKD", str(txt or ""))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", t).strip().upper()
+
+
+def eh_aviso_previo(descricao: str) -> bool:
+    """A descrição é a linha de aviso prévio do termo, em qualquer redação?"""
+    norm = _sem_acento(descricao)
+    if not norm.endswith(AVISO_PREVIO_SUFIXO):
+        return False
+    prefixo = norm[: -len(AVISO_PREVIO_SUFIXO)]
+    return bool(_SO_PRAZO_RE.match(prefixo))
+
+
+def nome_para_vinculo(descricao: str) -> str:
+    """O nome com que este item procura o vínculo. Igual à descrição, exceto no
+    aviso prévio -- onde o prazo negociado muda a grafia sem mudar o item.
+
+    🚨 A DESCRIÇÃO ORIGINAL NÃO SE PERDE: ela continua no item resolvido, é ela
+    que a financeira lista e é dela que sai o prazo na solução técnica. Isto
+    aqui é só a chave de busca.
+    """
+    return AVISO_PREVIO_CANONICO if eh_aviso_previo(descricao) else descricao
+
+
+def prazo_do_aviso(descricao: str) -> str:
+    """Os prazos escritos na linha, na ordem: '(90) 30' -> '90/30'."""
+    numeros = re.findall(r"\d+", _sem_acento(descricao).split(AVISO_PREVIO_SUFIXO)[0])
+    return "/".join(numeros)
+
+
+def contexto_do_termo(resolvidos: list[dict]) -> str:
+    """As linhas do termo que o técnico e o financeiro precisam LER, e que não
+    cabem em material: hoje, o prazo do aviso prévio.
+
+    Decisão do usuário (26/08): "essas informações de prazo podem aparecer no
+    final da OS, no campo de soluções, conforme traço, data e detalhes do
+    termo". O cabeçalho com data e o separador já existiam e vinham sempre
+    vazios -- a aba nunca preencheu o `solucao_tecnica`.
+    """
+    linhas = []
+    for item in resolvidos:
+        if not eh_aviso_previo(item.get("descricao") or ""):
+            continue
+        prazo = prazo_do_aviso(item["descricao"])
+        valor = float(item.get("valor_unitario") or 0)
+        texto = f"Aviso prévio: {prazo} dias conforme termo" if prazo \
+            else "Aviso prévio conforme termo"
+        if valor > 0:
+            texto += f" — R$ {valor:,.2f}".replace(",", "X").replace(
+                ".", ",").replace("X", ".")
+        linhas.append(texto + ".")
+    return "\n".join(linhas)
+
+
+def contexto_da_os(contexto_da_tela: str | None, resolvidos: list[dict]) -> str:
+    """O que vai acima do traço: o que a tela mandou, mais o que o termo diz.
+
+    ⚠️ A tela NUNCA mandou `solucao_tecnica` -- o campo existe no `MontarInput`
+    desde sempre e todas as OS saíram com o cabeçalho seguido direto do traço.
+    Somar os dois em vez de escolher um evita que preencher a tela um dia
+    apague o que o termo diz.
+    """
+    partes = [p for p in ((contexto_da_tela or "").strip(),
+                          contexto_do_termo(resolvidos)) if p]
+    return "\n".join(partes)
+
+
+# ── O que o termo diz na coluna "COMODATO OU AQUISIÇÃO" ──────────────────────
+#
+# 🚨 O PAINEL SÓ CONHECIA DUAS PALAVRAS: `COMODATO` e `NÃO CONTRATADO`. Todo o
+# resto -- `CONTRATADO`, `DESATIVAR NO SISTEMA`, `NÃO POSSUI` -- caía no mesmo
+# balde de aquisição e ia para a financeira, cobrando se tivesse valor. Medido
+# em 26/08 nos termos 8848 e 8842.
+
+_NAO_TEM = ("NAO CONTRATAD", "NAO POSSUI")
+
+
+def eh_nao_tem(tipo_normalizado: str) -> bool:
+    """O termo diz que este veículo NÃO tem o item — não entra em OS nenhuma.
+
+    ⚠️ Recebe o texto JÁ normalizado (`_sem_acento`). Receber cru e normalizar
+    aqui dobraria a normalização em quem chama e faria a regra depender de
+    quem lembra de aplicá-la.
+    """
+    return any(marca in tipo_normalizado for marca in _NAO_TEM)
+
+
 # ── Vínculos ─────────────────────────────────────────────────────────────────
 
 async def resolver_vinculos(itens: list[ItemContrato]):
-    """(resolvidos, pendentes, descartados).
+    """(resolvidos, pendentes, descartados, ocultados).
+
+    🚨 O QUARTO VALOR NASCEU DE UM PREJUÍZO. Item com vínculo marcado OCULTO
+    sumia da OS sem deixar rastro: nem aviso, nem linha na prévia, nada. No
+    termo 8848 (25/08) o operador ocultou o aviso prévio para destravar a
+    geração -- porque a redação do prazo não casava com o vínculo -- e a
+    financeira saiu sem R$ 131,74, com a prévia aberta 6 segundos antes.
+    `NÃO CONTRATADO` sempre virou aviso; oculto era mudo. Agora os dois falam.
 
     A decisão de COBRAR vem da coluna Tipo do contrato, NÃO do valor (regra do
     negócio, 20/07): comodato nunca cobra -- o valor da linha é patrimonial,
     vai para a DANFE de comodato, não é preço. Assim `cobrar` e `comodato`
     nunca são verdadeiros ao mesmo tempo.
 
-    🚨 REGRA 7: O `nas_duas` NÃO É LIDO AQUI. Ele nasceu do caso 8839 / Central
-    24h em 14/08 e fazia um item de cobrança aparecer também na operacional com
-    valor zero. Decisão do usuário em 19/08: Central só nas OS operacionais.
-    Com isso cada item pertence a UM LADO SÓ e o conceito desaparece -- não
-    fica órfão. A coluna continua no banco porque é da tela de Vínculos, que
-    fica de pé depois da F7.
+    🚨 O `nas_duas` VOLTOU A SER LIDO EM 26/08, COM OUTRA REGRA. Histórico, que
+    é o que impede de desfazer isto por engano:
+
+      14/08  nasce do termo 8839: a Central vinha CONTRATADO com valor, caía só
+             em cobrança e sumia da OS que o técnico lê. A cópia operacional
+             ia com valor zero, mas a financeira continuava COBRANDO.
+      19/08  a regra 7 tira o conceito: cada item de um lado só. Na prática a
+             Central passou a existir só na financeira, cobrando.
+      26/08  o usuário pede as duas de volta -- e fecha a cobrança: "a central
+             nunca vai ter flag de cobrar ou comodato em ambas OS, nunca",
+             entrando "com valor zerado". Não é o de 14/08: lá cobrava de um
+             lado; aqui não cobra de nenhum.
+
+    ⚠️ A coluna sempre esteve no banco, marcada por você na tela de Vínculos.
+    Entre 19 e 26/08 ela existia e não era lida.
     """
-    resolvidos, pendentes, descartados = [], [], []
+    resolvidos, pendentes, descartados, ocultados = [], [], [], []
     for item in itens:
-        tipo = (item.comodato_ou_aquisicao or "").strip().upper()
+        tipo = _sem_acento(item.comodato_ou_aquisicao)
         # 'NÃO CONTRATADO' é por LINHA do contrato, não pelo vínculo oculto: o
         # mesmo item pode ser contratado em outro termo. Descarta antes do
         # lookup, senão viraria 'pendente' e bloquearia a geração.
-        if "NÃO CONTRATAD" in tipo or "NAO CONTRATAD" in tipo:
+        #
+        # 🆕 'NÃO POSSUI' entra no mesmo caminho (usuário, 26/08). Até aqui o
+        # painel não conhecia essa palavra: item 'NÃO POSSUI' COM valor caía no
+        # balde de aquisição e ia COBRADO para a financeira.
+        if eh_nao_tem(tipo):
             descartados.append(item.descricao)
             continue
-        vinc = await storage.buscar_vinculo_item(item.descricao)
+        # 🚨 ID FIXO ANTES DO VÍNCULO, e só para os itens que o usuário mandou
+        # fixar (hoje: a TAXA DE MIGRAÇÃO, decisão de 26/08). Sem isto o item
+        # nasceria pendente e bloquearia a geração até alguém criar o vínculo
+        # à mão -- que é o trabalho que a decisão de fixar existe para evitar.
+        fixo = cfg.ITENS_COM_ID_FIXO.get(_sem_acento(item.descricao))
+        vinc = ({"harmonit_id": fixo, "oculto": False, "nas_duas": False}
+                if fixo else
+                await storage.buscar_vinculo_item(nome_para_vinculo(item.descricao)))
         if vinc is None:
             pendentes.append(item.descricao)
             continue
         if vinc["oculto"]:
+            ocultados.append(item.descricao)
             continue
         comodato = tipo.startswith("COMODATO")
         valor = parse_valor(item.valor_unitario)
-        resolvidos.append({
+        resolvido = {
             "descricao": item.descricao,
             "harmonit_id": vinc["harmonit_id"],
             "quantidade": parse_qtd(item.quantidade) or 1,
             "valor_unitario": valor,
             "comodato": comodato,
             "cobrar": False if comodato else valor > 0,
-        })
-    return resolvidos, pendentes, descartados
+        }
+        # 🚨 A REGRA DA CENTRAL, E ELA NASCE AQUI DE PROPÓSITO. Decisão do
+        # usuário em 26/08: "a central nunca vai ter flag de cobrar ou comodato
+        # em ambas OS, nunca" -- e entra "com valor zerado".
+        #
+        # Aplicar na ORIGEM e não no corte é o que faz a regra valer nos onze
+        # perfis sem depender de eu lembrar de cada caminho: o antigo titular,
+        # a manutenção e o ressarcimento montam a OS a partir de `resolvidos`
+        # SEM passar por `separar_itens`, e ficariam de fora se a regra vivesse
+        # lá. Um deles -- a transferência novo titular -- já tinha me escapado
+        # na auditoria, com placar verde.
+        #
+        # 🚨 E NUNCA SOBRE COMODATO. Um item de comodato marcado `nas_duas` na
+        # tela de Vínculos perderia a flag e o VALOR PATRIMONIAL -- a DANFE de
+        # comodato sairia zerada e o rastreador do contrato viraria linha
+        # informativa. Comodato já vai na operacional e já não cobra: não há o
+        # que a regra acrescente ali, e há muito o que ela estrague.
+        # Achado pelo `teste_operacoes_f4`, cujo dublê marcava o RASTREADOR
+        # assim -- e em produção `nas_duas` nunca esteve num comodato.
+        if vinc.get("nas_duas") and not comodato:
+            resolvido.update({"nas_duas": True, "valor_unitario": 0.0,
+                              "comodato": False, "cobrar": False})
+        resolvidos.append(resolvido)
+    return resolvidos, pendentes, descartados, ocultados
 
 
 def alocar_itens_por_placa(resolvidos: list[dict], placas: list[PlacaOS]):
@@ -188,6 +349,16 @@ def alocar_itens_por_placa(resolvidos: list[dict], placas: list[PlacaOS]):
     avisos: list[str] = []
     for item in resolvidos:
         qtd = item["quantidade"]
+        # 🚨 O INFORMATIVO É PRESENÇA, NÃO CONTAGEM. A Central entra em TODAS as
+        # placas, uma linha cada, sem passar pela regra de quantidade: um termo
+        # que escreve "01 CENTRAL 24 HORAS" para 2 veículos não quer dizer que
+        # só um deles tem Central -- e alocar pela quantidade deixaria o
+        # segundo técnico sem o recado. Como o valor é zero, repetir não soma
+        # nada em lugar nenhum.
+        if item.get("nas_duas"):
+            for i in range(n):
+                alocacao[i].append({**item, "quantidade": 1})
+            continue
         if "BLOQUEIO" in item["descricao"].upper():
             elegiveis = [i for i, p in enumerate(placas) if not p.sem_bloqueio]
         else:
@@ -519,13 +690,23 @@ def separar_itens(perfil: dict, resolvidos: list[dict]):
         preservando o `cobrar` de cada item -- muda só ONDE, não O QUÊ. Decisão
         de 29/07, ainda de pé.
       `sem_flags` (manutenção) zera as duas flags e não gera financeira.
+
+    🆕 O ITEM `nas_duas` (a Central) É O ÚNICO QUE VAI PARA OS DOIS LADOS.
+    Decisão do usuário em 26/08: o técnico precisa ver que o veículo tem
+    Central -- é ele quem desativa -- e o financeiro precisa saber que ela
+    existe para parar de cobrar. Ele já chega aqui zerado e sem flags, então
+    aparecer duas vezes não soma valor em lugar nenhum.
+
+    ⚠️ NÃO É O `nas_duas` DE 14/08 DE VOLTA. Aquele copiava um item de
+    COBRANÇA para a operacional com valor zero, deixando a cobrança de pé na
+    financeira. Este não cobra em lado nenhum.
     """
     if perfil.get("financeira_embutida"):
         return list(resolvidos), []
     if perfil.get("sem_flags"):
         return [{**i, "cobrar": False, "comodato": False}
                 for i in resolvidos], []
-    return ([i for i in resolvidos if i.get("comodato")],
+    return ([i for i in resolvidos if i.get("comodato") or i.get("nas_duas")],
             itens_de_cobranca(resolvidos))
 
 
@@ -700,8 +881,15 @@ def montar_novo_titular(body: MontarInput, perfil: dict, resolvidos: list[dict],
     cobrança + oficina, sem nenhum item de comodato -- por isso não esbarra na
     regra 7. São compatíveis e não são a mesma coisa.
     """
+    # 🆕 O `nas_duas` (a Central) entra aqui também. Esta OS não passa por
+    # `separar_itens` -- foi o caminho que escapou na auditoria de 26/08, e
+    # escaparia com placar verde. Como a OS é AGREGADA, a quantidade é o número
+    # de placas, e não uma linha por placa.
+    informativos = [{**i, "quantidade": len(body.placas)}
+                    for i in resolvidos if i.get("nas_duas")]
     comodato = equipamentos_agregados(
         body, perfil, [i for i in resolvidos if i.get("comodato")], dados)
+    comodato = list(comodato) + informativos
     descricao = descricao_titularidade(perfil, body, dados)
     placas_txt = ", ".join(p.placa for p in body.placas)
     operacional = {

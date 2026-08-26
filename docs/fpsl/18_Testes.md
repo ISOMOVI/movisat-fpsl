@@ -389,3 +389,94 @@ responde "não encontrado" em formato diferente de "encontrado".
 compilaram e quebrariam em produção: um `placas.formatar()` sem o import (a
 âncora do patch tinha os nomes em ordem invertida) e uma chamada inserida na
 função errada (`NameError: veiculos`). Nos dois casos só o teste pegou.
+
+---
+
+## `tests/teste_aviso_previo.py` — o encargo que sumiu no termo 8848
+
+**43 verificações.** Criado em 2026-08-26.
+
+```bash
+cd /home/claude/fpsl_weso && venv/bin/python tests/teste_aviso_previo.py
+```
+
+O vínculo casa por **texto exato** e o termo negocia o prazo: o modelo traz
+`90 DIAS DE AVISO PRÉVIO DE CANCELAMENTO` e o 8848 trouxe
+`(90) 30 DIAS DE AVISO PRÉVIO DE CANCELAMENTO`. A grafia nova virava pendente,
+pendente bloqueia a geração, e a saída rápida era marcar **OCULTO** — que era
+mudo. Resultado real: **R$ 131,74 fora da financeira 16805**.
+
+| O que prende | Por quê |
+|---|---|
+| as duas redações procuram o mesmo vínculo (16033) | é o defeito do 8848 |
+| a **descrição do termo** é preservada no item resolvido | senão toda rescisão diria "90 dias", inclusive as de 30 |
+| `MULTA POR 90 DIAS DE AVISO…` **não** é este item | `M7`: mede o sufixo **e** o prefixo, não a ocorrência da palavra |
+| o prazo entra acima do traço na solução técnica | decisão do usuário, 26/08 |
+| item **oculto** vira aviso na prévia | era o único jeito de um item sumir sem rastro |
+| os 3 termos de rescisão reais resolvem | 8848, 8842 e `rescisao.pdf` |
+
+⚠️ O dublê é um **recorte** do catálogo, não o catálogo: as asserções falam só
+do aviso prévio. `rescisao.pdf` traz `LEITOR RFID`, que não está no recorte —
+exigir "nenhum pendente" mediria o dublê, não a correção.
+
+---
+
+## `tests/teste_central_nas_duas.py` — a Central nas duas OS, sem flag
+
+**63 verificações.** Criado em 2026-08-26.
+
+```bash
+cd /home/claude/fpsl_weso && venv/bin/python tests/teste_central_nas_duas.py
+```
+
+Decisão do usuário: a Central aparece nas duas OS quando o termo diz
+`CONTRATADO` ou `DESATIVAR NO SISTEMA`, em nenhuma quando diz `NÃO POSSUI` ou
+`NÃO CONTRATADO`, e **nunca** com `cobrar` ou `comodato`, sempre com valor zero.
+
+🚨 **O bloco 1 percorre `cfg.PERFIS` INTEIRO.** Perfil novo que nasça sem tratar
+a Central reprova aqui. Na auditoria a transferência **novo titular** escapou —
+ela monta a OS a partir de `resolvidos`, sem passar por `separar_itens` — e o
+placar teria ficado verde.
+
+| O que prende | Por quê |
+|---|---|
+| zerada e sem flags nos **11** perfis | a regra não pode depender de eu lembrar do caminho |
+| presença, não contagem: 1 no termo, 3 placas, entra nas 3 | alocar por quantidade deixaria o 2º técnico sem o recado |
+| `NÃO POSSUI` com valor **não** vira cobrança | a palavra não existia no código até 26/08 |
+| desmarcar `nas_duas` devolve a Central a item comum | quem decide é o **vínculo**, não o nome no código |
+| comodato marcado `nas_duas` **não** é zerado | zeraria o valor patrimonial e a DANFE de comodato |
+| 8848 e 8842 ponta a ponta | o efeito completo: Central fora da cobrança, aviso prévio dentro |
+
+---
+
+## `tests/teste_taxa_migracao.py` — a cobrança que o Upgrade nunca fez
+
+**33 verificações.** Criado em 2026-08-26.
+
+```bash
+cd /home/claude/fpsl_weso && venv/bin/python tests/teste_taxa_migracao.py
+```
+
+Toda financeira de upgrade saía `SEM CUSTO` — 8820, 8844, 8834 e 8827 — porque
+o layout não tem tabela de itens e `itens` voltava vazio.
+
+🚨 **A trava mais cara deste arquivo:** o total vem **riscado** em 2 dos 3
+termos reais. Ler o primeiro valor da célula cobraria **R$ 2.300,00** de dois
+clientes que o documento isentou.
+
+| Termo | Célula do total | Resultado |
+|---|---|---|
+| 8827 | `R$ 200,00` + "Boleto a vista" | cobra R$ 200,00 |
+| 8820 | `R$ 100,00` / `R$ 0,00*` | não vira item |
+| 8800 | `R$ 2.200,00 - R$ 0,00` | não vira item |
+
+Prende também: o rótulo dobrado (`TTOOTTAALL…`) reconhecido **sem** que o
+desdobramento vire dado; nenhum dos outros 10 perfis lê a taxa; o item resolve
+pelo **id fixo** `79746` sem depender de vínculo nenhum (decisão do usuário,
+26/08), enquanto qualquer item fora da tabela `ITENS_COM_ID_FIXO` continua
+dependendo do vínculo.
+
+🚨 **A guarda do id é exercitada, não procurada por `grep`.** O teste dubla o
+`harmonit_get`, chama `_conferir_ids_fixos()` e exige o recado quando o id
+sumiu — e silêncio quando o catálogo está fora do ar. A guarda irmã, a do
+`6967`, passou de 21/08 a 26/08 testada e sem nenhum chamador em produção.
