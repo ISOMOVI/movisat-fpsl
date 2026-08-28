@@ -1734,3 +1734,13 @@ sigo isso todo dia; aqui eu nem tinha olhado que havia serviço a reiniciar.
 - **As 2 linhas de cláusula do `transferencia_novo`** continuam aparecendo. O
   teste que as pegaria é heurística de texto, e uma linha de veículo mal
   quebrada pelo PDF sumiria por ela.
+
+## ✅ Validado por ele em 28/08
+
+*"FPSL correção deu certo"* — testado no painel, com o termo 8687 real, depois
+do `systemctl --user restart fpsl-weso` das 15:06.
+
+⚠️ **Só agora é `Validado`.** Antes disso a seção acima dizia "entregue": as 22
+verificações e a prova pela rota eram verdade no meu processo de teste, e a
+primeira vez que ele testou o erro continuou — porque eu não tinha reiniciado
+o serviço.
