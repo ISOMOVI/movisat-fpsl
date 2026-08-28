@@ -1586,3 +1586,151 @@ para 83 sozinho — não é efeito das correções.
 
 🚨 **E placar verde continua não provando que a tela abre.** A prova é o
 usuário rodando um termo de cada perfil.
+
+---
+
+# 🔴 A conferência da leitura do termo (2026-08-28)
+
+Ele mandou o termo **8687** (FAZENDA DA TOCA LTDA) acusando erro de placa e
+pediu diagnóstico: *"por que esta dando erro de placa"* — e logo depois a
+pergunta que mudou o trabalho: *"não é o primeiro que da erro"*.
+
+## O que estava acontecendo
+
+**A placa estava certa.** `FBI 8A36`, veículo `ATEGO 24 2648`, e ela existe nos
+dois espelhos:
+
+| Base | Achado |
+|---|---|
+| WESO | id 29549 · `FBI 8A36` · chassi `9BM958164LB165962` · rastreador 16221 = Suntech ST310, série 007839779, Instalado |
+| Harmonit | id 25143 · cliente **162902 — FAZENDA DA TOCA LTDA**, que bate com o CNPJ do termo |
+
+O que entrou na lista de veículos foi a **linha do total**:
+
+```
+TTOOTTAALL DDAA MMIIGGRRAAÇÇÃÃOO
+```
+
+"TOTAL DA MIGRAÇÃO" com cada letra duplicada — negrito sobreposto no PDF, que
+desenha o glifo duas vezes.
+
+🚨 **E o extrator não acha que o total é uma placa.** Ele acha que **aquela
+linha é um veículo** — porque nesse layout o rótulo do total mora na coluna dos
+veículos — e nela não encontra placa. Dentro da regra dele, está sendo honesto:
+*"linha de veículo sem placa reconhecida"*.
+
+⚠️ **O `_ITENS_KEYS` já tem a palavra `TOTAL`.** O filtro certo existe e mesmo
+assim não casa, porque compara texto cru e o rótulo chega `TTOOTTAALL`.
+
+## O layout MUDA entre gerações do mesmo perfil
+
+Foi isso que produziu o erro — não uma regressão de código:
+
+| | 8820 e 8800 | 8827 e 8687 |
+|---|---|---|
+| total | tabela **própria** de 2 colunas | **última linha** da tabela de veículos |
+| colunas | 5 | 6 |
+| resultado | nunca poluiu | polui |
+
+## 🚨 Duas regras que eu tentei e descartei — não tentar de novo
+
+1. **Geometria `X....X`** (só a 1ª e a última coluna preenchidas). Medi 87
+   linhas de veículo em 18 termos, 11 formas distintas: acerta os 2 casos com
+   **zero falsos positivos**. Mas é FORMA, não regra — quebra no dia em que o
+   rodapé tiver uma coluna a mais ou o total mudar de lugar.
+2. **"Linha de veículo preenche outras colunas".** MORREU no teste: os dois
+   totais preenchem uma outra coluna (o valor), e há veículo legítimo em
+   `cliente_novo.pdf` preenchendo exatamente uma também.
+
+## A regra: o termo declara quantos veículos tem
+
+Todo termo de upgrade carrega a própria conferência, não num campo
+"quantidade", mas na **aritmética da taxa**:
+
+| Termo | unitário bruto | total bruto | total ÷ unitário | placas lidas |
+|---|---|---|---|---|
+| 8820 | R$ 50,00 | R$ 100,00 | **2** | 2 |
+| 8827 | R$ 200,00 | R$ 200,00 | **1** | 1 |
+| 8800 | R$ 200,00 | R$ 2.200,00 | **11** | 11 |
+| 8687 | R$ 200,00 | R$ 200,00 | **1** | 1 |
+
+```
+lido == declarado -> a sobra NÃO é veículo. Descarta, contando.
+lido <  declarado -> FALTA veículo: a sobra fica, é candidata.
+lido >  declarado -> li demais: avisa alto.
+não declara       -> não confere e não mexe em nada.
+```
+
+**Por que isto resolve e as outras não resolviam:** não olha forma de linha,
+não depende de o rótulo vir duplicado, nem de o total estar na última linha,
+nem do número de colunas. Se o gerador do termo mudar de layout outra vez, a
+conta continua valendo — e foi o gerador mudando de layout que causou o erro.
+
+E ganha o que nenhuma das outras tinha: **detecta veículo que SUMIU**, não só
+linha que sobrou. Antes, se uma placa deixasse de ser lida, ninguém saberia.
+
+## 🚨 A mesma célula lida dos dois jeitos, e os dois estão certos
+
+A taxa vem **riscada** nos quatro termos (`R$ 200,00` + `R$ 0,00*`):
+
+- **financeira** → `_valor_ativo` pega o **ÚLTIMO** (R$ 0,00), porque a
+  cobrança foi cancelada. Regra existente, correta, **intocada**.
+- **contagem** → `valor_bruto` pega o **PRIMEIRO**. `0 ÷ 0` não conta nada.
+
+⚠️ Reusar `_valor_ativo` aqui — que era o caminho óbvio — daria divisão por
+zero nos **quatro** termos, e a conferência ficaria morta com placar verde.
+
+## Onde vive, e o que NÃO foi tocado
+
+`fpsl_weso/painel/operacoes_conferencia.py`, chamado em
+`operacoes_router.extrair`. O retorno da rota ganhou o campo `conferencia`
+(`declarado`, `lidos`, `como`, `descartadas`, `aviso`).
+
+🚨 **`pdf_extractor.py` não mudou uma linha**, por decisão dele em 28/08:
+*"não deve ter vínculo com as outras duas, não importa se geraria diferente,
+precisa funcionar nesta nova tela"*. Gerar OS, Vínculos e Cadastro de placas
+seguem lendo como sempre leram, e a divergência entre telas é **de propósito**.
+
+## Prova
+
+`tests/teste_conferencia_upgrade.py` — **22 verificações**. Somadas às quatro
+suítes que tocam extração: **191 verificações, 0 falhas**.
+
+Pela rota de verdade, com os PDFs reais:
+
+| | veículos na tela | sem_placa | conferência |
+|---|---|---|---|
+| 8687 | 1 | **0** | declarado 1 · lidos 1 · descartadas 1 |
+| 8800 | 11 | 0 | declarado 11 · lidos 11 · descartadas 0 |
+
+E nas fixtures: 8827 zerou, 8820 seguiu com 2, os outros 14 termos inalterados,
+**nenhuma placa a menos em nenhum** — o teste trava se a conferência tocar na
+lista de placas.
+
+⚠️ O teste que mais importa é o do caminho perigoso: **quando falta veículo, a
+sobra NÃO some.** Um filtro burro apagaria justamente a linha que pode ser o
+veículo perdido.
+
+## 🚨 O QUE EU ERREI NO PROCESSO, E É O QUE MAIS IMPORTA AQUI
+
+Escrevi o módulo, liguei na rota, provei por script chamando a função **e a
+rota** — e **não reiniciei o serviço**. Ele testou no painel e o erro continuou.
+
+O `fpsl-weso.service` estava no ar desde **26/08 às 10:25**; os meus arquivos
+eram de **28/08 às 14:59**. O painel rodava com código de dois dias antes, e
+todas as minhas verificações eram verdade **no meu processo de teste**, sem
+tocar no que ele estava usando.
+
+**Regra, e vale para os quatro painéis:** mexeu em código de painel, o ciclo só
+fecha com `systemctl --user restart` e conferência do estado. No MoviZap eu
+sigo isso todo dia; aqui eu nem tinha olhado que havia serviço a reiniciar.
+
+## O que fica aberto
+
+- **A tela ainda não usa o campo `conferencia`.** Hoje o ganho é o `sem_placa`
+  vazio; mostrar *"11 de 11 conferidos"* é passo à parte.
+- **Termo de upgrade sem taxa**, se existir, não confere — a sobra continua
+  aparecendo. Não achei nenhum nos 18 termos.
+- **As 2 linhas de cláusula do `transferencia_novo`** continuam aparecendo. O
+  teste que as pegaria é heurística de texto, e uma linha de veículo mal
+  quebrada pelo PDF sumiria por ela.

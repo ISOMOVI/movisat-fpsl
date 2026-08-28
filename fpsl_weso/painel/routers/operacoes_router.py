@@ -42,6 +42,7 @@ from pydantic import BaseModel
 from ..auth import requer_aba
 from .. import operacoes_config as cfg
 from ..pdf_extractor import extrair_campos
+from .. import operacoes_conferencia as conf
 from .. import operacoes_espera as esp
 from .. import operacoes_registro as reg
 from .. import operacoes_rotina as rot
@@ -186,6 +187,18 @@ async def extrair(pedido: Request,
     # assim que `RFD 2447`, placa que não existe na WESO, nasceu de texto solto
     # no termo 8800. Antes disso a tela dizia "9 veículos" num termo de 11 sem
     # nada indicar os 2 que faltavam.
+    # 🚨 A CONFERÊNCIA CONTRA O QUE O TERMO DECLARA (28/08). Ele mandou o 8687
+    # acusando "placa não reconhecida": a placa estava certa, e o que entrou na
+    # lista de veículos foi a LINHA DO TOTAL -- nesse layout ela mora dentro da
+    # tabela de veículos, na coluna dos veículos.
+    #
+    # Não se classifica a linha: confere-se a CONTA. Todo termo de upgrade diz
+    # quantos veículos tem na aritmética da taxa (total ÷ unitário), e quando a
+    # leitura fecha com o declarado, o que sobrou não é veículo.
+    #
+    # ⚠️ E quando NÃO fecha, a sobra continua aparecendo -- ela pode ser o
+    # veículo que faltou, que é justamente para o que a revisão humana existe.
+    conferencia = conf.conferir(io.BytesIO(conteudo), campos)
     sem_placa = campos.get("veiculos_sem_placa") or []
 
     doc = _so_doc(campos.get("cnpj") or campos.get("cpf"))
@@ -207,6 +220,10 @@ async def extrair(pedido: Request,
         "documento_no_termo": bool(doc),
         "nome_no_termo": campos.get("cliente_nome_sugerido"),
         "itens": itens,
+        # 🆕 O que a leitura conferiu: quantos o termo declara, quantos eu li,
+        # e o que foi descartado. Descartar é silencioso na tela, mas CONTADO
+        # aqui -- sumiço calado é da mesma família da placa inventada.
+        "conferencia": conferencia,
         # 🚨 OS ITENS DO CONTRATO, com nome proprio. O `itens` acima sao os
         # VEICULOS; estes sao as linhas de produto e servico do termo, e sao
         # eles que a etapa 4 resolve contra o catalogo do Harmonit. Sem eles a
