@@ -110,7 +110,11 @@ _RD_RE = re.compile(r"\(\s*RD\s*\)", re.IGNORECASE)
 # colide entre contratos) e o nome do veiculo no Harmonit / apelido na WESO
 # vira TERMO:<termo>. Ja existe convencao de fato na base -- 'TERMO:8396'
 # aparece 4x e 'TERMO 8222' tambem (ver docs/fpsl/21_Plano_Higiene_Placas.md).
-_A_DEFINIR_RE = re.compile(r"^A[\s_]*DEFINIR", re.I)
+# Grafias aceitas: `A DEFINIR`, `A  DEFINIR`, `A_DEFINIR`, `A-DEFINIR` e
+# `A definir`. A crase entra porque documento digitado a mao traz `A\u0300
+# DEFINIR` -- e recusar por causa de um acento seria perder a placa por
+# detalhe de digitacao.
+_A_DEFINIR_RE = re.compile(r"^[A\u00c0\u00e0][\s_\-]*DEFINIR", re.I)
 
 
 def _aplicar_placeholder_termo(campos: dict) -> dict:
@@ -135,6 +139,15 @@ def _aplicar_placeholder_termo(campos: dict) -> dict:
             v[chave] = f"A_DEFINIR_{termo}"
             v["apelido_sugerido"] = f"TERMO:{termo}"
             v["placa_convencional"] = False
+            # 🆕 O NOME DO VEICULO TAMBEM, quando o documento nao deu nenhum.
+            # A convencao de 29/07 dizia "nome no Harmonit / apelido na WESO
+            # vira TERMO:<termo>", e `apelido_sugerido` era gravado desde
+            # entao -- mas NINGUEM o lia: grep no front e no painel devolve
+            # zero. Sem isto, o veiculo do 8852 seria criado com o proprio
+            # texto da placa como nome.
+            for nome in ("veiculo", "veiculo_saida", "veiculo_entrada"):
+                if nome in v and not str(v.get(nome) or "").strip():
+                    v[nome] = f"TERMO:{termo}"
 
     for lista in ("placas", "veiculos", "pares"):
         for v in campos.get(lista) or []:
@@ -458,6 +471,20 @@ def _placa_pos_traco(celula: str) -> tuple[str | None, str]:
     if not cauda:
         return None, ""
 
+    # 🚨 `A DEFINIR` E SENTINELA, NAO TEXTO LIVRE, e por isso passa antes das
+    # guardas. Ele reprovaria na do digito -- a mesma linha que impede `tambem`
+    # de virar placa -- e a placa sumiria da extracao inteira.
+    #
+    # MEDIDO no termo aditivo 8852, em 02/09: dos tres veiculos, os dois com
+    # placa entraram e o terceiro, `... - A DEFINIR`, virou None. A troca pelo
+    # formato definitivo (`A_DEFINIR_<termo>` + apelido `TERMO:<termo>`) ja
+    # funcionava e nunca era alcancada, porque roda depois desta funcao.
+    #
+    # Devolve a grafia normalizada de proposito: `A definir`, `A-DEFINIR` e
+    # `A DEFINIR` chegam iguais na etapa seguinte.
+    if _A_DEFINIR_RE.match(cauda):
+        return "A DEFINIR", " ".join(cabeca.split()).strip(" -,;.*")
+
     blocos = cauda.split()
     if len(blocos) > _POS_TRACO_MAX_TOKENS:
         return None, ""
@@ -558,6 +585,26 @@ def _processar_linhas_placa(linhas: list, idx_placa_cols: list[int], placas: lis
                     "nota_transferencia": _detectar_transferencia(celula),
                     # Destaca na tela para conferência visual, como já se faz
                     # com série e chassi -- não muda o tratamento.
+                    "placa_convencional": False,
+                })
+                continue
+
+            # 🆕 `A DEFINIR` SOZINHO NA CELULA -- termo 8852, achado ao vivo em
+            # 02/09. O documento traz a linha 3 da tabela com o texto e mais
+            # nada: sem veiculo, sem traco. Por isso ela nao passa por
+            # `_placa_pos_traco`, que exige o ` - `, e caia inteira em
+            # "nao reconhecida".
+            #
+            # E sentinela conhecido, nao texto solto -- a diferenca que separa
+            # este caso do `RFD 2447` logo abaixo. O nome do veiculo fica vazio
+            # de proposito: quem o preenche e `_aplicar_placeholder_termo`, com
+            # `TERMO:<termo>`, porque so la o numero do termo esta disponivel.
+            if _A_DEFINIR_RE.match(" ".join(celula.split())):
+                placas.append({
+                    "placa": "A DEFINIR",
+                    "veiculo": "",
+                    "sem_bloqueio": bool(_SEM_BLOQUEIO_RE.search(celula)),
+                    "nota_transferencia": _detectar_transferencia(celula),
                     "placa_convencional": False,
                 })
                 continue

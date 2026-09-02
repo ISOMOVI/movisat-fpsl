@@ -174,6 +174,37 @@ async def _anexar_equipamento(os_id: int | None, modelo: str | None,
         return False, (f"o modelo {modelo!r} não tem produto no de-para — o "
                        "equipamento não pode entrar nos materiais")
 
+    # 🚨 O PARÂMETRO DESTA ROTA É `ordemServicoId`, NÃO `osId`. É a única rota
+    # de OS do Harmonit que foge do padrão -- ObterOficinas, ObterTecnico,
+    # ObterCheckList e ObterTimeLine usam todas `osId`, e o swagger diz
+    # `ordemServicoId` só aqui. Com o nome errado a API devolve
+    # "Ordem de serviço não encontrada", e foi isso que aconteceu:
+    #
+    #   A conferência falhava SEMPRE. A pendência nunca fechava. O laço de 6h
+    #   voltava, anexava de novo, e a OS ia acumulando a mesma linha. Medido em
+    #   02/09: OS 16814 com 11 cópias de RASTREADOR ST300HD em 25 tentativas,
+    #   16815 com 22, 16816 com 21. A 16817, que falha ANTES do anexo, não tem
+    #   nenhuma -- é a prova pelo avesso.
+    async def _materiais_da_os() -> list:
+        return _unwrap(await harmonit_get(
+            "/OrdemServico/ObterMateriaisOrdemServico",
+            params={"ordemServicoId": os_id})) or []
+
+    # 🚨 LER ANTES DE GRAVAR. `SalvarMaterialOrdemServico` com `id: 0` significa
+    # CRIAR, sempre -- ele não tem noção de "já existe". Sem esta leitura,
+    # qualquer reentrada da rotina duplica a linha, e o defeito acima volta por
+    # outro caminho. Idempotência aqui não é zelo: é o que torna seguro o laço
+    # que roda a cada 6 horas.
+    try:
+        ja_tem = any(str(m.get("produtoId")) == str(produto["harmonit_id"])
+                     for m in await _materiais_da_os())
+    except Exception as exc:
+        return False, f"não consegui ler os materiais da OS antes de anexar: {exc}"
+
+    if ja_tem:
+        return True, (f"equipamento {produto['descricao']} já estava nos "
+                      "materiais da OS")
+
     try:
         await harmonit_post("/OrdemServico/SalvarMaterialOrdemServico", {
             "id": 0, "empresaId": 98, "osId": os_id,
@@ -185,12 +216,11 @@ async def _anexar_equipamento(os_id: int | None, modelo: str | None,
 
     # A prova é reler, nunca o código de retorno.
     try:
-        lidos = _unwrap(await harmonit_get(
-            "/OrdemServico/ObterMateriaisOrdemServico", params={"osId": os_id}))
+        lidos = await _materiais_da_os()
     except Exception as exc:
         return False, f"anexei mas não consegui conferir os materiais: {exc}"
     achou = any(str(m.get("produtoId")) == str(produto["harmonit_id"])
-                for m in (lidos or []))
+                for m in lidos)
     if achou:
         return True, f"equipamento {produto['descricao']} anexado à OS"
     return False, ("o Harmonit não recusou, mas o equipamento não aparece na "

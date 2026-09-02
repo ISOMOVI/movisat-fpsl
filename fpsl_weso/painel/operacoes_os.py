@@ -1084,17 +1084,22 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
                     modelo=modelo or eqp.MARCADOR_MODELO),
                 "rotulo": "Retirada",
             })
-            # 🚨 SÉRIE E MODELO DA MESMA PLACA. Esta linha descreve o veículo
-            # que RECEBE, então lê dele. Misturar a série de um com o modelo de
-            # outro produz "007933914 (modelo nao localizado)", que parece
-            # defeito e não é.
-            # ⚠️ O MATERIAL continua vindo da placa que SAI: na substituição o
-            # equipamento é O MESMO e muda de veículo.
-            entrada = PlacaOS(placa=p.placa_entrada,
-                              veiculo=p.veiculo_entrada,
-                              modelo_escolhido=p.modelo_escolhido)
-            modelo_entrada = modelo_da_operacao(perfil, entrada, materiais,
-                                                recipientes, dados)
+            # 🚨 SÉRIE E MODELO VÊM DA PLACA QUE SAI -- decisão do usuário
+            # em 2026-09-02: "a OS de instalação sempre terá o mesmo ID que a
+            # da correspondente da retirada". Na Substituição o equipamento é
+            # O MESMO e só muda de veículo; no momento em que a OS é gerada ele
+            # ainda está vinculado ao veículo antigo, então a placa de entrada
+            # não tem o que devolver.
+            #
+            # ANTES lia da placa de entrada, e o resultado era "série não
+            # localizada" na instalação -- medido no termo 8867 (OS 16829/16830,
+            # 02/09), que a Erika teve de corrigir à mão. O comentário antigo
+            # dizia que ler da mesma placa evitava "007933914 (modelo nao
+            # localizado)": continua verdadeiro, e a placa coerente é a de
+            # SAÍDA, onde série e modelo existem juntos.
+            #
+            # ⚠️ PLACA E VEÍCULO continuam vindo da entrada: quem RECEBE é o
+            # veículo novo. Só o equipamento é que vem do antigo.
             operacoes.append({
                 **base,
                 "placa": p.placa_entrada, "veiculo": p.veiculo_entrada,
@@ -1103,8 +1108,8 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
                 "descricao": perfil["descricao_template_instalacao"].format(
                     placa=p.placa_entrada, veiculo=p.veiculo_entrada,
                     termo=body.termo,
-                    serie=eqp.serie_de(seriais, p.placa_entrada),
-                    modelo=modelo_entrada or eqp.MARCADOR_MODELO),
+                    serie=eqp.serie_de(seriais, p.placa),
+                    modelo=modelo or eqp.MARCADOR_MODELO),
                 "rotulo": "Instalação",
             })
             continue

@@ -517,16 +517,18 @@ def _montar_operacoes(body: GerarOsInput, perfil: dict, alocacao: list[list[dict
                 "placa": p.placa_entrada, "veiculo": p.veiculo_entrada,
                 "tipo_id": perfil["tipo_id_instalacao"],
                 "problema_id": perfil.get("problema_id_instalacao", perfil.get("problema_id")),
-                # 🚨 SÉRIE E MODELO DA MESMA PLACA. Esta linha descreve o
-                # veículo que RECEBE, então lê dele -- misturar a série de um
-                # com o modelo de outro produz `007933914 (modelo nao
-                # localizado)`, que parece defeito e não é.
-                # ⚠️ O MATERIAL continua vindo da placa que SAI: na
-                # Substituição o equipamento é o MESMO e muda de veículo.
+                # 🚨 SÉRIE E MODELO VÊM DA PLACA QUE SAI -- decisão do
+                # usuário em 2026-09-02: "a OS de instalação sempre terá o
+                # mesmo ID que a da correspondente da retirada". O equipamento
+                # é O MESMO e só muda de veículo; quando a OS é gerada ele
+                # ainda está no veículo antigo, então a placa de entrada não
+                # tem o que devolver. Medido no termo 8867 (OS 16829/16830).
+                # ⚠️ PLACA E VEÍCULO continuam vindo da entrada: quem RECEBE
+                # é o veículo novo. Só o equipamento vem do antigo.
                 "descricao": perfil["descricao_template_instalacao"].format(
                     placa=p.placa_entrada, veiculo=p.veiculo_entrada, termo=body.termo,
-                    serie=serie_de(seriais, p.placa_entrada),
-                    modelo=_modelo_da_operacao(perfil, p.placa_entrada, materiais_placa,
+                    serie=serie_de(seriais, p.placa),
+                    modelo=_modelo_da_operacao(perfil, p.placa, materiais_placa,
                                                recipientes, dados)),
                 "rotulo": "Instalação",
                 "materiais": materiais_placa,
