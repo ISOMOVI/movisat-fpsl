@@ -84,8 +84,19 @@ async def principal():
            inst["veiculo"] == "BYD SEALION 7", inst["veiculo"])
     checar("a placa da retirada é a que SAI",
            ret["placa"] == "SYA 8C88", ret["placa"])
-    checar("as duas OS carregam os mesmos materiais",
-           ret.get("materiais") == inst.get("materiais"))
+    # 🆕 16/09: a retirada passou a levar TAMBÉM a cobrança embutida da
+    # substituição (299,90) -- deixaram de ser idênticas de propósito. O
+    # equipamento continua o mesmo nas duas; só a retirada tem a linha a mais.
+    sem_cobranca = [m for m in ret.get("materiais") or []
+                    if "SUBSTITUIÇÃO" not in (m.get("descricao") or "")]
+    checar("tirando a cobrança, o resto dos materiais é igual nas duas OS",
+           sem_cobranca == inst.get("materiais"),
+           (sem_cobranca, inst.get("materiais")))
+    checar("só a retirada leva a cobrança da substituição",
+           any("SUBSTITUIÇÃO" in (m.get("descricao") or "")
+               for m in ret.get("materiais") or []) and
+           not any("SUBSTITUIÇÃO" in (m.get("descricao") or "")
+                   for m in inst.get("materiais") or []))
 
     # ── sem conseguir ler a placa que sai, o marcador é honesto ──────────────
     #

@@ -686,9 +686,11 @@ def separar_itens(perfil: dict, resolvidos: list[dict]):
     financeiro -- listado sempre, com `cobrar` dependendo do valor.
 
     ⚠️ Dois perfis fogem do corte, e continuam como estavam:
-      `financeira_embutida` (rescisão) manda TUDO por placa, cobrança inclusive,
-        preservando o `cobrar` de cada item -- muda só ONDE, não O QUÊ. Decisão
-        de 29/07, ainda de pé.
+      `financeira_embutida` (substituição, desde 16/09) manda TUDO por placa,
+        cobrança inclusive, preservando o `cobrar` de cada item -- muda só
+        ONDE, não O QUÊ. A rescisão USOU esta mesma saída de 29/07 a 21/08,
+        quando foi revertida pra financeira agregada (regra 3 da spec 28) --
+        não confundir as duas decisões, são perfis diferentes.
       `sem_flags` (manutenção) zera as duas flags e não gera financeira.
 
     🆕 O ITEM `nas_duas` (a Central) É O ÚNICO QUE VAI PARA OS DOIS LADOS.
@@ -747,23 +749,24 @@ def montar_financeira(body: MontarInput, itens_financeiro: list[dict],
     }
 
 
-# ── REGRA 12: a financeira da substituição ───────────────────────────────────
+# ── REGRA 12: o item de cobrança da substituição ──────────────────────────────
 
 def financeira_substituicao(body: MontarInput, perfil: dict) -> dict:
-    """O item de serviço da substituição, para entrar na financeira.
+    """O item de serviço da substituição -- desde 16/09 entra na OS de
+    RETIRADA de cada placa (`financeira_embutida`), não numa financeira
+    agregada separada. Chamado uma vez por placa, então o termo com N trocas
+    cobra N x o valor, cada linha amarrada ao veículo que a gerou.
 
-    🚨 O SERVIÇO ESTÁ PENDENTE DE DECISÃO SUA, E FALHA ALTO. O nome pedido não
-    existe no Harmonit e o mais próximo tem DOIS registros idênticos (6967 e
-    54845). A regra da casa é resolver por nome -- e aqui o nome não decide.
-    Escolher o primeiro da lista no chute geraria OS com o serviço errado sem
-    nada acusar.
+    🚨 O ID FOI RESOLVIDO PELO USUÁRIO EM 21/08, e falha alto se sumir. O nome
+    "substituição em local diferente" tem DOIS registros idênticos no Harmonit
+    (6967 e 54845); resolver por nome pegaria um no chute, então o id ficou
+    fixo em `SUBSTITUICAO_LOCAL_DIFERENTE_ID` (`operacoes_config.py`).
 
-    🆕 O VALOR VEM DO TERMO, NÃO DO CÓDIGO. Medido em 19/08: o termo de
-    substituição já traz `taxa_local_diferente` (299,90) e `taxa_mesmo_local`
-    (199,90). Valor de serviço fixado em código apodrece igual a id de tipo --
-    foi assim que 7 das 14 OS de manutenção ficaram com `tipo = 55`, que não
-    existe mais na lista. O código só entra como último recurso, quando o termo
-    não trouxe o valor.
+    🆕 O VALOR TAMBÉM É FIXO EM CÓDIGO (decisão de 21/08, não do termo). O
+    termo já trazia `taxa_local_diferente` (299,90) e `taxa_mesmo_local`
+    (199,90) e o usuário recusou ler de lá: "preferiu o caminho automático".
+    `body.valor_substituicao` continua tendo prioridade se algum dia for
+    enviado, mas hoje nada no painel o preenche.
     """
     servico_id = perfil.get("financeira_servico_id")
     if not servico_id:
@@ -1069,10 +1072,17 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
             base = dict(cliente_id=body.cliente_id,
                         situacao_id=cfg.SITUACAO_NOVA_ID,
                         produto_servico_id=body.produto_servico_id,
-                        prioridade_id=body.prioridade_id,
-                        materiais=materiais_operacional(
-                            materiais, body.produto_servico_id))
+                        prioridade_id=body.prioridade_id)
             modelo = modelo_da_operacao(perfil, p, materiais, recipientes, dados)
+            # 🆕 A COBRANÇA É POR PLACA, SÓ NA RETIRADA (usuário, 16/09). As
+            # duas OS nasciam com o MESMO objeto `materiais` (a retirada e a
+            # instalação apontavam pro mesmo `base`) -- por isso agora cada
+            # uma monta a sua lista, senão o item de cobrança apareceria
+            # duplicado na instalação também.
+            materiais_retirada = materiais_operacional(
+                (materiais + [financeira_substituicao(body, perfil)])
+                if perfil.get("financeira_embutida") else materiais,
+                body.produto_servico_id)
             operacoes.append({
                 **base,
                 "placa": p.placa, "veiculo": p.veiculo,
@@ -1083,6 +1093,7 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
                     serie=eqp.serie_de(seriais, p.placa),
                     modelo=modelo or eqp.MARCADOR_MODELO),
                 "rotulo": "Retirada",
+                "materiais": materiais_retirada,
             })
             # 🚨 SÉRIE E MODELO VÊM DA PLACA QUE SAI -- decisão do usuário
             # em 2026-09-02: "a OS de instalação sempre terá o mesmo ID que a
@@ -1111,6 +1122,8 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
                     serie=eqp.serie_de(seriais, p.placa),
                     modelo=modelo or eqp.MARCADOR_MODELO),
                 "rotulo": "Instalação",
+                "materiais": materiais_operacional(
+                    materiais, body.produto_servico_id),
             })
             continue
 
@@ -1120,17 +1133,14 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
 
     # ── a financeira, uma por termo ──────────────────────────────────────────
     #
-    # ⚠️ `financeira_embutida` É A RESCISÃO, E CONTINUA VALENDO. Decisão do
-    # usuário em 29/07: na rescisão a cobrança vai em CADA OS de placa, com o
-    # `cobrar` preservado, "é mais seguro assim" -- fica amarrada ao veículo
-    # que a gerou, em vez de num agregado que pode ser fechado sem conferir
-    # placa a placa. A regra 3 da spec 28 reverteria isto e está PENDENTE de
-    # confirmação sua; até lá vale o que foi decidido.
+    # ⚠️ `financeira_embutida` hoje é a SUBSTITUIÇÃO (usuário, 16/09): a
+    # cobrança já foi embutida por placa, na OS de retirada, lá no laço acima
+    # -- chegar aqui com a flag ligada significa que não há financeira
+    # agregada nenhuma pra montar. A rescisão usou esta mesma saída de 29/07 a
+    # 21/08, quando foi revertida pra financeira agregada (regra 3 da spec 28)
+    # -- perfis diferentes, decisões independentes.
     if perfil.get("sem_financeira") or perfil.get("financeira_embutida"):
         return operacoes
 
-    extras = []
-    if body.perfil == "substituicao":
-        extras.append(financeira_substituicao(body, perfil))
-    operacoes.append(montar_financeira(body, itens_financeiro, extras))
+    operacoes.append(montar_financeira(body, itens_financeiro))
     return operacoes

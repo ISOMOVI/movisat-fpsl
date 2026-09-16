@@ -428,28 +428,35 @@ async def teste_regra_11():
 # ── 8. regra 12: a substituição ──────────────────────────────────────────────
 
 async def teste_regra_12():
-    print("\n8. Regra 12 — a substituição gera a financeira no serviço 6967")
-    # 🆕 RESOLVIDO PELO USUÁRIO EM 21/08. Até então este teste prendia o estado
-    # PENDENTE: dois registros de nome idêntico no Harmonit (6967 e 54845), o id
-    # em `None`, e a geração parando com 422. Ele escolheu o 6967, com valor
-    # fixo e sem pergunta na tela.
+    print("\n8. Regra 12 — a substituição embute a cobrança na OS de retirada")
+    # 🆕 PAROU DE GERAR FINANCEIRA SEPARADA (usuário, 16/09). Até 21/08 o id do
+    # serviço era o pendente (dois registros idênticos no Harmonit, 6967 e
+    # 54845); resolvido para 6967, valor fixo 299,90. Agora o destino também
+    # mudou: em vez de uma financeira agregada por termo, cada OS de retirada
+    # leva a sua própria linha -- termo com N trocas cobra N x 299,90.
     instalar_dubles(modelo_na_weso="ST340")
     body = corpo("substituicao",
                  [placa("AAA 0A00", placa_entrada="BBB 0B00",
                         veiculo_entrada="CARRO NOVO")],
                  [item("RASTREADOR", "1", "480,00", "COMODATO")])
     ops, _, _, _ = await montar(body)
-    financeiras = [o for o in ops if o.get("eh_financeira")]
-    checar("gera a OS financeira", len(financeiras) == 1,
-           [o.get("rotulo") for o in ops])
+    checar("nenhuma financeira agregada",
+           not any(o.get("eh_financeira") for o in ops), [o.get("rotulo") for o in ops])
     checar("2 OS operacionais por placa (retirada e instalação)",
-           len([o for o in ops if not o.get("eh_financeira")]) == 2,
-           [o.get("rotulo") for o in ops])
-    taxa = [m for m in financeiras[0]["materiais"]
+           len(ops) == 2, [o.get("rotulo") for o in ops])
+    retirada = [o for o in ops if o["rotulo"] == "Retirada"][0]
+    instalacao = [o for o in ops if o["rotulo"] == "Instalação"][0]
+    taxa = [m for m in retirada["materiais"]
             if "local diferente" in (m.get("descricao") or "").lower()]
+    checar("a retirada leva o item de substituição",
+           len(taxa) == 1, descricoes(retirada["materiais"]))
     checar("com o valor de 299,90",
            taxa and taxa[0]["valor_unitario"] == 299.90, str(taxa))
     checar("e marcado para cobrar", taxa and taxa[0]["cobrar"] is True)
+    checar("a instalação NÃO leva o item de substituição",
+           not any("SUBSTITUIÇÃO" in (m.get("descricao") or "")
+                   for m in instalacao["materiais"]),
+           descricoes(instalacao["materiais"]))
 
     # 🚨 A GUARDA DO ID FIXO, que acompanha a escolha sem contradizê-la.
     # Id em código apodrece em silêncio -- 7 das 14 OS de manutenção ficaram
@@ -459,31 +466,29 @@ async def teste_regra_12():
     checar("catálogo fora do ar NÃO vira aviso falso",
            cfg.conferir_servico_de_substituicao([]) is None)
 
-    # 🚨 O VALOR VEM DO TERMO. Id e valor fixos em código apodrecem: foi assim
-    # que 7 das 14 OS de manutenção ficaram com `tipo = 55`.
-    escolhido = dict(cfg.PERFIS["substituicao"])
-    escolhido["financeira_servico_id"] = 6967
+    # 🚨 TERMO COM N TROCAS COBRA N x O VALOR (decisão de 16/09, confirmada
+    # depois de eu apontar que o modelo antigo cobrava só uma vez por termo,
+    # não importa quantas placas trocassem).
     body2 = corpo("substituicao",
                   [placa("AAA 0A00", placa_entrada="BBB 0B00",
-                         veiculo_entrada="CARRO NOVO")],
-                  [item("RASTREADOR", "1", "480,00", "COMODATO")],
-                  valor_substituicao=299.90, local_diferente=True)
-    ops, _, _, _ = await montar(body2, perfil_obj=escolhido)
-    operacionais = [o for o in ops if not o.get("eh_financeira")]
-    checar("substituição gera 2 OS operacionais (retirada + instalação)",
-           len(operacionais) == 2, f"veio {len(operacionais)}")
-    checar("a retirada é da placa que sai",
-           operacionais[0]["placa"] == "AAA 0A00")
-    checar("a instalação é da placa que entra",
-           operacionais[1]["placa"] == "BBB 0B00")
-    fin = [o for o in ops if o.get("eh_financeira")][0]
-    taxa = [m for m in fin["materiais"] if "SUBSTITUIÇÃO" in m["descricao"]]
-    checar("a financeira ganha o item de substituição",
-           len(taxa) == 1, descricoes(fin["materiais"]))
-    checar("com o valor vindo do TERMO, não do código",
-           taxa and taxa[0]["valor_unitario"] == 299.90, str(taxa))
-    checar("marcado para cobrar", taxa and taxa[0]["cobrar"] is True)
-    checar("e o texto diz qual local", taxa and "local diferente" in taxa[0]["descricao"])
+                         veiculo_entrada="CARRO NOVO"),
+                   placa("CCC 0C00", placa_entrada="DDD 0D00",
+                         veiculo_entrada="CARRO NOVO 2")],
+                  [item("RASTREADOR", "1", "480,00", "COMODATO")])
+    ops2, _, _, _ = await montar(body2)
+    checar("continua sem financeira agregada",
+           not any(o.get("eh_financeira") for o in ops2))
+    checar("4 OS operacionais (2 retiradas + 2 instalações)",
+           len(ops2) == 4, [o.get("rotulo") for o in ops2])
+    retiradas = [o for o in ops2 if o["rotulo"] == "Retirada"]
+    checar("as DUAS retiradas levam a cobrança, uma cada",
+           all(any("SUBSTITUIÇÃO" in (m.get("descricao") or "") and m["cobrar"]
+                   for m in r["materiais"])
+               for r in retiradas),
+           [descricoes(r["materiais"]) for r in retiradas])
+    total = sum(m["valor_unitario"] for r in retiradas for m in r["materiais"]
+                if "SUBSTITUIÇÃO" in m["descricao"])
+    checar("total cobrado é 2 x 299,90 = 599,80", total == 599.80, total)
 
 
 # ── 9. rescisão: OS operacional E OS financeira ──────────────────────────────

@@ -217,6 +217,13 @@ PERFIS = {
     #
     # 🆕 `placa_entrada` passa a ser CADASTRADA nos dois sistemas. Hoje ela só
     # existia na geração de OS e nunca nascia em lugar nenhum.
+    #
+    # 🆕 PAROU DE GERAR OS FINANCEIRA SEPARADA (usuário, 16/09): a cobrança
+    # embutida vai em CADA OS de retirada, uma por placa -- termo com N trocas
+    # cobra N x 299,90, e não mais um valor único agregado por termo. É o
+    # oposto do que foi decidido pra rescisão em 21/08 (que SAIU do embutido
+    # pra agregada), e é intencional: perfis diferentes, decisão dele nos dois
+    # casos. Ver `financeira_embutida` em `operacoes_os.py`.
     "substituicao": {
         "label": "Substituição (troca de equipamento)",
         "tipo_id_retirada": 73,
@@ -226,6 +233,7 @@ PERFIS = {
         "os_por_placa": 2,
         "etapa_placas": "cria_entrada",
         "modelo_origem": "placa",
+        "financeira_embutida": True,
         "financeira_servico_id": SUBSTITUICAO_LOCAL_DIFERENTE_ID,
         "financeira_servico_valor": SUBSTITUICAO_LOCAL_DIFERENTE_VALOR,
         "financeira_servico_cobrar": True,
