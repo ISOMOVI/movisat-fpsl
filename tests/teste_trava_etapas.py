@@ -550,6 +550,26 @@ for perfil in esperados:
            d.get("avancar_liberado") is True, str(d))
 
 print()
+print("== 🚨 TIPO DO VEÍCULO (16/09), só nos perfis que criam veículo ==")
+checar("a coluna Tipo aparece no perfil que cria (aditivo)",
+       v("tipo_coluna_aparece_cria") is True)
+checar("o weso_veiculo_id da etapa 3 chega na linha (mock: id 2)",
+       v("tipo_weso_id_apos_gravar") == 2, v("tipo_weso_id_apos_gravar"))
+checar("o tipo escolhido vai no payload da etapa 4",
+       v("tipo_no_payload") == "moto", v("tipo_no_payload"))
+# 🚨 RETOMADA: a escolha se perde (o lote não guarda as linhas) e a linha
+# volta gravada, sem `<select>` para ler. Mandar "carro" por padrão ali
+# gravaria Carro numa placa onde a pessoa tinha escolhido Moto, calado.
+checar("linha sem tipo manda null, NÃO 'carro' por padrão",
+       v("tipo_sem_escolha_vai_null") is True)
+checar("e o weso_veiculo_id junto, no mesmo item",
+       v("tipo_weso_id_no_payload") == 2, v("tipo_weso_id_no_payload"))
+checar("a coluna Tipo NÃO aparece no perfil que só confere (manutencao_local)",
+       v("tipo_coluna_some_em_confere") is True)
+checar("e o payload não manda tipo nenhum nesse perfil",
+       v("tipo_null_em_confere") is True)
+
+print()
 print(f"== {ok} verificações OK, {len(falhas)} falha(s) ==")
 if falhas:
     for f in falhas:

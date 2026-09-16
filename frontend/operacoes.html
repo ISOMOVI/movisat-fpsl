@@ -1331,15 +1331,41 @@ function gravada(l) {
   return !!l.situacao && !placaFalhou(l.situacao);
 }
 
+/* 🆕 16/09: tipo do veículo na WESO, pedido do usuário. Só nos perfis que
+   CRIAM veículo de verdade a partir de uma placa só (`etapa_placas ===
+   'cria'`) -- a substituição (`cria_entrada`) cria o veículo na placa de
+   ENTRADA, que é uma linha PAREADA e não tem coluna própria nesta tabela;
+   fica de fora desta rodada em vez de mandar o tipo errado calado.
+   Os 7 são os únicos confirmados na tela real da WESO (16/09) -- ver o
+   comentário de `TIPO_VEICULO_WESO` em `operacoes_config.py`. */
+const TIPOS_VEICULO = [
+  ['carro', 'Carro'], ['moto', 'Moto'], ['caminhao', 'Caminhão'],
+  ['portatil', 'Portátil'], ['maquina', 'Máquina'], ['onibus', 'Ônibus'],
+  ['trator', 'Trator'],
+];
+
+function rotuloTipoVeiculo(valor) {
+  const par = TIPOS_VEICULO.find((t) => t[0] === valor);
+  return par ? par[1] : '—';
+}
+
 function desenharPlacas() {
+  const mostraTipo = perfilAtual().etapa_placas === 'cria';
   document.getElementById('cabPlacas').innerHTML = `<tr>
-    <th class="col-num">#</th><th>Veículo</th><th>Placa</th>
+    <th class="col-num">#</th>${mostraTipo ? '<th class="col-tipo">Tipo</th>' : ''}
+    <th>Veículo</th><th>Placa</th>
     <th class="col-troca">⇄</th><th class="col-situacao">Situação</th></tr>`;
   document.querySelector('#tabelaPlacas tbody').innerHTML = linhasPlacas
     .map((l, n) => `<tr>
       <td>${n + 1}${l.recipiente
         ? ' <span class="badge badge-ambar">bancada · só WESO</span>' : ''}${
         l.entrada ? ' <span class="badge badge-ambar">entra</span>' : ''}</td>
+      ${!mostraTipo ? '' : gravada(l)
+        ? `<td>${escapeHtml(rotuloTipoVeiculo(l.tipo_veiculo))}</td>`
+        : `<td><select data-campo="tipo_veiculo" data-linha="${n}">${
+             TIPOS_VEICULO.map(([v, r]) => `<option value="${v}"${
+               (l.tipo_veiculo || 'carro') === v ? ' selected' : ''
+               }>${r}</option>`).join('')}</select></td>`}
       ${gravada(l)
         ? `<td>${escapeHtml(l.veiculo || '')}</td>
            <td><code>${escapeHtml(l.placa || '')}</code></td>`
@@ -1366,7 +1392,7 @@ function inverter(n) {
 }
 
 function lerCampos() {
-  document.querySelectorAll('#tabelaPlacas input').forEach((el) => {
+  document.querySelectorAll('#tabelaPlacas input, #tabelaPlacas select').forEach((el) => {
     linhasPlacas[+el.dataset.linha][el.dataset.campo] = el.value;
   });
 }
@@ -1684,6 +1710,20 @@ function corpoOS(confirmar) {
         placa_entrada: par ? par.placa : null,
         veiculo_entrada: par ? par.veiculo : '',
         modelo_escolhido: l.modelo_escolhido || null,
+        /* 🆕 16/09: só nos perfis com a coluna Tipo (etapa_placas: 'cria').
+           `weso_veiculo_id` vem da criação da própria etapa 3
+           (`l.situacao.weso.id`) -- sem ele a etapa 4 não tem o que corrigir.
+
+           🚨 SEM ESCOLHA, MANDA `null` -- NUNCA "carro" por padrão. O padrão
+           Carro vive no `<select>`, que o `lerCampos` lê antes de gravar; se
+           a linha chegou aqui sem tipo é porque NÃO havia select para ler --
+           o caso é a RETOMADA, em que `guardarLote` não guarda as linhas e a
+           escolha se perdeu. Inventar "carro" ali gravaria Carro numa placa
+           onde a pessoa tinha escolhido Moto, calado. Mandando `null` o
+           veículo fica como a WESO o criou e ninguém mente. */
+        tipo_veiculo: perfilAtual().etapa_placas === 'cria'
+          ? (l.tipo_veiculo || null) : null,
+        weso_veiculo_id: (l.situacao && l.situacao.weso && l.situacao.weso.id) || null,
       };
     }),
     itens: ((extraido && extraido.itens_contrato) || []).map((i) => ({
@@ -1868,12 +1908,18 @@ async function gerarOS() {
         <td class="mini">${escapeHtml(
           r.ok ? (r.materiais_erro || []).join('; ') || 'todos aceitos'
                : (r.erro || ''))}</td></tr>`).join('') + '</tbody></table>';
-    msg('msgEtapa4', d.com_erro
+    /* 🆕 16/09: aviso, NUNCA erro -- pedido explícito. A OS já saiu e é o que
+       importa; o tipo do veículo é só um ajuste a mais na WESO, e falhar nele
+       não pode fazer a rodada parecer que deu errado. */
+    const avisoTipo = d.tipos_com_falha
+      ? ' Verificar os tipos de veículo, alguns não foram ajustados corretamente por instabilidade na WESO.'
+      : '';
+    msg('msgEtapa4', (d.com_erro
         ? `<strong>${d.com_erro} de ${d.total} OS com problema.</strong> Os números acima são o que existe no Harmonit.`
         : `<strong>${d.total} OS criadas.</strong>` +
           ((d.pendencias || []).length
             ? ` ${d.pendencias.length} ficaram esperando a rotina (recipiente ou oficina).`
-            : ''),
+            : '')) + avisoTipo,
         d.com_erro ? 'msg-erro' : 'msg-ok');
     /* A rodada acabou: o Concluir aparece e é a única ação que resta aqui.
        Guardo o resultado porque o `previaOS` da tela vai ser jogado fora no

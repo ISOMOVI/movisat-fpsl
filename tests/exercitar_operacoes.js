@@ -818,6 +818,56 @@ function registrarCelulas(quantas) {
       };
     }
 
+    /* ── 21. 🚨 TIPO DO VEICULO (16/09) ────────────────────────────────────
+       A coluna só existe nos perfis que CRIAM veículo de placa só
+       (etapa_placas: "cria"). A correção de verdade (PUT /Veiculos/Atualizar)
+       só acontece na etapa 4 -- aqui confere que a etapa 3 junta os dois
+       dados certos no payload: o tipo escolhido e o `weso_veiculo_id` que a
+       própria criação da placa devolveu (mock: `weso: {id: 2}`). */
+    await escolherPerfil("aditivo");
+    await espera(20);
+    elemento("arquivo").files = [{ name: "t.pdf" }];
+    await lerTermo();
+    await espera(20);
+    irPara(2); await espera(60);
+    irPara(3); await espera(60);
+    r.tipo_coluna_aparece_cria =
+      document.getElementById("cabPlacas").innerHTML.includes(">Tipo<");
+    registrarCelulas(estado().linhasPlacas.length);
+    await processarPlacas();
+    await espera(30);
+    r.tipo_weso_id_apos_gravar = estado().linhasPlacas[0].situacao.weso.id;
+
+    /* 🚨 LINHA SEM TIPO NAO VIRA "carro" POR PADRAO. E o caso da RETOMADA:
+       `guardarLote` nao guarda as linhas, entao a escolha se perde e a linha
+       volta gravada (sem `<select>` para o `lerCampos` ler). Inventar "carro"
+       aqui gravaria Carro numa placa onde a pessoa escolheu Moto, calado. */
+    delete estado().linhasPlacas[0].tipo_veiculo;
+    r.tipo_sem_escolha_vai_null =
+      global.__corpoOS(false).placas[0].tipo_veiculo === null;
+
+    estado().linhasPlacas[0].tipo_veiculo = "moto";
+    const payloadTipo = global.__corpoOS(false);
+    r.tipo_no_payload = payloadTipo.placas[0].tipo_veiculo;
+    r.tipo_weso_id_no_payload = payloadTipo.placas[0].weso_veiculo_id;
+
+    // perfil que só CONFERE veículo existente -- não manda tipo nenhum
+    await escolherPerfil("manutencao_local");
+    await espera(20);
+    irPara(2); await espera(20);
+    escolherCliente({ id: 998063, nome: "Velasco Leite Pastelaria ME",
+                      documento: "32020313000106" });
+    await espera(60);
+    irPara(3); await espera(60);
+    r.tipo_coluna_some_em_confere =
+      !document.getElementById("cabPlacas").innerHTML.includes(">Tipo<");
+    // linha sintética: este perfil monta placas por busca manual, não por
+    // PDF -- o que interessa aqui é só o valor de `tipo_veiculo` no payload.
+    estado().linhasPlacas.push({ id: 1, placa: "ABC1234", veiculo: "CARRO X" });
+    const payloadConfere = global.__corpoOS(false);
+    r.tipo_null_em_confere =
+      (payloadConfere.placas[0] || {}).tipo_veiculo === null;
+
     r.chamadas = chamadas;
   } catch (e) {
     r.erros.push(String((e && e.stack) || e));

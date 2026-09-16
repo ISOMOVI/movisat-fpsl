@@ -95,6 +95,44 @@ def conferir_servico_de_substituicao(servicos_vivos) -> str | None:
             "substituto — o id está fixado em `operacoes_config.py`.")
 
 
+# ── O tipo do veículo na WESO (complemento.tipo_eqp) ─────────────────────────
+#
+# 🚨 A TABELA CERTA NÃO É A DA DOCUMENTAÇÃO. `docs/weso/01_Veiculos.md` e um
+# comentário antigo em `translators/weso.py` diziam 2=Caminhão, 5=Motocicleta
+# -- cópia de material do fornecedor, nunca testada contra a API real. Medido
+# ao vivo em 16/09, criando e corrigindo veículos de teste na Velasco e
+# conferindo o dropdown real da tela da WESO: 2 é Moto, 5 é Máquina. Só estes
+# 7 foram confirmados (é o que a tela mostrou); o resto da lista antiga
+# (Barco, Carreta, Reboque...) FICA DE FORA até alguém repetir a mesma prova.
+# NÃO REABRIR sem nova evidência do mesmo tipo (print do dropdown + teste).
+#
+# 🚨 A CRIAÇÃO DO VEÍCULO IGNORA ESTE CAMPO, SEMPRE -- testado com `tipo_eqp`
+# em camelCase E em snake_case, aninhado em `complemento` na hora do
+# `/Veiculos/Cadastro`: nas duas formas o veículo nasce com tipo 1 (Carro) e
+# ignora o que foi mandado. Só o `PUT /Veiculos/Atualizar`, com o campo
+# achatado (fora do `complemento`) e em snake_case, realmente grava -- por
+# isso o tipo é sempre um SEGUNDO passo, depois que o veículo já existe.
+TIPO_VEICULO_WESO: dict[str, int] = {
+    "carro": 1,
+    "moto": 2,
+    "caminhao": 3,
+    "portatil": 4,
+    "maquina": 5,
+    "onibus": 6,
+    "trator": 7,
+}
+
+
+def resolver_tipo_veiculo(nome: str | None) -> int | None:
+    """Nome escolhido na tela -> código real da WESO, ou `None` se não bate
+    com nenhum dos 7 confirmados. Nunca inventa um código -- quem chama isto
+    decide o que fazer com `None` (hoje: não corrige nada, silenciosamente).
+    """
+    if not nome:
+        return None
+    return TIPO_VEICULO_WESO.get(nome.strip().lower())
+
+
 # ── A taxa de migração do Upgrade ────────────────────────────────────────────
 #
 # ✅ FIXO POR DECISÃO DO USUÁRIO EM 26/08: "pode deixar fixo, o objetivo do

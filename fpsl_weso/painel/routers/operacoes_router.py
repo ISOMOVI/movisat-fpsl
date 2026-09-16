@@ -1185,11 +1185,64 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
 
     pendencias = await _gravar_pendencias(body, pre, operacionais, criadas)
 
+    # 🆕 16/09: corrige o tipo do veículo na WESO, DEPOIS de saber quais OS
+    # saíram bem. Ver `_corrigir_tipos_veiculo` -- nunca levanta.
+    tipos_com_falha = await _corrigir_tipos_veiculo(body.placas, criadas)
+
     return {"criadas": criadas, "avisos": pre["avisos"],
             "pendencias": pendencias,
             "falhas_de_leitura": pre["ctx"]["falhas"],
             "total": len(criadas),
-            "com_erro": sum(1 for r in criadas if not r.get("ok"))}
+            "com_erro": sum(1 for r in criadas if not r.get("ok")),
+            "tipos_com_falha": tipos_com_falha}
+
+
+def _placas_para_corrigir_tipo(placas: list["oos.PlacaOS"],
+                               criadas: list[dict]) -> list[tuple[int, int]]:
+    """(weso_veiculo_id, código) de cada placa que precisa da correção.
+
+    Só entra quem tem os dois dados (a etapa 3 devolveu o id da WESO E a tela
+    tinha um tipo escolhido) E cuja OS operacional saiu com `ok`. Corrigir
+    tipo de veículo cuja OS nem existe é mexer numa operação que não terminou
+    no Harmonit. A financeira tem `placa == "(financeira)"`
+    (`montar_financeira`) -- nunca casa com placa real, então não precisa de
+    filtro à parte para ela.
+    """
+    ok_por_placa = {r["placa"] for r in criadas if r.get("ok")}
+    saida = []
+    for p in placas:
+        if not p.weso_veiculo_id or not p.tipo_veiculo:
+            continue
+        if p.placa not in ok_por_placa:
+            continue
+        codigo = cfg.resolver_tipo_veiculo(p.tipo_veiculo)
+        if codigo is None:
+            continue
+        saida.append((p.weso_veiculo_id, codigo))
+    return saida
+
+
+async def _corrigir_tipos_veiculo(placas: list["oos.PlacaOS"],
+                                  criadas: list[dict]) -> int:
+    """Manda o `PUT /Veiculos/Atualizar` de cada placa pendente. Devolve
+    quantas falharam.
+
+    🚨 NUNCA LEVANTA. É pedido explícito do usuário: falhar aqui não pode
+    virar erro na geração de OS, que já aconteceu e é o que importa. Por isso
+    o `except` é largo (não só `HTTPException`, que é o que os outros pontos
+    deste arquivo usam) e por placa, não em bloco -- uma falha não impede a
+    correção das outras.
+    """
+    falhas = 0
+    for veiculo_id, codigo in _placas_para_corrigir_tipo(placas, criadas):
+        try:
+            await weso_post("/Veiculos/Atualizar",
+                            {"veiculo_id": veiculo_id, "tipo_eqp": codigo})
+        except Exception:
+            log.warning("operacoes: nao corrigi o tipo do veiculo %s (codigo %s)",
+                       veiculo_id, codigo, exc_info=True)
+            falhas += 1
+    return falhas
 
 
 async def _gravar_pendencias(body: "oos.MontarInput", pre: dict,

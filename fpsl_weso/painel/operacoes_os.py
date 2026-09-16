@@ -66,6 +66,14 @@ class PlacaOS(BaseModel):
     # 🆕 REGRA 9: o modelo escolhido na tela quando a WESO não tem equipamento
     # nesta placa. Vem do de-para, não é texto livre.
     modelo_escolhido: str | None = None
+    # 🆕 16/09: tipo do veículo na WESO, só nos perfis que CRIAM veículo
+    # (etapa_placas="cria"). `weso_veiculo_id` vem da etapa 3 (a criação já
+    # devolve o id) -- sem ele não tem o que corrigir na etapa 4. `tipo_veiculo`
+    # é o nome escolhido no `<select>` ("carro", "moto"...), resolvido contra
+    # `operacoes_config.TIPO_VEICULO_WESO` -- nunca o código direto, pra não
+    # espalhar o número em dois lugares.
+    weso_veiculo_id: int | None = None
+    tipo_veiculo: str | None = None
 
 
 class ItemContrato(BaseModel):

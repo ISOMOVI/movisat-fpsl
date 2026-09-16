@@ -243,6 +243,7 @@
   .bloco { margin-bottom:var(--e3); }
   .btn-mini { padding:4px 8px; }
   .col-num { width:34px; }
+  .col-tipo { width:110px; }
   .col-troca { width:56px; }
   .col-situacao { width:200px; }
 
