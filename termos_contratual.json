@@ -1,0 +1,2278 @@
+{
+ "medido_em": "2026-09-21",
+ "vocabulario": [
+  {
+   "h_id": 21122,
+   "h_tipo": "servico",
+   "h_descricao": "ADESÃO",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "ADESAO"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo2.pdf",
+    "aditivo_8840.pdf",
+    "aditivo_8852.pdf",
+    "cliente_novo.pdf",
+    "cliente_novo2.pdf",
+    "contrato_novo_8739.pdf",
+    "contrato_novo_8846.pdf",
+    "transferencia_existente.pdf",
+    "transferencia_novo.pdf",
+    "trz_8790_aditivo.pdf"
+   ]
+  },
+  {
+   "h_id": 108425,
+   "h_tipo": "servico",
+   "h_descricao": "ADESÃO PRÓ",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "BUZZER"
+   ],
+   "nas_duas": true,
+   "usado_em": [
+    "contrato_novo_8846.pdf"
+   ]
+  },
+  {
+   "h_id": 16033,
+   "h_tipo": "servico",
+   "h_descricao": "AVISO PRÉVIO",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "90 DIAS DE AVISO PREVIO DE CANCELAMENTO"
+   ],
+   "nas_duas": false,
+   "usado_em": []
+  },
+  {
+   "h_id": 45689,
+   "h_tipo": "produto",
+   "h_descricao": "BLOQUEIO VEICULAR",
+   "h_grupo": "ACESSÓRIOS",
+   "h_situacao": "Inativo",
+   "termos": [
+    "BLOQUEIO VEICULAR",
+    "BLOQUEIO VEICULAR (HABILITADO PARA IDENTIFICADOR DE MOTORISTAS)"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo_8840.pdf",
+    "aditivo_8852.pdf",
+    "contrato_novo_8739.pdf",
+    "contrato_novo_8846.pdf",
+    "rescisao_8842.pdf",
+    "rescisao_8848.pdf",
+    "transferencia_existente.pdf"
+   ]
+  },
+  {
+   "h_id": 6979,
+   "h_tipo": "produto",
+   "h_descricao": "CARTAO RFID",
+   "h_grupo": "ACESSÓRIOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "CARTAO RFID",
+    "CARTOES RFID"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "cliente_novo.pdf"
+   ]
+  },
+  {
+   "h_id": 6976,
+   "h_tipo": "servico",
+   "h_descricao": "CENTRAL 24 HORAS",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "CENTRAL 24 HORAS",
+    "CENTRAL 24H"
+   ],
+   "nas_duas": true,
+   "usado_em": [
+    "aditivo2.pdf",
+    "aditivo_8840.pdf",
+    "aditivo_8852.pdf",
+    "cliente_novo.pdf",
+    "cliente_novo2.pdf",
+    "contrato_novo_8739.pdf",
+    "contrato_novo_8846.pdf",
+    "rescisao_8842.pdf",
+    "rescisao_8848.pdf",
+    "transferencia_existente.pdf",
+    "transferencia_novo.pdf",
+    "trz_8790_aditivo.pdf"
+   ]
+  },
+  {
+   "h_id": 6977,
+   "h_tipo": "produto",
+   "h_descricao": "CHAVEIRO MAGNETICO I-BUTTON DS1990A-F5",
+   "h_grupo": "ACESSÓRIOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "CHAVEIRO I-BUTTON",
+    "CHAVEIRO MAGNETICO I-BUTTON",
+    "CHAVEIRO MOTORISTA"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "contrato_novo_8846.pdf"
+   ]
+  },
+  {
+   "h_id": 16016,
+   "h_tipo": "produto",
+   "h_descricao": "CHIP DE DADOS MULTIBAND",
+   "h_grupo": "ACESSÓRIOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "CHIP DE DADOS",
+    "CHIP DE DADOS MULTIBAND"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo2.pdf",
+    "aditivo_8840.pdf",
+    "cliente_novo.pdf",
+    "contrato_novo_8739.pdf",
+    "contrato_novo_8846.pdf",
+    "rescisao.pdf",
+    "rescisao_8842.pdf",
+    "rescisao_8848.pdf",
+    "transferencia_existente.pdf",
+    "trz_8790_aditivo.pdf"
+   ]
+  },
+  {
+   "h_id": 291513,
+   "h_tipo": "produto",
+   "h_descricao": "CHIP DE DADOS VIVO 100MB",
+   "h_grupo": "ACESSÓRIOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "CHIP DE DADOS VIVO 100MB"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo_8852.pdf"
+   ]
+  },
+  {
+   "h_id": 141363,
+   "h_tipo": "servico",
+   "h_descricao": "INSTALAÇÃO",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "INSTALACAO"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo2.pdf",
+    "aditivo_8840.pdf",
+    "aditivo_8852.pdf",
+    "contrato_novo_8739.pdf",
+    "contrato_novo_8846.pdf",
+    "transferencia_existente.pdf",
+    "trz_8790_aditivo.pdf"
+   ]
+  },
+  {
+   "h_id": 610425,
+   "h_tipo": "servico",
+   "h_descricao": "INSTALAÇÃO DE ACESSÓRIO: Ident. de Motorista - Leitor Button",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "INSTALACAO ACESSORIO",
+    "INSTALACAO LEITOR I-BUTTON",
+    "INSTALACAO LEITOR IBUTTON"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo2.pdf",
+    "aditivo_8840.pdf"
+   ]
+  },
+  {
+   "h_id": 260776,
+   "h_tipo": "servico",
+   "h_descricao": "INSTALAÇÃO DE BLOQUEIO",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "INSTALACAO BLOQUEIO VEICULAR"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo_8840.pdf",
+    "contrato_novo_8739.pdf"
+   ]
+  },
+  {
+   "h_id": 6984,
+   "h_tipo": "produto",
+   "h_descricao": "LEITOR I-BUTTON DS9092",
+   "h_grupo": "ACESSÓRIOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "CHAVEIRO IBUTTON",
+    "LEITOR I-BUTTON",
+    "LEITOR I-BUTTON COM BUZZER",
+    "LEITOR IBUTTON"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo_8840.pdf",
+    "contrato_novo_8846.pdf"
+   ]
+  },
+  {
+   "h_id": 6991,
+   "h_tipo": "produto",
+   "h_descricao": "LEITOR RFID (404)",
+   "h_grupo": "ACESSÓRIOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "LEITOR RFID"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "cliente_novo.pdf",
+    "rescisao.pdf"
+   ]
+  },
+  {
+   "h_id": 277655,
+   "h_tipo": "servico",
+   "h_descricao": "Mensalidade + Sinal 4G",
+   "h_grupo": "",
+   "h_situacao": "Ativo",
+   "termos": [
+    "MENSALIDADE SINAL 4G"
+   ],
+   "nas_duas": false,
+   "usado_em": []
+  },
+  {
+   "h_id": 277658,
+   "h_tipo": "servico",
+   "h_descricao": "Mensalidade Bloqueio",
+   "h_grupo": "",
+   "h_situacao": "Ativo",
+   "termos": [
+    "MENSALIDADE BLOQUEIO VEICULAR"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo_8840.pdf"
+   ]
+  },
+  {
+   "h_id": 277656,
+   "h_tipo": "servico",
+   "h_descricao": "Mensalidade Chip de Dados Multiband",
+   "h_grupo": "",
+   "h_situacao": "Ativo",
+   "termos": [
+    "MENSALIDADE CHIP MULTIOPERADORAS"
+   ],
+   "nas_duas": false,
+   "usado_em": []
+  },
+  {
+   "h_id": 277657,
+   "h_tipo": "servico",
+   "h_descricao": "Mensalidade Leitor RFID",
+   "h_grupo": "",
+   "h_situacao": "Ativo",
+   "termos": [
+    "MENSALIDADE LEITOR RFID"
+   ],
+   "nas_duas": false,
+   "usado_em": []
+  },
+  {
+   "h_id": 7277,
+   "h_tipo": "servico",
+   "h_descricao": "RETIRADA CLIENTE",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "TAXA DE RETIRADA"
+   ],
+   "nas_duas": false,
+   "usado_em": []
+  },
+  {
+   "h_id": 20314,
+   "h_tipo": "produto",
+   "h_descricao": "ST310U",
+   "h_grupo": "RASTREADORES >> ST310U",
+   "h_situacao": "Ativo",
+   "termos": [
+    "EQUIPAMENTO RASTREADOR",
+    "EQUIPAMENTO RASTREADOR TELEMETRIA AVANCADA",
+    "RASTREADOR",
+    "RASTREADOR VEICULAR"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "cliente_novo2.pdf",
+    "rescisao.pdf",
+    "rescisao_8842.pdf",
+    "rescisao_8848.pdf",
+    "transferencia_existente.pdf",
+    "transferencia_novo.pdf"
+   ]
+  },
+  {
+   "h_id": 233870,
+   "h_tipo": "produto",
+   "h_descricao": "ST4305 (SKD)",
+   "h_grupo": "RASTREADORES >> 4G",
+   "h_situacao": "Ativo",
+   "termos": [
+    "EQUIPAMENTO RASTREADOR 4G"
+   ],
+   "nas_duas": false,
+   "usado_em": []
+  },
+  {
+   "h_id": 79746,
+   "h_tipo": "servico",
+   "h_descricao": "TAXA DE MIGRAÇÃO",
+   "h_grupo": "SERVIÇOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "TAXA DE TRANSFERENCIA"
+   ],
+   "nas_duas": false,
+   "usado_em": []
+  },
+  {
+   "h_id": 6998,
+   "h_tipo": "produto",
+   "h_descricao": "TECLADO JORNADA DE TRABALHO",
+   "h_grupo": "ACESSÓRIOS",
+   "h_situacao": "Ativo",
+   "termos": [
+    "TECLADO JORNADA DE TRABALHO"
+   ],
+   "nas_duas": false,
+   "usado_em": []
+  },
+  {
+   "h_id": 338502,
+   "h_tipo": "produto",
+   "h_descricao": "XT40 - RASTREADOR VEICULAR 4G CAT1",
+   "h_grupo": "RASTREADORES >> 4G",
+   "h_situacao": "Ativo",
+   "termos": [
+    "EQUIPAMENTO RASTREADOR TELEMETRIA AVANCADA 4G",
+    "RASTREADOR 4G"
+   ],
+   "nas_duas": false,
+   "usado_em": [
+    "aditivo2.pdf",
+    "aditivo_8840.pdf",
+    "aditivo_8852.pdf",
+    "cliente_novo.pdf",
+    "contrato_novo_8739.pdf",
+    "contrato_novo_8846.pdf",
+    "trz_8790_aditivo.pdf"
+   ]
+  }
+ ],
+ "ocultos": [
+  {
+   "termo": "(90) 30 DIAS DE AVISO PREVIO DE CANCELAMENTO",
+   "criado_em": "2026-08-25",
+   "usado_em": []
+  },
+  {
+   "termo": "ACOMPANHAMENTO TECNICO VIA VIDEO CHAMADA",
+   "criado_em": "2026-08-20",
+   "usado_em": [
+    "contrato_novo_8846.pdf"
+   ]
+  },
+  {
+   "termo": "ADICIONAL 4G",
+   "criado_em": "2026-08-14",
+   "usado_em": []
+  },
+  {
+   "termo": "ADICIONAL BLOQUEIO",
+   "criado_em": "2026-08-14",
+   "usado_em": []
+  },
+  {
+   "termo": "ADICIONAL COMUNICACAO MULTIBAND",
+   "criado_em": "2026-08-14",
+   "usado_em": []
+  },
+  {
+   "termo": "ADICIONAL MENSAL I-BUTTON",
+   "criado_em": "2026-08-07",
+   "usado_em": []
+  },
+  {
+   "termo": "ADICIONAL MULTIBAND",
+   "criado_em": "2026-07-31",
+   "usado_em": []
+  },
+  {
+   "termo": "INSTALACAO LEITOR RFID",
+   "criado_em": "2026-07-22",
+   "usado_em": [
+    "cliente_novo.pdf"
+   ]
+  },
+  {
+   "termo": "INSTALACAO TECLADO JORNADA DE TRABALHO",
+   "criado_em": "2026-09-15",
+   "usado_em": []
+  },
+  {
+   "termo": "MENSALIDADE IBUTTON",
+   "criado_em": "2026-08-17",
+   "usado_em": [
+    "aditivo_8840.pdf"
+   ]
+  },
+  {
+   "termo": "MENSALIDADE TECLADO JORNADA DE TRABALHO",
+   "criado_em": "2026-09-15",
+   "usado_em": []
+  },
+  {
+   "termo": "PACOTE FULL MANAGER",
+   "criado_em": "2026-08-13",
+   "usado_em": [
+    "cliente_novo2.pdf",
+    "transferencia_novo.pdf"
+   ]
+  },
+  {
+   "termo": "PACOTE SMART",
+   "criado_em": "2026-07-30",
+   "usado_em": []
+  },
+  {
+   "termo": "PLANO FULL MANAGER",
+   "criado_em": "2026-07-20",
+   "usado_em": [
+    "aditivo2.pdf",
+    "cliente_novo.pdf",
+    "contrato_novo_8846.pdf",
+    "transferencia_existente.pdf",
+    "trz_8790_aditivo.pdf"
+   ]
+  },
+  {
+   "termo": "PLANO PRO",
+   "criado_em": "2026-08-12",
+   "usado_em": [
+    "aditivo_8840.pdf",
+    "contrato_novo_8739.pdf"
+   ]
+  },
+  {
+   "termo": "PLANO PRO CORTESIA: MODULO DE MANUTENCAO",
+   "criado_em": "2026-08-25",
+   "usado_em": []
+  },
+  {
+   "termo": "PLANO SMART",
+   "criado_em": "2026-07-31",
+   "usado_em": [
+    "aditivo_8852.pdf"
+   ]
+  },
+  {
+   "termo": "POSICIONAMENTO 15MIN COM A IGNICAO DESLIGADA",
+   "criado_em": "2026-09-02",
+   "usado_em": [
+    "aditivo_8852.pdf"
+   ]
+  },
+  {
+   "termo": "POSICIONAMENTO 15SEG COM A IGNICAO LIGADA",
+   "criado_em": "2026-09-02",
+   "usado_em": [
+    "aditivo_8852.pdf"
+   ]
+  },
+  {
+   "termo": "RESSARCIMENTO EQUIPAMENTO RASTREADOR",
+   "criado_em": "2026-08-25",
+   "usado_em": []
+  },
+  {
+   "termo": "SEM BLOQUEIO VEICULAR",
+   "criado_em": "2026-08-14",
+   "usado_em": []
+  },
+  {
+   "termo": "SEM CENTRAL 24 HORAS",
+   "criado_em": "2026-08-14",
+   "usado_em": []
+  },
+  {
+   "termo": "SINAL 4G",
+   "criado_em": "2026-07-21",
+   "usado_em": [
+    "aditivo2.pdf",
+    "aditivo_8840.pdf",
+    "aditivo_8852.pdf",
+    "contrato_novo_8739.pdf",
+    "contrato_novo_8846.pdf",
+    "trz_8790_aditivo.pdf"
+   ]
+  }
+ ],
+ "pendentes": [
+  {
+   "termo": "***BLOQUEIO VEICULAR***",
+   "usado_em": [
+    "cliente_novo2.pdf",
+    "transferencia_novo.pdf"
+   ]
+  },
+  {
+   "termo": "ADICIONAL BOTAO PANICO",
+   "usado_em": [
+    "cliente_novo.pdf"
+   ]
+  },
+  {
+   "termo": "ADICIONAL LEITOR RFID",
+   "usado_em": [
+    "cliente_novo.pdf"
+   ]
+  },
+  {
+   "termo": "BOTAO PANICO",
+   "usado_em": [
+    "cliente_novo.pdf"
+   ]
+  },
+  {
+   "termo": "INSTALACAO BOTAO PANICO",
+   "usado_em": [
+    "cliente_novo.pdf"
+   ]
+  },
+  {
+   "termo": "INSTALACAO DO RASTREADOR",
+   "usado_em": [
+    "cliente_novo.pdf"
+   ]
+  }
+ ],
+ "catalogo": [
+  {
+   "id": 29280,
+   "tipo": "produto",
+   "descricao": "ADESIVO RFID",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6987,
+   "tipo": "produto",
+   "descricao": "BASE IMANTADA ST940",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 29156,
+   "tipo": "produto",
+   "descricao": "BLOQUEIO DE MOTO",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 45689,
+   "tipo": "produto",
+   "descricao": "BLOQUEIO VEICULAR",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 277459,
+   "tipo": "produto",
+   "descricao": "BOTAO DE PANICO/ACIONAMENTO \"NA\"",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6961,
+   "tipo": "produto",
+   "descricao": "BOTÃO PÂNICO CRX",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6978,
+   "tipo": "produto",
+   "descricao": "BOTÃO PÂNICO NA",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7928,
+   "tipo": "produto",
+   "descricao": "BUZZER 12V",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 291306,
+   "tipo": "produto",
+   "descricao": "BUZZER 24V",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 91173,
+   "tipo": "produto",
+   "descricao": "CABO AVIATION EXTENSOR 4 VIAS - 3 METROS",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 91174,
+   "tipo": "produto",
+   "descricao": "CABO EXTENSOR ALARME MVD",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 406131,
+   "tipo": "produto",
+   "descricao": "CABO EXTENSOR OBD",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 20413,
+   "tipo": "produto",
+   "descricao": "CABO USB",
+   "grupo": "USO INTERNO",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 91175,
+   "tipo": "produto",
+   "descricao": "CÂMERA OFFLINE VHDM 1100A",
+   "grupo": "RASTREADORES >> CÂMERAS E DVR",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6979,
+   "tipo": "produto",
+   "descricao": "CARTAO RFID",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 91172,
+   "tipo": "produto",
+   "descricao": "CARTÃO SD 128 GB",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6977,
+   "tipo": "produto",
+   "descricao": "CHAVEIRO MAGNETICO I-BUTTON DS1990A-F5",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 15986,
+   "tipo": "produto",
+   "descricao": "CHICOTE BASE  P/ RELES 5 VIAS UNIVERSAL",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185953,
+   "tipo": "produto",
+   "descricao": "CHICOTE BASE P/ RELES 4 VIAS UNIVERSAL",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 204075,
+   "tipo": "produto",
+   "descricao": "CHIP DE DADOS 1NCE (IOT 240MB)",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 16016,
+   "tipo": "produto",
+   "descricao": "CHIP DE DADOS MULTIBAND",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 291513,
+   "tipo": "produto",
+   "descricao": "CHIP DE DADOS VIVO 100MB",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6980,
+   "tipo": "produto",
+   "descricao": "CHIP DE DADOS VIVO 20MB",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 8281,
+   "tipo": "produto",
+   "descricao": "CHIP DE DADOS VIVO 50MB",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 27355,
+   "tipo": "produto",
+   "descricao": "COMPLEMENTAR",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 29316,
+   "tipo": "produto",
+   "descricao": "CONECTOR INTERNO - CHICOTE",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 27297,
+   "tipo": "produto",
+   "descricao": "CPU FECHADA",
+   "grupo": "USO INTERNO",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 198285,
+   "tipo": "produto",
+   "descricao": "DS1990A-F5 - I-BUTTON",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 198286,
+   "tipo": "produto",
+   "descricao": "DS9093A - BLACK CHAVEIRO",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 495146,
+   "tipo": "produto",
+   "descricao": "DS9093A - CHAVEIRO PRETO",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6970,
+   "tipo": "produto",
+   "descricao": "ESCUTA TELEFÔNICA - CRX",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 221994,
+   "tipo": "produto",
+   "descricao": "Fone Ouvido Headset Essential P3 + Usb Preto Oex Hs104",
+   "grupo": "USO INTERNO",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 20414,
+   "tipo": "produto",
+   "descricao": "FONTE RECARREGADOR",
+   "grupo": "USO INTERNO",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 495144,
+   "tipo": "produto",
+   "descricao": "I-BUTTON DS1990A-F5",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 199626,
+   "tipo": "produto",
+   "descricao": "Ima de neodimio, ferro e boro (Nd2Fe14B) revestido com niquel 40mmX9mmX2mm",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6993,
+   "tipo": "produto",
+   "descricao": "ISCA DE CARGA",
+   "grupo": "RASTREADORES >> ST400 ISCA",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185954,
+   "tipo": "produto",
+   "descricao": "KIT BLOQUEIO 12V 4 PINOS",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 185960,
+   "tipo": "produto",
+   "descricao": "KIT BLOQUEIO 12V 5 PINOS",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185961,
+   "tipo": "produto",
+   "descricao": "KIT BLOQUEIO 24V 4 PINOS",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 185962,
+   "tipo": "produto",
+   "descricao": "KIT BLOQUEIO 24V 5 PINOS",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 235441,
+   "tipo": "produto",
+   "descricao": "KIT CHAPA DE FIXACAO TRAVA UNIVERSAL CARGA SECA",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 495145,
+   "tipo": "produto",
+   "descricao": "LEITOR DE I-BUTTON DS9092+",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 186658,
+   "tipo": "produto",
+   "descricao": "LEITOR I-BUTTON (PROVA D'ÁGUA)",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6984,
+   "tipo": "produto",
+   "descricao": "LEITOR I-BUTTON DS9092",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 52989,
+   "tipo": "produto",
+   "descricao": "LEITOR RFID (403)",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6991,
+   "tipo": "produto",
+   "descricao": "LEITOR RFID (404)",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6992,
+   "tipo": "produto",
+   "descricao": "LEITOR RFID PASSAGEIROS",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 216405,
+   "tipo": "produto",
+   "descricao": "MINI RELE 12V",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6989,
+   "tipo": "produto",
+   "descricao": "MODULO DE VOZ INTERNA",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 43292,
+   "tipo": "produto",
+   "descricao": "MXT140",
+   "grupo": "RASTREADORES >> MAXTRACK",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185945,
+   "tipo": "produto",
+   "descricao": "PAC 100 UN ABRAÇADEIRAS PLASTICAS 10 CM 2,6 X 1,0 MM PR",
+   "grupo": "USO INTERNO",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185946,
+   "tipo": "produto",
+   "descricao": "PAC 100 UN ABRAÇADEIRAS PLASTICAS 15 CM 3,6 X 1,3 MM PR",
+   "grupo": "USO INTERNO",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185947,
+   "tipo": "produto",
+   "descricao": "PAC 100 UN ABRAÇADEIRAS PLASTICAS 20 CM 3,6 X 1,4 MM PR",
+   "grupo": "USO INTERNO",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185948,
+   "tipo": "produto",
+   "descricao": "PAC 100 UN ABRAÇADEIRAS PLASTICAS 25 CM 3,6 X 1,3 MM PR",
+   "grupo": "USO INTERNO",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185949,
+   "tipo": "produto",
+   "descricao": "PAC 100 UN ABRAÇADEIRAS PLASTICAS 40 CM 4,8 X 1,4 MM PR",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 338476,
+   "tipo": "produto",
+   "descricao": "RASTREADOR  4G TELEMETRIA RUP SMART",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 191322,
+   "tipo": "produto",
+   "descricao": "RASTREADOR 4G J16",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 338497,
+   "tipo": "produto",
+   "descricao": "RASTREADOR 4G TELT FMC1304OXW01",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6995,
+   "tipo": "produto",
+   "descricao": "RASTREADOR CRX1",
+   "grupo": "RASTREADORES >> CONCOX",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7007,
+   "tipo": "produto",
+   "descricao": "RASTREADOR MÓVEL",
+   "grupo": "RASTREADORES >> ST940 MOVEL",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 13223,
+   "tipo": "produto",
+   "descricao": "RASTREADOR OBD",
+   "grupo": "RASTREADORES >> OBD",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 600266,
+   "tipo": "produto",
+   "descricao": "RASTREADOR PORTÁTIL (XT40-PORT) - CAT1 - 4G/2G",
+   "grupo": "RASTREADORES >> XT TRACKER",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 204081,
+   "tipo": "produto",
+   "descricao": "RASTREADOR PORTATIL NT16 CAT1/R",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 191569,
+   "tipo": "produto",
+   "descricao": "RASTREADOR SEMI-MÓVEL ST310U",
+   "grupo": "RASTREADORES >> ST310U",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 191563,
+   "tipo": "produto",
+   "descricao": "RASTREADOR SEMI-MÓVEL ST340",
+   "grupo": "RASTREADORES >> ST340 8F",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7003,
+   "tipo": "produto",
+   "descricao": "RASTREADOR ST215",
+   "grupo": "RASTREADORES >> ST215H",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7006,
+   "tipo": "produto",
+   "descricao": "RASTREADOR ST300HD",
+   "grupo": "RASTREADORES >> ST300H",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7004,
+   "tipo": "produto",
+   "descricao": "RASTREADOR ST340",
+   "grupo": "RASTREADORES >> ST340 8F",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6999,
+   "tipo": "produto",
+   "descricao": "RASTREADOR ST340LC 2 SAÍDAS",
+   "grupo": "RASTREADORES >> CÂMERAS E DVR",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 7000,
+   "tipo": "produto",
+   "descricao": "RASTREADOR ST340LC 4 SAÍDAS",
+   "grupo": "RASTREADORES >> CÂMERAS E DVR",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 7001,
+   "tipo": "produto",
+   "descricao": "RASTREADOR ST350 LC4 4 FIOS",
+   "grupo": "RASTREADORES >> CÂMERAS E DVR",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 50700,
+   "tipo": "produto",
+   "descricao": "RASTREADOR TELEMETRIA AVANÇADA",
+   "grupo": "RASTREADORES >> CÂMERAS E DVR",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 350895,
+   "tipo": "produto",
+   "descricao": "RASTREADOR TELEMETRIA AVANÇADA MVS",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 600268,
+   "tipo": "produto",
+   "descricao": "RASTREADOR VEICULAR (XT40-CAT1) - CAT1 - 4G/2G",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 600267,
+   "tipo": "produto",
+   "descricao": "RASTREADOR VEICULAR COM TELEMETRIA (XT40-TM) - CAT1 - 4G/2G",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 326354,
+   "tipo": "produto",
+   "descricao": "RASTREADOR VEICULAR GL100/R",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 326353,
+   "tipo": "produto",
+   "descricao": "RASTREADOR VEICULAR VL300R/R",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6963,
+   "tipo": "produto",
+   "descricao": "RELÉ 12V 5 PINOS",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6964,
+   "tipo": "produto",
+   "descricao": "RELÉ 24V 5 PINOS",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 185951,
+   "tipo": "produto",
+   "descricao": "RELE AUX.C/SUP.UNIV.40A.4T12V",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 185952,
+   "tipo": "produto",
+   "descricao": "RELE AUX.C/SUP.UNIV.40A.4T24V",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 27296,
+   "tipo": "produto",
+   "descricao": "RST-MINI",
+   "grupo": "RASTREADORES >> MULTI PORTAL",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 14734,
+   "tipo": "produto",
+   "descricao": "SENSOR BT COMPLETO COM SERIAL",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 186661,
+   "tipo": "produto",
+   "descricao": "SENSOR DE BETONEIRA",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 40655,
+   "tipo": "produto",
+   "descricao": "SENSOR DE CHUVA",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 26424,
+   "tipo": "produto",
+   "descricao": "SENSOR DE EMBREAGEM",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6986,
+   "tipo": "produto",
+   "descricao": "SENSOR DE PORTA DE BAU",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6990,
+   "tipo": "produto",
+   "descricao": "SENSOR DE TEMPERATURA FIXO",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6994,
+   "tipo": "produto",
+   "descricao": "SENSOR DE TEMPERATURA MÓVEL",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6985,
+   "tipo": "produto",
+   "descricao": "SENSOR MAGNETICO DE PAINEL E PORTA",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 105234,
+   "tipo": "produto",
+   "descricao": "SENSOR MAGNETICO RETANGULAR NA 30 CM",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 12592,
+   "tipo": "produto",
+   "descricao": "SENSOR TAMPA TANQUE",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6983,
+   "tipo": "produto",
+   "descricao": "SIRENE 12/24V 2FIOS 30CM",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 91171,
+   "tipo": "produto",
+   "descricao": "SISTEMA DE RASTREAMENTO E GERENCIAMENTO VEICULAR MVD 1204",
+   "grupo": "RASTREADORES >> CÂMERAS E DVR",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 34964,
+   "tipo": "produto",
+   "descricao": "ST310 SKD (Redundancia)",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 20314,
+   "tipo": "produto",
+   "descricao": "ST310U",
+   "grupo": "RASTREADORES >> ST310U",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 27241,
+   "tipo": "produto",
+   "descricao": "ST340RB",
+   "grupo": "RASTREADORES >> CÂMERAS E DVR",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 233870,
+   "tipo": "produto",
+   "descricao": "ST4305 (SKD)",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 249778,
+   "tipo": "produto",
+   "descricao": "ST4315U (SKD)",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 499910,
+   "tipo": "produto",
+   "descricao": "ST8300 (SKD)",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 320056,
+   "tipo": "produto",
+   "descricao": "ST8310UM",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6998,
+   "tipo": "produto",
+   "descricao": "TECLADO JORNADA DE TRABALHO",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6996,
+   "tipo": "produto",
+   "descricao": "TECLADO NUMERICO",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7005,
+   "tipo": "produto",
+   "descricao": "TECLADO STN100 CJ",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6988,
+   "tipo": "produto",
+   "descricao": "TERMOMETRO PARA SENSOR DE TEMPERATURA FIXO",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 13644,
+   "tipo": "produto",
+   "descricao": "TK 100",
+   "grupo": "RASTREADORES >> CÂMERAS E DVR",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6997,
+   "tipo": "produto",
+   "descricao": "TRAVA BAU MOT ANTIFURTO PLAST UNIV BIVOLT COMAN NEGATIVO",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 235440,
+   "tipo": "produto",
+   "descricao": "TRAVA BAU MOT ANTIFURTO PLAST UNIV BIVOLT COMAN NEGATIVO REV-03",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7002,
+   "tipo": "produto",
+   "descricao": "TRAVA BAU MOT. ANTI-FURTO BIVOLT MEDIA ACO CARB. EPOXI EPN",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 20440,
+   "tipo": "produto",
+   "descricao": "VALVULA SOLENOIDE",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 327139,
+   "tipo": "produto",
+   "descricao": "XT40 - OBDII",
+   "grupo": "RASTREADORES >> OBD",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 338502,
+   "tipo": "produto",
+   "descricao": "XT40 - RASTREADOR VEICULAR 4G CAT1",
+   "grupo": "RASTREADORES >> 4G",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 5645,
+   "tipo": "servico",
+   "descricao": "ACESSO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 622657,
+   "tipo": "servico",
+   "descricao": "ACOMPANHAMENTO TÉCNICO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 420135,
+   "tipo": "servico",
+   "descricao": "Ad. Mens. 4g + RFID + Modulo de voz",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 21122,
+   "tipo": "servico",
+   "descricao": "ADESÃO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 108427,
+   "tipo": "servico",
+   "descricao": "ADESÃO FULL",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 108425,
+   "tipo": "servico",
+   "descricao": "ADESÃO PRÓ",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 100306,
+   "tipo": "servico",
+   "descricao": "ADESÃO REDUNDÂNCIA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 108426,
+   "tipo": "servico",
+   "descricao": "ADESÃO SMART",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 197761,
+   "tipo": "servico",
+   "descricao": "ATIVAÇÃO DE BACKUP",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 28856,
+   "tipo": "servico",
+   "descricao": "ATUALIZAÇÃO FIRMWARE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 16033,
+   "tipo": "servico",
+   "descricao": "AVISO PRÉVIO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 103182,
+   "tipo": "servico",
+   "descricao": "Aviso Prévio  OLD",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 6976,
+   "tipo": "servico",
+   "descricao": "CENTRAL 24 HORAS",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6965,
+   "tipo": "servico",
+   "descricao": "CHICOTE BLOQUEIO VEICULAR",
+   "grupo": "ACESSÓRIOS",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 8026,
+   "tipo": "servico",
+   "descricao": "DESCONTO / ABATIMENTO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 105808,
+   "tipo": "servico",
+   "descricao": "DEVOLUÇÃO DE EQUIPAMENTO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7994,
+   "tipo": "servico",
+   "descricao": "ENTREGA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 285367,
+   "tipo": "servico",
+   "descricao": "ENTREGA OS",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 606037,
+   "tipo": "servico",
+   "descricao": "FINANCEIRO",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 67362,
+   "tipo": "servico",
+   "descricao": "FRETE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 141363,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6962,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO CAMPINAS",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 610425,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO DE ACESSÓRIO: Ident. de Motorista - Leitor Button",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 106751,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO DE ACESSÓRIO: MÓDULO DE VOZ",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 288338,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO DE ACESSÓRIO: SENSOR DE CHUVA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 102970,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO DE ACESSÓRIO: SENSOR DE TEMPERATURA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 643530,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO DE ACESSÓRIO: TECLADO JORNADA DE TRABALHO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 260776,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO DE BLOQUEIO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 46251,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO DE RESPONSABILIDADE DO CLIENTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 108423,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO FULL",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7275,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO NO CLIENTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 87035,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO PRÓ",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 100307,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO REDUNDÂNCIA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 108422,
+   "tipo": "servico",
+   "descricao": "INSTALAÇÃO SMART",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6971,
+   "tipo": "servico",
+   "descricao": "KM DESLOCAMENTO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 53599,
+   "tipo": "servico",
+   "descricao": "LAUDO TÉCNICO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 76649,
+   "tipo": "servico",
+   "descricao": "LOCAÇÃO DE BENS MOVEIS",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 204027,
+   "tipo": "servico",
+   "descricao": "LOCAÇÃO DE BENS MOVEIS 4G",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 529549,
+   "tipo": "servico",
+   "descricao": "Locação de bens PRO",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 447807,
+   "tipo": "servico",
+   "descricao": "Locação de bens PRO 4G",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 551401,
+   "tipo": "servico",
+   "descricao": "Locação de bens PRO 4G + Controle de Condução",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 430045,
+   "tipo": "servico",
+   "descricao": "Locação de bens PRO 4G com bloqueio",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 351912,
+   "tipo": "servico",
+   "descricao": "Locação de bens PRO com bloqueio",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 467620,
+   "tipo": "servico",
+   "descricao": "Locação de bens Smart",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 353070,
+   "tipo": "servico",
+   "descricao": "Locação de bens Smart 4G",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 430033,
+   "tipo": "servico",
+   "descricao": "Locação de bens Smart com bloqueio",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 13651,
+   "tipo": "servico",
+   "descricao": "LOTE 10",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13652,
+   "tipo": "servico",
+   "descricao": "LOTE 11",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13653,
+   "tipo": "servico",
+   "descricao": "LOTE 13",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13654,
+   "tipo": "servico",
+   "descricao": "LOTE 15",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13655,
+   "tipo": "servico",
+   "descricao": "LOTE 16",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13656,
+   "tipo": "servico",
+   "descricao": "LOTE 17",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13657,
+   "tipo": "servico",
+   "descricao": "LOTE 18",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13658,
+   "tipo": "servico",
+   "descricao": "LOTE 19",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13659,
+   "tipo": "servico",
+   "descricao": "LOTE 20",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13660,
+   "tipo": "servico",
+   "descricao": "LOTE 21",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13661,
+   "tipo": "servico",
+   "descricao": "LOTE 22",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13662,
+   "tipo": "servico",
+   "descricao": "LOTE 23",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13663,
+   "tipo": "servico",
+   "descricao": "LOTE 24",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13646,
+   "tipo": "servico",
+   "descricao": "LOTE 6",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13647,
+   "tipo": "servico",
+   "descricao": "LOTE 6",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13648,
+   "tipo": "servico",
+   "descricao": "LOTE 7",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13649,
+   "tipo": "servico",
+   "descricao": "LOTE 8",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 13650,
+   "tipo": "servico",
+   "descricao": "LOTE 9",
+   "grupo": "",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 6966,
+   "tipo": "servico",
+   "descricao": "MANUTENÇÃO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 12809,
+   "tipo": "servico",
+   "descricao": "MANUTENÇÃO COBRADA - CAMPINAS",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 12810,
+   "tipo": "servico",
+   "descricao": "MANUTENÇÃO COBRADA - CLIENTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6981,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 51703,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE + BOTÃO PÂNICO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 311345,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE + KIT ANTI FURTO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277655,
+   "tipo": "servico",
+   "descricao": "Mensalidade + Sinal 4G",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7714,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE + TEMPERATURA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7292,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE AGREGADOS",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6982,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE AQUISIÇÃO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277658,
+   "tipo": "servico",
+   "descricao": "Mensalidade Bloqueio",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277659,
+   "tipo": "servico",
+   "descricao": "Mensalidade Botão de Pânico",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277656,
+   "tipo": "servico",
+   "descricao": "Mensalidade Chip de Dados Multiband",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 305226,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE ENTREGADOR ONLINE",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277657,
+   "tipo": "servico",
+   "descricao": "Mensalidade Leitor RFID",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277660,
+   "tipo": "servico",
+   "descricao": "Mensalidade Módulo de Voz",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 34473,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE OBD HABILITADO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 327878,
+   "tipo": "servico",
+   "descricao": "MENSALIDADE REDUNDÂNCIA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 18328,
+   "tipo": "servico",
+   "descricao": "Monitoramento Eletrônico/Rastreador",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 104948,
+   "tipo": "servico",
+   "descricao": "MULTA POR DESCUMPRIMENTO DE CONTRATO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 92352,
+   "tipo": "servico",
+   "descricao": "NEGOCIAÇÃO FINANCEIRA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6975,
+   "tipo": "servico",
+   "descricao": "NOTIFYME",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 420828,
+   "tipo": "servico",
+   "descricao": "Obd + Sinal 4G",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 27431,
+   "tipo": "servico",
+   "descricao": "PACOTE BASIC",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 600551,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager  + Central 24hs",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 428073,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager  + Sinal 4G",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 505755,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager  + Sinal 4G + Bloqueio",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 628721,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager  + Sinal 4G + Identificador motorista",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 604598,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager  + Sinal 4G + Leitor RFID",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277673,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager (1 4g + 3 men. bt de pânico + 1 mens. bloqueio+  1 mens. leitor RFID +  1  mens. chip + mens. leitor",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277671,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager (1 mens. 4g + 2 mens. bt. de pânico + 1 mens. módulo de voz +  1 mens. leitor RFID +  1  chip mband)",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277675,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager (1 mens. rastreador 4g + 1 mens. leitor RFID + 1 Chip Vivo)",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 277676,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager (1 mens. rastreador 4g + 1 mens. leitor rfid + chip vivo)",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 495815,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager (Rastreador 4G + Leitor RFID + Chip Multiband + Bloqueio)",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 352339,
+   "tipo": "servico",
+   "descricao": "PACOTE FULL MANAGER + BLOQUEIO VEICULAR",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 275372,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager + Mensalidade Bloqueio Veicular + Mensalidade Leitor RFID",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 591779,
+   "tipo": "servico",
+   "descricao": "Pacote Full Manager + Mensalidade Sinal 4G + Pânico + Leitor RFID",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7140,
+   "tipo": "servico",
+   "descricao": "PACOTE MENSAL",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 100272,
+   "tipo": "servico",
+   "descricao": "PACOTE REDUNDÂNCIA + ADICIONAL SERVIÇO DE MONITORAMENTO DE DESCONEXÃO DO EQUIPAMENTO",
+   "grupo": "",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7139,
+   "tipo": "servico",
+   "descricao": "PACOTE SEMESTRAL",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 43932,
+   "tipo": "servico",
+   "descricao": "PACOTE TRIMESTRAL",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 141346,
+   "tipo": "servico",
+   "descricao": "REINSTALAÇÃO NO CLIENTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 27430,
+   "tipo": "servico",
+   "descricao": "RESCISAO CONTRATUAL",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 48028,
+   "tipo": "servico",
+   "descricao": "RESSARCIMENTO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6968,
+   "tipo": "servico",
+   "descricao": "RETIRADA CAMPINAS",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7277,
+   "tipo": "servico",
+   "descricao": "RETIRADA CLIENTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 28961,
+   "tipo": "servico",
+   "descricao": "SERVIÇO DEDICADO 500",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 28962,
+   "tipo": "servico",
+   "descricao": "SERVIÇO DEDICADO ADICIONAL 250",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 28960,
+   "tipo": "servico",
+   "descricao": "SERVIÇO DEDICADO ADICIONAL CPS 250",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 28959,
+   "tipo": "servico",
+   "descricao": "SERVIÇO DEDICADO CPS 500",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 76403,
+   "tipo": "servico",
+   "descricao": "SERVIÇOS - COMISSÃO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 33663,
+   "tipo": "servico",
+   "descricao": "Serviços de instalação de sistema de monitoramento",
+   "grupo": "SERVIÇOS",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 33662,
+   "tipo": "servico",
+   "descricao": "Serviços remoto de monitoramento de veículos",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 12807,
+   "tipo": "servico",
+   "descricao": "SUBSTITUIÇÃO  DIA, LOCAL E HORÁRIO DIFERENTE  - CAMPINAS",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 6967,
+   "tipo": "servico",
+   "descricao": "SUBSTITUIÇÃO DIA, HORÁRIO OU LOCAL DIFERENTE - CLIENTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Inativo"
+  },
+  {
+   "id": 54845,
+   "tipo": "servico",
+   "descricao": "SUBSTITUIÇÃO DIA, HORÁRIO OU LOCAL DIFERENTE - CLIENTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 12808,
+   "tipo": "servico",
+   "descricao": "SUBSTITUIÇÃO MESMO DIA, HORÁRIO OU LOCAL - CLIENTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7276,
+   "tipo": "servico",
+   "descricao": "SUBSTITUIÇÃO MESMO DIA, LOCAL E HORÁRIO - CAMPINAS",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 79746,
+   "tipo": "servico",
+   "descricao": "TAXA DE MIGRAÇÃO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 8261,
+   "tipo": "servico",
+   "descricao": "TAXA EXTRA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 7887,
+   "tipo": "servico",
+   "descricao": "TESTE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 13645,
+   "tipo": "servico",
+   "descricao": "TRANSFERÊNCIA  DE CONTRATO",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 45470,
+   "tipo": "servico",
+   "descricao": "TREINAMENTO ONLINE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 87496,
+   "tipo": "servico",
+   "descricao": "UPGRADE",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  },
+  {
+   "id": 16108,
+   "tipo": "servico",
+   "descricao": "VISITA IMPRODUTIVA",
+   "grupo": "SERVIÇOS",
+   "situacao": "Ativo"
+  }
+ ],
+ "totais": {
+  "vinculos": 62,
+  "itens_harmonit_usados": 24,
+  "catalogo": 241,
+  "pdfs": 18
+ }
+}
