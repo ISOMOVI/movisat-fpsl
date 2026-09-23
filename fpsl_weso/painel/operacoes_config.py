@@ -321,6 +321,42 @@ PERFIS = {
         "descricao_prefixo": "TRANSFERENCIA TITULARIDADE (ANTIGO TITULAR)",
     },
 
+    # ── 12 ────────────────────────────────────────────────────────────────────
+    # 🆕 O TERMO NOVO DE TRANSFERÊNCIA (usuário, 23/09): "TERMO DE TRANSF. DE
+    # TIT.: RESCISÃO", medido nos termos 8873 e 8880. Perfil NOVO e não ajuste
+    # do 6 porque o 6 continua recebendo o modelo velho enquanto ele existir;
+    # o usuário desativa o 6 quando não houver mais nenhum.
+    #
+    # 🚨 1 OS POR PLACA, NÃO AGREGADA -- ao contrário do 6. O modelo é "meio
+    # híbrido": mistura placa que TRANSFERE (tem NOVO CONTRATO) e placa que
+    # RESCINDE (não tem). Cada placa sai com o seu papel:
+    #   transfere -> este perfil: problema 7474, TODOS os itens SEM flag, sem
+    #                financeira -- a regra de 29/07 do antigo titular, por placa;
+    #   rescinde  -> a lógica do perfil `rescisao`, inteira: tipo 57, problema
+    #                7502, comodato flegado, rotina de devolução ao estoque, e
+    #                financeira SÓ SE O TERMO TROUXER COBRANÇA.
+    # Ver `montar_transf_novo` em `operacoes_os.py`.
+    #
+    # ⚠️ O MESMO DOCUMENTO SERVE OS DOIS LADOS (usuário, 23/09): quando o novo
+    # titular assinar, ele sobe AQUI. Por enquanto só existe a OS do antigo --
+    # o lado novo se desenha quando houver um assinado.
+    #
+    # ⚠️ O "Contrato ATUAL" de cada placa é lido e NÃO vai para a OS: é
+    # informação interna, não do painel (usuário, 23/09).
+    "transferencia_termo_novo": {
+        "label": "NOVO - Termo de transf. de tit.: Rescisão",
+        "tipo_id": TIPO_CONTRATO_ID,
+        "problema_id": 7474,   # TRANSFERÊNCIA DE TITULARIDADE, o mesmo do 5 e do 6
+        "os_por_placa": 1,
+        "etapa_placas": "confere",
+        "titularidade": "antigo_por_placa",
+        "financeira_so_com_cobranca": True,
+        "leitor_proprio": True,   # `operacoes_extracao.ler_termo_transf_novo`
+        "modelo_origem": "placa",
+        "descricao_template": ("TRANSFERENCIA TITULARIDADE (ANTIGO TITULAR): "
+                               "{placa} | {veiculo} | {serie} ({modelo}) | TERMO {termo}"),
+    },
+
     # ── 7 ─────────────────────────────────────────────────────────────────────
     # 🚨 UPGRADE TROCA O EQUIPAMENTO, o veículo é o mesmo -- por isso 1 OS só,
     # na placa real. A placa `-UPGRADE` é RECIPIENTE: nunca é veículo de OS,
@@ -481,3 +517,12 @@ def sem_termo() -> list[str]:
 
 def com_recipiente() -> list[str]:
     return [n for n, p in PERFIS.items() if p.get("placa_teste_sufixo")]
+
+
+def ativos() -> list[str]:
+    """Os perfis que a tela OFERECE. `"ativo": False` num perfil o tira da
+    escolha e NADA MAIS: continua existindo, lendo o registro e aceitando o
+    lote retomado que já tinha começado nele. Existe para o perfil 6 sair
+    quando o modelo velho de transferência acabar -- decisão do usuário, e
+    ainda não tomada (23/09)."""
+    return [n for n, p in PERFIS.items() if p.get("ativo", True)]

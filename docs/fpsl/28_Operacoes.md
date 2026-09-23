@@ -81,7 +81,7 @@ O que é de Vínculos fica; o que é de Gerar OS sai. 1.303 linhas hoje.
 
 ---
 
-## Os 11 perfis
+## Os 12 perfis (11 até 23/09)
 
 ⚠️ **Os dois renomes existem porque o perfil é definido pelo que a OS FAZ, não
 pelo motivo comercial.** Teste de tecnologia faz o mesmo que contrato novo:
@@ -104,6 +104,7 @@ separa é o valor, não uma flag.
 | 9 | Manutenção com troca | não | cria placa e recipiente | `-MANUT`, **só WESO** | 1/placa | **não tem** |
 | 10 | Ressarcimento sem termo | não | confere | — | **1 híbrida/termo** | é a híbrida |
 | 11 | Ressarcimento com termo | sim | confere | — | **1 híbrida/termo** | é a híbrida |
+| 12 | **NOVO - Termo de transf. de tit.: Rescisão** (23/09) | sim, **leitor próprio** | confere | — | **1/placa**: transfere (7474, sem flag) ou rescinde (regra da `rescisao`) | **só se houver cobrança**, só das placas que rescindem |
 
 🚨 **A ETAPA 3 NÃO É "CADASTRAR" — É "GARANTIR".** Em rescisão, transferência e
 ressarcimento as placas já existem: a etapa confere e casa. Em contrato novo
@@ -1744,3 +1745,97 @@ do `systemctl --user restart fpsl-weso` das 15:06.
 verificações e a prova pela rota eram verdade no meu processo de teste, e a
 primeira vez que ele testou o erro continuou — porque eu não tinha reiniciado
 o serviço.
+
+
+---
+
+# 🆕 Perfil 12 — o termo novo de transferência (2026-09-23)
+
+## Por que existe
+
+Chegou um modelo novo de termo: **"TERMO DE TRANSF. DE TIT.: RESCISÃO"**
+(termos 8873 e 8880, hoje as fixtures `transf_novo_*.pdf`). São três tabelas
+de cabeçalho fixo — titulares (antigo/novo + CNPJ) · `Placa | Modelo |
+Contrato ATUAL | NOVO CONTRATO` · `Equipamentos e Acessórios | Tipo | Ação`.
+
+🚨 **Lido pelo perfil 6 ele dá ZERO placas** (medido nos dois): o 6 usa o leitor
+da Rescisão, que procura tabelas que este documento não tem. A etapa 3
+travaria sem dizer por quê.
+
+## As decisões dele (23/09)
+
+| # | Decisão |
+|---|---|
+| 1 | Perfil **novo**, com o nome acima. O 6 fica, e sai quando não houver mais termo velho — por palavra dele |
+| 2 | **O mesmo documento serve os dois lados.** Quando o novo titular assinar, sobe **neste** perfil. Hoje só existe a OS do antigo titular |
+| 3 | O novo titular na etapa 2 fica para quando houver o assinado |
+| 4 | **1 OS por placa**, não agregada: o modelo é "meio híbrido". O `Contrato ATUAL` é informação interna e **não** vai para a OS |
+| 5 | Placa **sem** novo contrato é **rescisão**, e segue a lógica da `rescisao` — com financeira **só se o termo trouxer cobrança** |
+| 6 | Itens seguem **sem marcação**, como no antigo titular. Sem vínculo, usa o do ST310U como os demais: **`RASTREADOR 2G` → 20314 criado em 23/09** |
+
+## Como ficou
+
+- **Leitor próprio** em `operacoes_extracao.py` (`ler_termo_transf_novo`), sem
+  tocar o `pdf_extractor`. Devolve o mesmo formato do extrator, mais
+  `novo_titular` e `novo_contrato` por placa.
+- 🚨 **O cliente é o ANTIGO titular pelo CNPJ da TABELA.** O extrator genérico
+  pegava o primeiro CNPJ do texto — certo nos dois termos por sorte da ordem (o
+  8880 nem tem a linha "CNPJ:" do cabeçalho). E nunca por nome: o 8873 diz
+  "CAVAN ROCBRA E COMERCIO…", o Harmonit tem "CAVAN ROCBRA INDUSTRIA E
+  COMERCIO… S/A".
+- 🚨 **O termo não tem coluna de quantidade.** Cada item é "um por veículo";
+  sem isso ele sairia com quantidade 1 e cairia só na **primeira** placa.
+- **O `/extrair` recusa o perfil trocado**, nos dois sentidos, dizendo qual é o
+  certo. O reconhecimento exige o título **e** a tabela de placas; nenhuma das
+  18 fixtures antigas é tomada por ele.
+- **Montagem** (`montar_transf_novo`): placa com novo contrato → problema 7474,
+  todos os itens sem flag, descrição com `NOVO CONTRATO`; placa sem → lida do
+  **próprio** perfil `rescisao` (tipo 57, problema 7502, comodato flegado), com
+  `caso_rotina = "rescisao"` para a devolução ao estoque. No híbrido a cobrança
+  vai **só** para a financeira das placas que rescindem.
+- **Tabela que o leitor não conhece vira aviso vermelho** na etapa 1 — é por
+  onde a cobrança da rescisão deve chegar, e o modelo ainda não mostrou como.
+- **Vínculos** reconhece o termo novo **pelo documento**, qualquer que seja o
+  perfil escolhido lá: a lista daquela tela é a das telas velhas, e pôr o 12
+  nela o ofereceria no Gerar OS velho, onde não funciona.
+- **`"ativo": False`** num perfil o tira da escolha e só isso (`cfg.ativos`).
+  Nenhum perfil está desativado.
+
+## Validado contra o dado real (23/09, prévia, nada gravado)
+
+| | 8873 | 8880 |
+|---|---|---|
+| Cliente (etapa 2) | Harmonit 262495 · WESO 8707 | Harmonit 275671 · WESO 9299 |
+| OS | 2, uma por placa, 7474 | 1, 7474 |
+| Série na descrição | 007844689 · 007845024 (ST310) | 007933269 (ST310) |
+| Flags | nenhuma | nenhuma |
+| Financeira | não | não |
+| `pode_gerar` | sim | sim |
+
+Único aviso: `Plano Smart` oculto, que já era assim.
+
+## Prova
+
+`tests/teste_transf_termo_novo.py`, **57 verificações** — leitor, reconhecimento,
+montagem (só transferência, híbrido sem e com cobrança), a rota `/extrair` e a
+lista de perfis chamadas de verdade, a tela de Vínculos, a pendência da rotina
+com dublê no `registrar`, e **a tela dirigida pelo `exercitar_operacoes.js` com
+a resposta REAL do router**. Conferido que o exercício da tela **reprova** sem a
+linha que leva o `novo_contrato` ao payload (sai `None`).
+
+Suíte na rodada: **52 arquivos, 1.955 verificações OK, 1 falha** — externa:
+`teste_extrair_termo` espera o cliente do termo 8800 (REMOVERDE,
+31.172.818/0001-15) na WESO, e ele **não existe mais lá**.
+
+## Achados que ficam para ele
+
+1. **A aba nunca mandou o `termo_relacionado`**: a OS dos perfis 5 e 6 gerada
+   aqui sai sem o nº do contrato do outro lado (a tela velha mandava). O
+   `/extrair` agora devolve o campo; a tela **não** passa a enviá-lo nos 5/6,
+   porque mudaria a descrição deles sem pedido.
+2. **Os `avisos_extracao` nunca eram desenhados** — inclusive os da taxa de
+   migração do Upgrade. Passaram a aparecer, em vermelho, na etapa 1.
+3. **O caminho híbrido (placa que rescinde) só foi exercitado com dado
+   sintético.** Quando chegar o primeiro termo real com rescisão, ele vira
+   fixture — e se trouxer cobrança numa tabela, o leitor vai avisar que não a
+   conhece, e ela precisa ser ensinada.

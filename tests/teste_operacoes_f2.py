@@ -79,9 +79,13 @@ checar("há termos fixture para ler", bool(pdfs), f"em {FIXTURES}")
 
 leituras = {}
 for pdf in pdfs:
-    # os fixtures são de contrato; `contrato_novo` lê todos
+    # os fixtures são de contrato; `contrato_novo` lê todos -- MENOS o termo
+    # novo de transferência (23/09), que o `/extrair` recusa em qualquer perfil
+    # que não seja o dele, de propósito: lido por outro, dá zero placas.
+    perfil = ("transferencia_termo_novo" if pdf.name.startswith("transf_novo_")
+              else "contrato_novo")
     try:
-        d = asyncio.run(opr.extrair(PedidoDeMentira(), perfil="contrato_novo",
+        d = asyncio.run(opr.extrair(PedidoDeMentira(), perfil=perfil,
                                     arquivo=subir(pdf), _=None))
     except HTTPException as exc:
         checar(f"{pdf.name}: leu", False, f"{exc.status_code}: {exc.detail}")

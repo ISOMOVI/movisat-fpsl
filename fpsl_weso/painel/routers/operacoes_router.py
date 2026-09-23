@@ -61,7 +61,11 @@ router = APIRouter(prefix="/painel/api/operacoes", tags=["operacoes"])
 
 @router.get("/perfis")
 async def listar_perfis(_=Depends(requer_aba("operacoes"))):
-    """Os 11 tipos de operação, com o que cada um implica.
+    """Os tipos de operação OFERECIDOS, com o que cada um implica.
+
+    🆕 23/09: são 12, e sai daqui quem tiver `"ativo": False` (`cfg.ativos`).
+    Desativar só tira da escolha: o `/extrair` e a montagem continuam
+    aceitando o perfil, para um lote retomado não morrer no meio.
 
     🚨 A LISTA VEM DAQUI, NUNCA ESCRITA NA TELA. Duplicá-la no navegador
     criaria duas verdades, e a que o operador vê seria a errada -- é a mesma
@@ -84,7 +88,7 @@ async def listar_perfis(_=Depends(requer_aba("operacoes"))):
                 "agregada": bool(p.get("agregada")),
                 "hibrida": bool(p.get("hibrida")),
             }
-            for nome, p in cfg.PERFIS.items()
+            for nome, p in cfg.PERFIS.items() if nome in cfg.ativos()
         ]
     }
 
@@ -123,7 +127,26 @@ async def extrair(pedido: Request,
 
     conteudo = await arquivo.read()
     try:
-        campos = extrair_campos(io.BytesIO(conteudo), perfil)
+        # 🆕 23/09: O MODELO NOVO DE TRANSFERÊNCIA NÃO PASSA PELO EXTRATOR
+        # COMPARTILHADO. Lido pelo perfil 6 ele dá ZERO placas (medido no 8873
+        # e no 8880) e a etapa 3 trava sem dizer por quê -- então o perfil
+        # errado é recusado aqui, com o nome do certo. E o contrário também:
+        # termo velho no perfil novo leria três tabelas que não existem.
+        eh_novo = extracao.eh_termo_transf_novo(io.BytesIO(conteudo))
+        if p.get("leitor_proprio") and not eh_novo:
+            raise HTTPException(400,
+                f"Este documento não é o termo novo de transferência (\"TERMO "
+                f"DE TRANSF. DE TIT.\"). Escolha o tipo de operação do documento.")
+        if eh_novo and not p.get("leitor_proprio"):
+            certo = next((q["label"] for q in cfg.PERFIS.values()
+                          if q.get("leitor_proprio")), "")
+            raise HTTPException(400,
+                f"Este documento é o termo NOVO de transferência. Escolha "
+                f"\"{certo}\" no tipo de operação.")
+        campos = (extracao.ler_termo_transf_novo(io.BytesIO(conteudo))
+                  if eh_novo else extrair_campos(io.BytesIO(conteudo), perfil))
+    except HTTPException:
+        raise
     except Exception as exc:
         # 🚨 LOGA O QUE IDENTIFICA O CASO. "falha ao ler o PDF" no journal não
         # diz em QUE PDF nem com que perfil, e sem isso o stack sozinho não
@@ -144,6 +167,7 @@ async def extrair(pedido: Request,
     # exigiria mexer na assinatura do extrator compartilhado -- editar o
     # arquivo das três telas para poupar 450 ms num perfil não se paga.
     extras, avisos_extras = extracao.itens_extras(io.BytesIO(conteudo), perfil)
+    avisos_extras = list(avisos_extras) + list(campos.get("avisos_extracao") or [])
 
     # 🚨 A SUBSTITUIÇÃO NÃO USA `placas`, USA `pares` (medido em 19/08). O
     # extrator devolve `{placa_saida, veiculo_saida, placa_entrada,
@@ -174,6 +198,10 @@ async def extrair(pedido: Request,
             "convencional": regra_placa.eh_convencional(bruta),
             "sem_descricao": not (linha.get("veiculo") or "").strip(),
         }
+        # 🆕 23/09, só o termo novo de transferência traz: para onde a placa
+        # vai. Vazio = a placa rescinde. A chave só existe quando o termo a tem.
+        if "novo_contrato" in linha:
+            item["novo_contrato"] = linha.get("novo_contrato")
         if entrada:
             item.update({
                 "veiculo_entrada": (linha.get("veiculo_entrada") or "").strip(),
@@ -243,6 +271,11 @@ async def extrair(pedido: Request,
         # família do `tipo = 55`, que sumiu da lista do Harmonit e ninguém viu.
         "taxa_local_diferente": campos.get("taxa_local_diferente"),
         "taxa_mesmo_local": campos.get("taxa_mesmo_local"),
+        # 🆕 23/09: o contrato do OUTRO lado e o novo titular. Existiam no
+        # extrator desde julho e esta aba nunca os devolveu -- por isso a OS
+        # de titularidade gerada aqui saía sem o "termo relacionado".
+        "termo_relacionado": campos.get("termo_relacionado"),
+        "novo_titular": campos.get("novo_titular"),
         "resumo": {
             "veiculos": len(itens),
             "nao_convencionais": sum(1 for i in itens if not i["convencional"]),
@@ -1279,6 +1312,9 @@ async def _gravar_pendencias(body: "oos.MontarInput", pre: dict,
             caso = "substituicao"
         elif perfil.get("desativa_apos_oficina"):
             caso = ("ressarcimento" if perfil.get("hibrida") else "rescisao")
+        # 🆕 23/09: no termo novo de transferência o caso é da OS, não do
+        # perfil -- só a placa que RESCINDE devolve o equipamento ao estoque.
+        caso = caso or op.get("caso_rotina")
         if not caso:
             continue
 

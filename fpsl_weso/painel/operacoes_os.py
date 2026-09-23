@@ -63,6 +63,9 @@ class PlacaOS(BaseModel):
     veiculo_entrada: str = ""
     # só na transferência: o cliente que passa a ser dono
     cliente_id_destino: int | None = None
+    # 🆕 23/09, só no termo novo de transferência: o contrato para onde a placa
+    # vai. Preenchido = a placa TRANSFERE; vazio = a placa RESCINDE.
+    novo_contrato: str | None = None
     # 🆕 REGRA 9: o modelo escolhido na tela quando a WESO não tem equipamento
     # nesta placa. Vem do de-para, não é texto livre.
     modelo_escolhido: str | None = None
@@ -841,6 +844,11 @@ def aviso_cobranca_sem_motivo(body: MontarInput, perfil: dict,
     """
     if perfil.get("sem_financeira"):
         return []
+    # 🆕 23/09: no termo novo de transferência a financeira SÓ EXISTE SE HOUVER
+    # COBRANÇA. Sem cobrança não há OS financeira, então pedir o motivo de
+    # "cobrança zero" seria aviso falso -- em todo termo só de transferência.
+    if perfil.get("financeira_so_com_cobranca"):
+        return []
     # 🚨 O PERFIL PODE TRAZER O PROPRIO VALOR, e ate 21/08 isto nao era
     # olhado. `resolvidos` sao os itens do TERMO; num perfil SEM TERMO a lista
     # e vazia por construcao, entao `not cobrancas` dava True e o aviso
@@ -1043,6 +1051,78 @@ def _op_por_placa(body: MontarInput, perfil: dict, p: PlacaOS,
     }
 
 
+def montar_transf_novo(body: MontarInput, perfil: dict, resolvidos: list[dict],
+                       seriais: dict, recipientes: dict,
+                       dados: dict) -> list[dict]:
+    """🆕 23/09 -- o termo novo de transferência: UMA OS POR PLACA, cada placa
+    com o seu papel (decisão do usuário: o modelo é "meio híbrido").
+
+      placa com NOVO CONTRATO -> TRANSFERE. A regra de 29/07 do antigo titular,
+        só que por placa: todos os itens do termo, NENHUM flegado, sem
+        financeira. Quem assume comodato e cobrança é o novo titular.
+      placa sem NOVO CONTRATO -> RESCINDE. A lógica do perfil `rescisao`
+        inteira -- tipo, problema, texto, comodato flegado, rotina de
+        devolução -- lida do PRÓPRIO perfil `rescisao`, nunca copiada, para as
+        duas não divergirem no dia em que a rescisão mudar.
+
+    🚨 A FINANCEIRA SÓ EXISTE SE O TERMO TROUXER COBRANÇA (usuário, 23/09), e
+    só das placas que rescindem. Um termo só de transferência não gera
+    financeira nenhuma -- é o antigo titular, que não tem.
+
+    ⚠️ Não usa a `alocacao` do `_preparar`: cada item do termo é "um por
+    veículo" (o termo não tem coluna de quantidade), então cada placa leva
+    uma unidade de cada, sem regra de distribuição.
+    """
+    rescisao = cfg.PERFIS["rescisao"]
+    itens_resc_op, itens_resc_fin = separar_itens(rescisao, resolvidos)
+    operacoes: list[dict] = []
+    rescindem: list[PlacaOS] = []
+    # 🚨 NO HÍBRIDO A COBRANÇA É DA RESCISÃO. Com placa rescindindo, o item
+    # de cobrança vai para a financeira dela e NÃO entra, nem sem flag, na OS
+    # de quem transfere -- ali seria um encargo que aquela placa não tem. Num
+    # termo só de transferência vale a regra de 29/07 inteira: todos os itens.
+    ha_rescisao = any(not p.novo_contrato for p in body.placas)
+    da_transferencia = [i for i in resolvidos
+                        if not (ha_rescisao and i.get("cobrar"))]
+
+    for p in body.placas:
+        if p.novo_contrato:
+            sem_flag = [{**i, "quantidade": 1, "comodato": False, "cobrar": False}
+                        for i in da_transferencia]
+            equip = material_do_equipamento(perfil, p, sem_flag, recipientes, dados)
+            # ⚠️ O equipamento da WESO volta com `comodato=True`; aqui também
+            # não flega -- mesma razão do `montar_antigo_titular`.
+            materiais = [{**m, "comodato": False, "cobrar": False}
+                         for m in substituir_rastreador(sem_flag, equip)]
+            op = _op_por_placa(body, perfil, p, materiais,
+                               seriais, recipientes, dados)
+            op["descricao"] += f" | NOVO CONTRATO {p.novo_contrato}"
+            op["rotulo"] = f"Transfere para o contrato {p.novo_contrato}"
+        else:
+            rescindem.append(p)
+            materiais = [{**i, "quantidade": 1} for i in itens_resc_op]
+            equip = material_do_equipamento(rescisao, p, materiais,
+                                            recipientes, dados)
+            materiais = substituir_rastreador(materiais, equip)
+            op = _op_por_placa(body, rescisao, p, materiais,
+                               seriais, recipientes, dados)
+            op["rotulo"] = "Rescisão"
+            # 🚨 A ROTINA LÊ ISTO, NÃO O PERFIL. O perfil 12 não tem
+            # `desativa_apos_oficina` -- só a placa que rescinde devolve o
+            # equipamento ao estoque; a que transfere fica onde está.
+            op["caso_rotina"] = "rescisao"
+        operacoes.append(op)
+
+    cobranca = [{**i, "quantidade": len(rescindem)}
+                for i in itens_resc_fin if i.get("cobrar")]
+    if rescindem and cobranca:
+        so_rescindem = body.model_copy(update={"placas": rescindem})
+        fin = montar_financeira(so_rescindem, cobranca)
+        fin["rotulo"] = "Financeira (rescisão)"
+        operacoes.append(fin)
+    return operacoes
+
+
 def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
            itens_financeiro: list[dict], resolvidos: list[dict],
            seriais: dict | None = None, recipientes: dict | None = None,
@@ -1060,6 +1140,9 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
         return montar_novo_titular(body, perfil, resolvidos, dados)
     if perfil.get("titularidade") == "antigo":
         return montar_antigo_titular(body, perfil, resolvidos, dados)
+    if perfil.get("titularidade") == "antigo_por_placa":
+        return montar_transf_novo(body, perfil, resolvidos,
+                                  seriais, recipientes, dados)
 
     operacoes: list[dict] = []
     for idx, p in enumerate(body.placas):

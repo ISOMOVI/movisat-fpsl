@@ -21,6 +21,10 @@ from ..templates_config import (
     PRIORIDADE_NORMAL_ID,
 )
 from ..pdf_extractor import extrair_campos
+# 🆕 23/09, só para a tela de Vínculos ler o termo novo de transferência. É a
+# direção segura: Vínculos FICA na F7, e `operacoes_extracao` é da aba nova,
+# que também fica.
+from .. import operacoes_extracao as extracao_operacoes
 from ..equipamentos import (MARCADOR_NAO_LOCALIZADO, MARCADOR_SERIE_A_PREENCHER,
                             buscar_seriais, chave_recipiente, dados_das_placas,
                             descricao_da_placa, liberar_recipiente,
@@ -227,7 +231,16 @@ async def extrair_preview(
     -- nunca gera OS a partir daqui, é o ambiente seguro que você pediu."""
     conteudo = await arquivo.read()
     try:
-        campos = extrair_campos(io.BytesIO(conteudo), perfil)
+        # 🆕 23/09: O TERMO NOVO DE TRANSFERÊNCIA É RECONHECIDO PELO DOCUMENTO,
+        # não pelo perfil escolhido. A lista desta tela vem do
+        # `templates_config` (a das telas velhas) e o perfil novo mora só na
+        # aba Operações -- pôr ele naquela lista o ofereceria também na tela
+        # velha de Gerar OS, onde não funciona. Lido pelo leitor da aba nova,
+        # os itens chegam aqui iguais aos que a etapa 4 vai resolver.
+        if extracao_operacoes.eh_termo_transf_novo(io.BytesIO(conteudo)):
+            campos = extracao_operacoes.ler_termo_transf_novo(io.BytesIO(conteudo))
+        else:
+            campos = extrair_campos(io.BytesIO(conteudo), perfil)
     except Exception as exc:
         raise HTTPException(422, f"Não foi possível ler o PDF: {exc}")
     for item in campos.get("itens", []):

@@ -765,6 +765,33 @@ function desenharLeitura(d) {
       `<br>Taxas no termo · mesmo local <strong>${escapeHtml(d.taxa_mesmo_local || '—')}</strong>` +
       ` · local diferente <strong>${escapeHtml(d.taxa_local_diferente || '—')}</strong>`;
   }
+
+  /* 🆕 23/09, TERMO NOVO DE TRANSFERÊNCIA: de quem para quem, e o papel de
+     cada placa -- com novo contrato ela TRANSFERE, sem ele ela RESCINDE, e
+     são OS diferentes. Contar aqui é o que deixa conferir contra o papel antes
+     da etapa 4. */
+  if (d.novo_titular) {
+    const transf = (d.itens || []).filter((i) => i.novo_contrato).length;
+    const resc = (d.itens || []).length - transf;
+    document.getElementById('leituraResumo').innerHTML +=
+      `<br>De <strong>${escapeHtml(d.nome_no_termo || '—')}</strong>` +
+      ` para <strong>${escapeHtml(d.novo_titular.nome || '—')}</strong>` +
+      ` (${escapeHtml(d.novo_titular.cnpj || 'sem CNPJ')})` +
+      `<br><strong>${transf}</strong> placa(s) transferem` +
+      (d.termo_relacionado ? ` para o contrato <strong>${escapeHtml(d.termo_relacionado)}</strong>` : '') +
+      ` · <strong>${resc}</strong> rescindem`;
+  }
+
+  /* 🚨 O AVISO DA LEITURA APARECE. O servidor devolvia `avisos_extracao`
+     desde 26/08 e a tela nunca o desenhou. No termo novo de transferência é
+     por ele que se sabe de uma tabela que ninguém leu -- que é onde a
+     cobrança da rescisão pode estar. */
+  const avisosLeitura = d.avisos_extracao || [];
+  if (avisosLeitura.length) {
+    document.getElementById('leituraNaoLidos').innerHTML +=
+      `<div class="msg msg-erro bloco">` +
+      avisosLeitura.map((a) => escapeHtml(a)).join('<br>') + `</div>`;
+  }
   document.getElementById('leitura').style.display = 'block';
 
   /* 🚨 SEM PLACA, O ERRO É AQUI (pedido seu, 21/08). Até hoje ele só aparecia
@@ -1207,7 +1234,11 @@ async function prepararPlacas() {
 function montarLinhasDoTermo() {
   linhasPlacas = [];
   (extraido.itens || []).forEach((i) => {
-    const saida = novaLinha({ veiculo: i.veiculo, placa: i.placa_gravada });
+    /* `novo_contrato` só existe no termo novo de transferência, e viaja na
+       linha até a `corpoOS` -- é ele que decide se a placa transfere ou
+       rescinde. */
+    const saida = novaLinha({ veiculo: i.veiculo, placa: i.placa_gravada,
+                              novo_contrato: i.novo_contrato || null });
     linhasPlacas.push(saida);
 
     /* A linha de entrada guarda de QUAL saida ela e o destino. E o unico
@@ -1710,6 +1741,7 @@ function corpoOS(confirmar) {
         placa_entrada: par ? par.placa : null,
         veiculo_entrada: par ? par.veiculo : '',
         modelo_escolhido: l.modelo_escolhido || null,
+        novo_contrato: l.novo_contrato || null,
         /* 🆕 16/09: só nos perfis com a coluna Tipo (etapa_placas: 'cria').
            `weso_veiculo_id` vem da criação da própria etapa 3
            (`l.situacao.weso.id`) -- sem ele a etapa 4 não tem o que corrigir.

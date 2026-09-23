@@ -64,8 +64,8 @@ def sem_comentarios_js(fonte):
 JS = sem_comentarios_js("\n".join(
     re.findall(r"<script>(.*?)</script>", HTML, re.S)))
 
-# ── 1. os 11 perfis ────────────────────────────────────────────────────────
-print("== 1. os 11 perfis chegam ao fim pelo caminho da TELA ==")
+# ── 1. os 12 perfis ────────────────────────────────────────────────────────
+print("== 1. os 12 perfis chegam ao fim pelo caminho da TELA ==")
 import io as _io                                             # noqa: E402
 from fpsl_weso.painel import operacoes_config as cfg         # noqa: E402
 from fpsl_weso.painel import operacoes_os as oos             # noqa: E402
@@ -80,7 +80,10 @@ CASOS = {
     "upgrade": "upgrade_8820.pdf", "manutencao_local": None,
     "manutencao_troca": None, "ressarcimento_sem_termo": None,
     "ressarcimento_com_termo": "aditivo_8840.pdf",
+    # 🆕 23/09 -- lido pelo leitor próprio, não pelo extrator compartilhado
+    "transferencia_termo_novo": "transf_novo_8873.pdf",
 }
+from fpsl_weso.painel import operacoes_extracao as extracao  # noqa: E402
 
 proximo = [1]
 
@@ -99,7 +102,10 @@ for perfil, arq in CASOS.items():
             itens = [{"veiculo": "FIAT UNO", "placa_gravada": "TST0E55"}]
             campos = {}
         else:
-            campos = extrair_campos(_io.BytesIO((FIX / arq).read_bytes()), perfil)
+            bruto = _io.BytesIO((FIX / arq).read_bytes())
+            campos = (extracao.ler_termo_transf_novo(bruto)
+                      if cfg.PERFIS[perfil].get("leitor_proprio")
+                      else extrair_campos(bruto, perfil))
             brutas = campos.get("placas") or []
             if not brutas and campos.get("pares"):
                 brutas = [{"veiculo": p.get("veiculo_saida"),
@@ -110,7 +116,8 @@ for perfil, arq in CASOS.items():
             itens = []
             for b in brutas:
                 it = {"veiculo": (b.get("veiculo") or "").strip(),
-                      "placa_gravada": (b.get("placa") or "").strip()}
+                      "placa_gravada": (b.get("placa") or "").strip(),
+                      "novo_contrato": b.get("novo_contrato")}
                 if (b.get("placa_entrada") or "").strip():
                     it["veiculo_entrada"] = (b.get("veiculo_entrada") or "").strip()
                     it["placa_entrada_gravada"] = b["placa_entrada"].strip()
@@ -119,7 +126,8 @@ for perfil, arq in CASOS.items():
         p = cfg.PERFIS[perfil]
         linhas = []
         for i in itens:
-            saida = linha({"veiculo": i["veiculo"], "placa": i["placa_gravada"]})
+            saida = linha({"veiculo": i["veiculo"], "placa": i["placa_gravada"],
+                           "novo_contrato": i.get("novo_contrato")})
             linhas.append(saida)
             if i.get("placa_entrada_gravada"):
                 linhas.append(linha({"veiculo": i.get("veiculo_entrada"),
@@ -142,7 +150,8 @@ for perfil, arq in CASOS.items():
             placas.append({"placa": l["placa"], "veiculo": l["veiculo"],
                            "placa_entrada": par["placa"] if par else None,
                            "veiculo_entrada": par["veiculo"] if par else "",
-                           "modelo_escolhido": None})
+                           "modelo_escolhido": None,
+                           "novo_contrato": l.get("novo_contrato")})
 
         body = oos.MontarInput(perfil=perfil, cliente_id=998063, lote="AUD",
                                termo=str(campos.get("termo") or "9999"),

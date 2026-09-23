@@ -142,3 +142,183 @@ def itens_extras(fonte, perfil: str) -> tuple[list[dict], list[str]]:
         return [], []
     item, avisos = taxa_de_migracao(fonte)
     return ([item] if item else []), avisos
+
+
+# ── O termo novo de transferência (23/09) ────────────────────────────────────
+#
+# "TERMO DE TRANSF. DE TIT.: RESCISÃO", medido nos termos 8873 e 8880. O
+# layout não tem NADA em comum com a Rescisão, que era por onde o antigo
+# titular passava: são três tabelas de cabeçalho fixo --
+#
+#     DE - ANTIGO TITULAR | CNPJ ANTIGO TITULAR | PARA - NOVO TITULAR | CNPJ NOVO TITULAR
+#     Placa | Modelo | Contrato ATUAL | NOVO CONTRATO
+#     Equipamentos e Acessórios | Tipo | Ação
+#
+# 🚨 LIDO PELO PERFIL ANTIGO, ESTE TERMO DÁ ZERO PLACAS (medido nos dois). A
+# etapa 3 trava e ninguém entende por quê -- por isso existe
+# `eh_termo_transf_novo`, que o `/extrair` usa para recusar o perfil errado
+# com o nome do certo.
+#
+# 🚨 O CLIENTE É O ANTIGO TITULAR, PELO CNPJ DA TABELA. O extrator genérico pega
+# o PRIMEIRO CNPJ do texto: no 8873 era o do cabeçalho, no 8880 (que não tem a
+# linha do cabeçalho) foi o da tabela -- certo nos dois por sorte da ordem. E
+# nunca pelo nome: o 8873 diz "CAVAN ROCBRA E COMERCIO DE PRE MOLDADOS DE
+# CONCRETO" e o Harmonit tem "CAVAN ROCBRA INDUSTRIA E COMERCIO ... S/A".
+#
+# 🚨 O TERMO NÃO TEM COLUNA DE QUANTIDADE. A tabela de itens é "o que
+# acompanha OS veículos", então cada item vale UM POR VEÍCULO. Sem dizer isso,
+# o item sai com quantidade 1 e a alocação o põe só na PRIMEIRA placa -- as
+# outras ficariam sem ele, calado.
+#
+# ⚠️ PLACA SEM NOVO CONTRATO É RESCISÃO (decisão do usuário, 23/09): o modelo
+# é "meio híbrido", mistura placa que transfere e placa que rescinde. Nenhum
+# termo real com rescisão chegou ainda -- quando chegar, ele vira fixture.
+
+_CAB_TITULARES = ("ANTIGO TITULAR", "NOVO TITULAR")
+_CAB_PLACAS = ("PLACA", "CONTRATO ATUAL", "NOVO CONTRATO")
+_CAB_ITENS = ("EQUIPAMENTOS", "TIPO", "ACAO")
+_DISTRATO_RE = re.compile(r"Distrato\s*n\S?\s*(\d+)", re.IGNORECASE)
+_TITULO_RE = re.compile(r"TERMO\s+DE\s+TRANSF\.?\s+DE\s+TIT", re.IGNORECASE)
+_CNPJ_RE = re.compile(r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}")
+_CONTRATO_NA_FRASE_RE = re.compile(
+    r"transferid[oa]s?\s+para\s+o\s+contrato\s*n\S?\s*(\d+)", re.IGNORECASE)
+_NUMERO_RE = re.compile(r"\d+")
+
+
+def _cel(c) -> str:
+    """Célula como uma linha só: o PDF quebra nome e modelo em várias."""
+    return " ".join(str(c or "").split())
+
+
+def _cabecalho(linha) -> str:
+    return " | ".join(_sem_acento(_cel(c)) for c in (linha or []))
+
+
+def _tem(cab: str, marcas: tuple) -> bool:
+    return all(m in cab for m in marcas)
+
+
+def _indice(linha, marca: str) -> int | None:
+    return next((i for i, c in enumerate(linha or [])
+                 if marca in _sem_acento(_cel(c))), None)
+
+
+def eh_termo_transf_novo(fonte) -> bool:
+    """O documento é o termo novo de transferência? Pelo TÍTULO e pela tabela
+    de placas -- os dois juntos, para um texto solto não bastar."""
+    paginas = _ler_paginas(fonte)
+    if not paginas or not _TITULO_RE.search(paginas[0]["texto"] or ""):
+        return False
+    return any(_tem(_cabecalho(t[0]), _CAB_PLACAS)
+               for p in paginas for t in p["tabelas"] if t)
+
+
+def ler_termo_transf_novo(fonte) -> dict:
+    """Os campos do termo novo, no MESMO formato que `extrair_campos` devolve
+    -- é o que deixa o `/extrair` e a tela de Vínculos usarem sem caminho
+    próprio. O que é só deste termo vem em chaves novas (`novo_titular`,
+    `novo_contrato` por placa), que os outros perfis nunca leem."""
+    paginas = _ler_paginas(fonte)
+    texto = "\n".join(p["texto"] for p in paginas)
+    avisos: list[str] = []
+    titulares: dict | None = None
+    placas: list[dict] = []
+    sem_placa: list[str] = []
+    itens_brutos: list[dict] = []
+
+    for pagina in paginas:
+        for tabela in pagina["tabelas"]:
+            if not tabela:
+                continue
+            cab = _cabecalho(tabela[0])
+            corpo = [l for l in tabela[1:] if any(_cel(c) for c in l)]
+            if _tem(cab, _CAB_TITULARES) and corpo:
+                l = corpo[0]
+                titulares = {"antigo_nome": _cel(l[0]) if len(l) > 0 else "",
+                             "antigo_cnpj": _cel(l[1]) if len(l) > 1 else "",
+                             "novo_nome": _cel(l[2]) if len(l) > 2 else "",
+                             "novo_cnpj": _cel(l[3]) if len(l) > 3 else ""}
+            elif _tem(cab, _CAB_PLACAS):
+                ip, im = _indice(tabela[0], "PLACA"), _indice(tabela[0], "MODELO")
+                ia = _indice(tabela[0], "CONTRATO ATUAL")
+                inovo = _indice(tabela[0], "NOVO CONTRATO")
+                for l in corpo:
+                    placa = _cel(l[ip]) if ip is not None and ip < len(l) else ""
+                    modelo = _cel(l[im]) if im is not None and im < len(l) else ""
+                    if not placa:
+                        # 🚨 APARECE, NÃO SOME (regra 13): linha de veículo sem
+                        # placa vai para a lista que a tela mostra.
+                        sem_placa.append(modelo or " ".join(_cel(c) for c in l))
+                        continue
+                    novo = _NUMERO_RE.search(_cel(l[inovo])) if inovo is not None and inovo < len(l) else None
+                    atual = _cel(l[ia]) if ia is not None and ia < len(l) else ""
+                    placas.append({"veiculo": modelo, "placa": placa,
+                                   "contrato_atual": atual or None,
+                                   "novo_contrato": novo.group(0) if novo else None})
+            elif _tem(cab, _CAB_ITENS):
+                it = _indice(tabela[0], "TIPO")
+                ia = _indice(tabela[0], "ACAO")
+                for l in corpo:
+                    desc = _cel(l[0])
+                    if not desc:
+                        continue
+                    itens_brutos.append({
+                        "descricao": desc,
+                        "tipo": _cel(l[it]) if it is not None and it < len(l) else "",
+                        "acao": _cel(l[ia]) if ia is not None and ia < len(l) else ""})
+            else:
+                # 🚨 TABELA QUE EU NÃO CONHEÇO NÃO SOME. É por aqui que a
+                # cobrança da rescisão vai chegar -- o modelo ainda não mostrou
+                # como -- e ler "nada" dela seria a financeira saindo vazia.
+                avisos.append(
+                    "O termo tem uma tabela que eu não sei ler (começa com "
+                    f"\"{_cel(tabela[0][0])[:40]}\"). Se ela tem cobrança, a "
+                    "cobrança NÃO entrou na OS. Confira o documento antes de gerar.")
+
+    if titulares is None:
+        avisos.append("Não achei a tabela dos titulares (antigo e novo). Sem ela "
+                      "o CNPJ do cliente não foi lido.")
+    if not placas and not sem_placa:
+        avisos.append("Não achei a tabela de placas (Placa | Modelo | Contrato "
+                      "ATUAL | NOVO CONTRATO).")
+
+    # ⚠️ O NOVO CONTRATO TEM DE SER UM SÓ, e bater com a frase do rodapé. Se
+    # divergir, avisa -- não escolhe um.
+    novos = sorted({p["novo_contrato"] for p in placas if p["novo_contrato"]})
+    frase = _CONTRATO_NA_FRASE_RE.search(" ".join(texto.split()))
+    if len(novos) > 1:
+        avisos.append("As placas apontam para contratos novos DIFERENTES: "
+                      + ", ".join(novos) + ". Confira o termo.")
+    if frase and novos and frase.group(1) not in novos:
+        avisos.append(f"A tabela diz novo contrato {', '.join(novos)} e o texto "
+                      f"do termo diz {frase.group(1)}. Confira antes de gerar.")
+    termo_relacionado = novos[0] if len(novos) == 1 else (
+        frase.group(1) if frase else None)
+
+    n = max(len(placas), 1)
+    itens = [{"descricao": i["descricao"],
+              # um por veículo -- ver o cabeçalho desta seção
+              "quantidade": str(n),
+              "valor_unitario": None,
+              "comodato_ou_aquisicao": i["tipo"] or None,
+              "sera_devolvido": None,
+              "acao": i["acao"] or None}
+             for i in itens_brutos]
+
+    m = _DISTRATO_RE.search(texto)
+    t = titulares or {}
+    return {
+        "termo": m.group(1) if m else None,
+        "cliente_nome_sugerido": t.get("antigo_nome") or None,
+        "responsavel_nome": None,
+        "cnpj": t.get("antigo_cnpj") if _CNPJ_RE.fullmatch(t.get("antigo_cnpj") or "") else None,
+        "cpf": None,
+        "novo_titular": ({"nome": t.get("novo_nome") or None,
+                          "cnpj": t.get("novo_cnpj") or None} if titulares else None),
+        "placas": placas,
+        "veiculos": [p["placa"] for p in placas],
+        "veiculos_sem_placa": sem_placa,
+        "itens": itens,
+        "termo_relacionado": termo_relacionado,
+        "avisos_extracao": avisos,
+    }

@@ -10,7 +10,7 @@ O que a F1 prende:
      seria dependência num arquivo com data de validade, e o defeito só
      apareceria no dia da remoção.
 
-  2. **Os 11 perfis existem e são coerentes.** Perfil sem termo não pode exigir
+  2. **Os 12 perfis existem (11 até 23/09) e são coerentes.** Perfil sem termo não pode exigir
      termo; perfil com recipiente tem de ter sufixo; `etapa_placas` só aceita
      os três valores conhecidos.
 
@@ -96,11 +96,12 @@ checar("e nenhuma folha das telas que vão sair",
        not any("gerar_os" in f or "cadastro_placas" in f for f in folhas),
        f"folhas: {folhas}")
 
-# ── 2. os 11 perfis ──────────────────────────────────────────────────────────
+# ── 2. os 12 perfis ──────────────────────────────────────────────────────────
 print("\n[2] os 11 perfis")
-checar("são 11", len(cfg.PERFIS) == 11, f"são {len(cfg.PERFIS)}")
-checar("8 com termo, 3 sem",
-       (len(cfg.com_termo()), len(cfg.sem_termo())) == (8, 3),
+# 🆕 23/09: o 12º é o termo novo de transferência (com termo).
+checar("são 12", len(cfg.PERFIS) == 12, f"são {len(cfg.PERFIS)}")
+checar("9 com termo, 3 sem",
+       (len(cfg.com_termo()), len(cfg.sem_termo())) == (9, 3),
        f"{len(cfg.com_termo())} / {len(cfg.sem_termo())}")
 checar("2 com recipiente", len(cfg.com_recipiente()) == 2)
 

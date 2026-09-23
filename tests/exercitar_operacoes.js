@@ -201,9 +201,21 @@ global.fetch = async (url, opcoes) => {
       { id: "substituicao", label: "Substituição (troca de equipamento)",
         sem_termo: false, etapa_placas: "cria_entrada", recipiente: null,
         sem_financeira: false },
+      /* 🆕 23/09: o termo novo de transferência (perfil 12), no FIM -- no
+         começo ele viraria o perfil padrão dos exercícios antigos. */
+      { id: "transferencia_termo_novo",
+        label: "NOVO - Termo de transf. de tit.: Rescisão", sem_termo: false,
+        etapa_placas: "confere", recipiente: null, sem_financeira: false },
     ] });
   }
   if (u.includes("/operacoes/extrair")) {
+    /* 🆕 23/09: O TERMO NOVO DEVOLVE A RESPOSTA REAL DO ROUTER, gerada pelo
+       `teste_transf_termo_novo.py` a partir da fixture do 8873 e passada em
+       `EXTRAIR_REAL`. JSON escrito a mão aqui seria o duble complacente de
+       14/08: aprovaria a tela lendo o formato que EU acho que o router manda. */
+    if (u.includes("perfil=transferencia_termo_novo") && process.env.EXTRAIR_REAL) {
+      return ok(JSON.parse(fs.readFileSync(process.env.EXTRAIR_REAL, "utf8")));
+    }
     /* 🚨 O TERMO DE SUBSTITUICAO TEM DOIS VEICULOS POR LINHA, e eles sao
        DIFERENTES -- medido no fixture substituicao.pdf: "FIAT FIORINO
        2020/2021" sai e "FIAT/FIORINO ENDURANCE" entra. E exatamente essa
@@ -867,6 +879,30 @@ function registrarCelulas(quantas) {
     const payloadConfere = global.__corpoOS(false);
     r.tipo_null_em_confere =
       (payloadConfere.placas[0] || {}).tipo_veiculo === null;
+
+    /* ── 22. 🆕 O TERMO NOVO DE TRANSFERÊNCIA (23/09) ──────────────────────
+       Só roda quando o teste do perfil 12 passa a resposta real do router.
+       O que se mede é o que a pessoa VÊ na etapa 1 e o que VAI no payload --
+       o `novo_contrato` tem de atravessar a etapa 3 até a `corpoOS`, porque é
+       ele que decide se a placa transfere ou rescinde. */
+    if (process.env.EXTRAIR_REAL) {
+      await escolherPerfil("transferencia_termo_novo");
+      await espera(20);
+      elemento("arquivo").files = [{ name: "8873.pdf" }];
+      await lerTermo();
+      await espera(20);
+      r.t12_resumo = elemento("leituraResumo").innerHTML;
+      r.t12_nao_lidos = elemento("leituraNaoLidos").innerHTML;
+      r.t12_msg_etapa1 = elemento("msgEtapa1").innerHTML;
+      irPara(2); await espera(60);
+      irPara(3); await espera(60);
+      r.t12_etapa = estado().etapaAtual;
+      r.t12_linhas = estado().linhasPlacas.map((l) => [l.placa, l.novo_contrato]);
+      const payload12 = global.__corpoOS(false);
+      r.t12_payload = payload12.placas.map((p) => [p.placa, p.novo_contrato]);
+      r.t12_perfil = payload12.perfil;
+      r.t12_itens = payload12.itens.map((i) => [i.descricao, i.quantidade]);
+    }
 
     r.chamadas = chamadas;
   } catch (e) {
