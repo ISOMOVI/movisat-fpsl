@@ -485,12 +485,27 @@ async def abrir_lote(body: LoteInput, usuario=Depends(requer_aba("operacoes"))):
 
 
 @router.get("/lote/{lote}")
-async def ler_lote(lote: str, _=Depends(requer_aba("operacoes"))):
-    """O que já aconteceu nesta rodada -- é por aqui que a tela retoma."""
+async def ler_lote(lote: str, conferir: bool = Query(False),
+                   _=Depends(requer_aba("operacoes"))):
+    """O que já aconteceu nesta rodada -- é por aqui que a tela retoma.
+
+    🆕 23/09 (C2): `conferir=1` pergunta ao Harmonit se cada OS da etapa 4
+    ainda existe. Só o Histórico liga: a retomada não precisa, e pagaria uma
+    ida ao Harmonit por OS a cada vez que a aba abre.
+    """
     cabecalho = await reg.ler_lote(lote)
     if not cabecalho:
         raise HTTPException(404, "Lote não encontrado.")
-    return {"lote": cabecalho, "passos": await reg.passos(lote),
+    passos = await reg.passos(lote)
+    if conferir:
+        alvos = [p for p in passos if p["etapa"] == 4
+                 and p["acao"] in reg.OS_CRIADA and p["id_externo"]]
+        estados = await _conferir_varias([p["id_externo"] for p in alvos])
+        for p in alvos:
+            e = estados.get(p["id_externo"]) or {}
+            p["no_harmonit"] = e.get("estado", "nao_conferida")
+            p["numero_os"] = e.get("numero")
+    return {"lote": cabecalho, "passos": passos,
             "resumo": await reg.resumo(lote),
             "resolvidas": {p: sorted(s) for p, s in (await reg.ja_resolvidas(lote)).items()}}
 
@@ -1073,6 +1088,87 @@ async def _estado_das_placas(body: "oos.MontarInput", ctx: dict) -> list[dict]:
     return saida
 
 
+# ── as OS que já existem: duplicidade (C1, N1) e o Histórico (C2) ────────────
+#
+# 🆕 23/09, da auditoria "mostrado × real". Medido nas 131 OS do registro:
+#   - o termo 8872 gerou 11 OS DUAS VEZES no mesmo lote, com 3 min de
+#     diferença, e o 8883 gerou em dois lotes, em dias seguidos;
+#   - 13 OS que o Histórico mostrava "criado" não existiam mais no Harmonit.
+# O registro sabia o que CRIOU e nunca o que EXISTE. Estas funções perguntam.
+
+# Lotes com geração em andamento NESTE processo (o serviço roda 1 worker).
+# Fecha o duplo envio que chega antes de a primeira geração registrar nada.
+_gerando: set[str] = set()
+
+
+async def _os_no_harmonit(os_id: int) -> dict:
+    """{"estado": "existe"|"apagada"|"nao_conferida", "numero", "status"}.
+
+    🚨 "NÃO CONSEGUI LER" NÃO É "APAGADA". Só a resposta do Harmonit dizendo
+    que a OS não foi encontrada vira `apagada`; qualquer outra falha fica
+    `nao_conferida` -- chamar de apagada uma OS que existe esconderia
+    exatamente a duplicidade que a trava existe para mostrar.
+    """
+    try:
+        r = await harmonit_get("/OrdemServico/ObterOrdemServico",
+                               params={"osId": os_id})
+    except HTTPException as exc:
+        if "não encontrada" in str(exc.detail).lower():
+            return {"estado": "apagada", "numero": None, "status": None}
+        return {"estado": "nao_conferida", "numero": None, "status": None}
+    except Exception:
+        return {"estado": "nao_conferida", "numero": None, "status": None}
+    d = r.get("data") if isinstance(r, dict) and "data" in r else r
+    if isinstance(d, list):
+        d = d[0] if d else None
+    if not d:
+        return {"estado": "nao_conferida", "numero": None, "status": None}
+    return {"estado": "existe", "numero": d.get("numeroOrdem"),
+            "status": d.get("statusStr")}
+
+
+async def _conferir_varias(os_ids: list[int]) -> dict[int, dict]:
+    """Confere várias OS em paralelo, no máximo 6 de cada vez."""
+    limite = asyncio.Semaphore(6)
+
+    async def _uma(i):
+        async with limite:
+            return i, await _os_no_harmonit(i)
+    return dict(await asyncio.gather(*(_uma(i) for i in os_ids)))
+
+
+async def _ja_gerado(body: "oos.MontarInput", perfil: dict) -> dict | None:
+    """N1: as OS que ESTE termo já gerou em OUTRO lote, e se ainda existem.
+
+    None quando não se aplica: perfil sem termo (manutenção, ressarcimento
+    sem termo) não tem número de termo para comparar.
+    """
+    if perfil.get("sem_termo") or not (body.termo or "").strip():
+        return None
+    anteriores = await reg.os_criadas(termo=body.termo.strip(),
+                                      exceto_lote=body.lote)
+    if not anteriores:
+        return None
+    estados = await _conferir_varias([a["os_id"] for a in anteriores])
+    saida = {"termo": body.termo.strip(), "existentes": [], "apagadas": 0,
+             "nao_conferidas": 0}
+    for a in anteriores:
+        e = estados.get(a["os_id"]) or {"estado": "nao_conferida"}
+        if e["estado"] == "apagada":
+            saida["apagadas"] += 1
+            continue
+        if e["estado"] == "nao_conferida":
+            saida["nao_conferidas"] += 1
+        saida["existentes"].append({
+            "numero": e.get("numero"), "os_id": a["os_id"],
+            "quando": a["criado_em"], "usuario": a["usuario"],
+            "perfil": (cfg.PERFIS.get(a["perfil"]) or {}).get("label", a["perfil"]),
+            "placa": a["placa_gravada"], "conferida": e["estado"] == "existe"})
+    # Todas apagadas: só informa, não trava.
+    saida["trava"] = bool(saida["existentes"])
+    return saida
+
+
 @router.post("/os/previa")
 async def previa_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
     """O que SERÁ gravado. Não escreve nada."""
@@ -1099,6 +1195,9 @@ async def previa_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
             oos.contexto_da_os(body.solucao_tecnica, pre["resolvidos"]),
             body.observacao),
         "pode_gerar": not pre["pendentes"],
+        # 🆕 23/09 (N1): o que este termo já gerou noutro lote. Com `trava`,
+        # a tela exige a confirmação e o `/os/gerar` recusa sem ela.
+        "ja_gerado": await _ja_gerado(body, pre["perfil"]),
     }
 
 
@@ -1180,6 +1279,22 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
             "A geração exige confirmação explícita. Use a prévia para conferir "
             "e mande `confirmar` quando for gravar.")
 
+    # 🆕 23/09 (C1): UM LOTE GERA UMA VEZ. O 8872 gerou 11 OS duas vezes no
+    # mesmo lote, com 3 minutos de diferença -- e alguém teve de apagar à mão.
+    # Duas travas: a de memória pega o segundo envio que chega ANTES de o
+    # primeiro registrar qualquer coisa; a do registro pega o que chega depois.
+    if body.lote:
+        if body.lote in _gerando:
+            raise HTTPException(409,
+                "Esta rodada já está gerando as OS. Aguarde o resultado — "
+                "enviar de novo duplicaria.")
+        ja = await reg.os_criadas(lote=body.lote)
+        if ja:
+            raise HTTPException(409,
+                f"Esta rodada já gerou {len(ja)} OS — gerar de novo duplicaria. "
+                "Confira no Histórico de Operações; para gerar outra vez, "
+                "comece uma rodada nova.")
+
     pre = await _preparar(body)
     # ⚠️ PENDENTE BLOQUEIA. Item do termo sem vínculo sairia da OS em silêncio,
     # e OS incompleta ninguém percebe até a cobrança não bater.
@@ -1188,6 +1303,27 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
             "Há itens do termo sem vínculo no catálogo do Harmonit — a OS "
             "sairia sem eles, e ninguém veria: " + "; ".join(pre["pendentes"]))
 
+    # 🆕 23/09 (N1): o termo que já gerou NOUTRO lote só gera de novo com a
+    # confirmação explícita. A tela pede; aqui é a garantia -- quem chamar a
+    # rota sem passar pela tela esbarra do mesmo jeito.
+    dup = await _ja_gerado(body, pre["perfil"])
+    if dup and dup["trava"] and not body.confirmar_duplicado:
+        nums = ", ".join(str(e["numero"] or f"id {e['os_id']}")
+                         for e in dup["existentes"])
+        raise HTTPException(409,
+            f"O termo {dup['termo']} já gerou {len(dup['existentes'])} OS que "
+            f"ainda existem ({nums}). Para gerar de novo, confirme na prévia.")
+
+    if body.lote:
+        _gerando.add(body.lote)
+    try:
+        return await _gravar_as_os(body, pre)
+    finally:
+        _gerando.discard(body.lote)
+
+
+async def _gravar_as_os(body: "oos.MontarInput", pre: dict) -> dict:
+    """A gravação de fato. Só é chamada por `gerar_os`, depois das travas."""
     operacoes = _montar_tudo(body, pre)
     solucao = oos.formatar_solucao_tecnica(
         oos.contexto_da_os(body.solucao_tecnica, pre["resolvidos"]),
@@ -1216,13 +1352,25 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
         resultado, _n = await _criar_uma_os(fin, solucao_fin)
         criadas.append(resultado)
 
+    # 🆕 23/09 (C3): O SEMÁFORO NASCE AQUI, uma vez, e a tela e o registro
+    # leem o mesmo. Antes a OS com material recusado voltava `ok` e era
+    # gravada `criado` -- a tela dizia "N OS criadas" em verde e o Histórico
+    # dizia o mesmo, para uma OS que saiu faltando item.
+    for r in criadas:
+        r["semaforo"] = ("vermelho" if not r.get("ok")
+                         else "amarelo" if r.get("materiais_erro") else "verde")
+
     if body.lote:
         for r in criadas:
+            acao = {"verde": "criado", "amarelo": "criado_incompleto",
+                    "vermelho": "falhou"}[r["semaforo"]]
+            erro = r.get("erro")
+            if r["semaforo"] == "amarelo":
+                erro = "materiais recusados: " + "; ".join(r["materiais_erro"])
             await reg.registrar(
-                body.lote, 4, "harmonit",
-                "criado" if r.get("ok") else "falhou",
+                body.lote, 4, "harmonit", acao,
                 placa_gravada=r.get("placa"), descricao=r.get("rotulo"),
-                id_externo=r.get("os_id"), erro=r.get("erro"))
+                id_externo=r.get("os_id"), erro=erro)
 
     if body.lote:
         await reg.encerrar(body.lote)
@@ -1238,6 +1386,8 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
             "falhas_de_leitura": pre["ctx"]["falhas"],
             "total": len(criadas),
             "com_erro": sum(1 for r in criadas if not r.get("ok")),
+            "com_incompleto": sum(1 for r in criadas
+                                  if r.get("semaforo") == "amarelo"),
             "tipos_com_falha": tipos_com_falha}
 
 

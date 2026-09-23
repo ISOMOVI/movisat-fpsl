@@ -131,9 +131,10 @@ async def principal():
     checar("gravar placa marca a etapa 3",
            "reg.marcar_etapa" in na_placa,
            f"chamadas encontradas: {sorted(na_placa)}")
-    na_os = chamadas_em("gerar_os")
-    checar("gerar as OS encerra o lote",
-           "reg.encerrar" in na_os,
+    # 🆕 23/09: a gravação saiu para `_gravar_as_os` (travas C1 e N1).
+    na_os = chamadas_em("_gravar_as_os")
+    checar("gerar as OS encerra o lote (via _gravar_as_os)",
+           "_gravar_as_os" in chamadas_em("gerar_os") and "reg.encerrar" in na_os,
            f"chamadas encontradas: {sorted(na_os)}")
     na_lote = chamadas_em("abrir_lote")
     checar("abrir o lote guarda o cliente",

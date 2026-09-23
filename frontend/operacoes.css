@@ -144,6 +144,13 @@
      cor so, e ninguem aprende isso. Agora: verde aconteceu e esta certo, azul
      ja estava assim, ambar precisa de olho, vermelho impede a OS. */
   .badge-ambar { background:var(--yellow-dim); color:var(--yellow); }
+  /* 🆕 23/09: "apagada" no Histórico -- a OS existiu e não existe mais. Cinza,
+     e não vermelho: não é erro de quem olha, é fato a conferir. */
+  .badge-cinza { background:var(--bg3); color:var(--text2); }
+  /* 🆕 23/09: a caixa "sei que já existe" do termo já gerado. 44px de alvo. */
+  .linha-check { display:flex; align-items:center; gap:10px; min-height:44px;
+                 font-size:.86rem; cursor:pointer; margin:6px 0 10px; }
+  .linha-check input { width:20px; height:20px; }
   .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; }
   .msg-erro { background:var(--red-dim); color:var(--red); }
   .msg-ok { background:var(--green-dim); color:var(--green); }

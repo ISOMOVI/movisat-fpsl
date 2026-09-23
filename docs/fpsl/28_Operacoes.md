@@ -1882,3 +1882,56 @@ conhece as frases do antigo.
 - `tests/teste_termo_relacionado.py`, **17 verificações**, incluindo a tela
   dirigida com as respostas REAIS do router. Conferido **numa cópia** da tela
   que o payload vira `None` sem a linha da `corpoOS`.
+
+
+---
+
+# 🆕 Auditoria "mostrado × real" e as correções (2026-09-23)
+
+## A auditoria (pedido dele, só leitura)
+
+As **131 OS** que o registro da etapa 4 diz ter gerado (24/08 a 23/09), lidas
+uma a uma no Harmonit. O que o painel dizia e não era verdade:
+
+| | Achado | Medido |
+|---|---|---|
+| 1 | Nada impedia gerar o mesmo termo de novo | 8872: 11 OS **duas vezes no mesmo lote** (19:34 e 19:37 UTC, 15/09); 8883: dois lotes em dias seguidos |
+| 2 | O Histórico mostrava "criado" para OS apagadas | 13 OS (11 do 8872, 1 do 8883, 1 do 8845) |
+| 3 | Verde "N OS criadas" com material recusado, gravado `criado` | frequência não medível: não era gravado |
+
+E o que a equipe faz à mão, **sem ação por decisão dele**: o "O.S: N" na
+descrição (a 16936 ganhou o número entre 10:40 e 12:08 de 23/09 e a 16937, do
+mesmo termo, não — trabalho uma a uma, fora do painel); comodato marcado à mão
+em 5 OS de manutenção (a regra continua: manutenção não marca, não emite NF).
+Customização pendente: **valor patrimonial dos 2G no de-para** — a API do
+Harmonit não expõe preço de produto (`ObterProduto` sem campo de valor, e o
+`valorCusto` dos materiais dá 999,90 para o chip).
+
+## As correções (aprovadas por ele: tabelas Correção e Novo)
+
+| # | O quê | Como |
+|---|---|---|
+| C1 | Um lote gera UMA vez | `/os/gerar` recusa 409 se o registro já tem OS do lote, ou se o lote está gerando agora (`_gerando`, em memória: o serviço roda 1 worker) |
+| N1 | Termo que já gerou noutro lote | A prévia devolve `ja_gerado` (OS que ainda existem, conferidas no Harmonit); a tela mostra número, quando, quem e perfil, e o Gerar só solta com "Sei que já existe e quero gerar de novo". O servidor recusa sem `confirmar_duplicado`. **Apagadas não travam**; não conferidas contam como existentes |
+| C2 | Histórico conferindo | `/lote/{lote}?conferir=1` pergunta ao Harmonit; "não encontrada" vira **apagada** (cinza); falha de leitura **não** vira apagada, fica "(não conferida)". A retomada não liga a conferência |
+| C3 | Semáforo | O servidor decide `semaforo` por OS: verde, amarelo (material recusado, gravado `criado_incompleto` com os materiais no `erro`), vermelho. A mensagem de cima assume a pior cor; o Histórico pinta o mesmo âmbar |
+
+**Não aprovados, continuam proposta:** A1 (solução técnica na prévia) e A2
+(orientar a conferir o Histórico depois de erro ao gerar).
+
+Achado de passagem, corrigido: um comentário SQL do `listar_lotes` tinha a
+saída do comando `id` do Windows gravada no lugar de `` `id` `` — heredoc
+antigo.
+
+## Prova
+
+`tests/teste_duplicidade_os.py`, **39 verificações**, em **banco temporário**
+(`storage.DB_PATH` trocado; conferido que nenhum lote de teste entrou no de
+produção). Inclui a aba e o Histórico dirigidos num DOM de mentira
+(`exercitar_operacoes.js` com `EXERCITAR_DUP`, `exercitar_historico.js` novo).
+
+Suíte: **54 arquivos, 2.020 verificações OK, 1 falha** — a externa de sempre
+(`teste_extrair_termo`, cliente REMOVERDE que não existe mais na WESO). Dois
+testes que mediam `reg.encerrar` dentro de `gerar_os` passaram a seguir a
+cadeia `gerar_os → _gravar_as_os → reg.encerrar`; a checagem de CSS órfão
+passou a olhar as duas páginas que carregam o `operacoes.css`.

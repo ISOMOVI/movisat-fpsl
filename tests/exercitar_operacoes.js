@@ -326,6 +326,28 @@ global.fetch = async (url, opcoes) => {
   if (u.includes("/servicos/buscar")) {
     return ok({ resultados: [{ id: 6967, descricao: "SUBSTITUIÇÃO" }] });
   }
+  /* 🆕 23/09 (N1 e C3): com EXERCITAR_DUP, a prévia avisa que o termo já gerou
+     OS noutra rodada e a gravação volta com uma OS amarela. Formato igual ao
+     do router (`_ja_gerado`, `semaforo`). */
+  if (process.env.EXERCITAR_DUP && u.includes("/operacoes/os/gerar")) {
+    return ok({ criadas: [
+        { ok: true, os_id: 17001, numero_ordem: 16901, placa: "TST 0E55",
+          rotulo: "Instalação", semaforo: "verde", materiais_erro: [] },
+        { ok: true, os_id: 17002, numero_ordem: 16902, placa: "TST 0G78",
+          rotulo: "Instalação", semaforo: "amarelo",
+          materiais_erro: ["ST310U: produto inativo"] }],
+      avisos: [], pendencias: [], falhas_de_leitura: [],
+      total: 2, com_erro: 0, com_incompleto: 1 });
+  }
+  if (process.env.EXERCITAR_DUP && u.includes("/operacoes/os/previa")) {
+    return ok({ pode_gerar: true, estado_placas: [], avisos: [], placas: [],
+      operacoes: [{ rotulo: "Instalação", placa: "TST 0E55", eh_financeira: false,
+                    descricao: "INSTALAÇÃO: TST 0E55", materiais: [] }],
+      ja_gerado: { termo: "8840", trava: true, apagadas: 1, nao_conferidas: 0,
+        existentes: [{ numero: 16880, os_id: 887672, quando: "2026-09-15T19:34:53+00:00",
+                       usuario: "Erika", perfil: "Aditivo ou teste upgrade",
+                       placa: "TST 0E55", conferida: true }] } });
+  }
   if (u.includes("/operacoes/os/gerar")) {
     /* 🚨 `numero_ordem` FALTAVA NO DUBLE, e a tela le ele -- nao o `os_id`.
        O router devolve os DOIS (`operacoes_router.py:985`); o mock so mandava
@@ -949,6 +971,36 @@ function registrarCelulas(quantas) {
       await lerTermo();
       await espera(20);
       r.rel_aditivo_pede = elemento("relacionadoWrap").style.display;
+    }
+
+    /* ── 24. 🆕 N1 e C3 (23/09) ─────────────────────────────────────────── */
+    if (process.env.EXERCITAR_DUP) {
+      await escolherPerfil("aditivo");
+      await espera(20);
+      elemento("arquivo").files = [{ name: "t.pdf" }];
+      await lerTermo();
+      await espera(20);
+      irPara(2); await espera(60);
+      irPara(3); await espera(60);
+      registrarCelulas(estado().linhasPlacas.length);
+      await processarPlacas();
+      await espera(30);
+      irPara(4); await espera(60);
+      await conferirOS();
+      await espera(30);
+      r.dup_aparece = elemento("duplicadoWrap").style.display;
+      r.dup_texto = elemento("duplicadoTexto").innerHTML;
+      r.dup_gerar_preso = elemento("btnGerar").disabled;
+      r.dup_payload_sem = global.__corpoOS(true).confirmar_duplicado;
+      elemento("confirmaDuplicado").checked = true;
+      liberarGerar();
+      r.dup_gerar_solto = elemento("btnGerar").disabled === false;
+      r.dup_payload_com = global.__corpoOS(true).confirmar_duplicado;
+      await gerarOS();
+      await espera(30);
+      r.sem_tabela = elemento("previaOS").innerHTML;
+      r.sem_msg_classe = elemento("msgEtapa4").className;
+      r.sem_msg = elemento("msgEtapa4").innerHTML;
     }
 
     r.chamadas = chamadas;

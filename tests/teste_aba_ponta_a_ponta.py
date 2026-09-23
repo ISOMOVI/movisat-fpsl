@@ -251,8 +251,13 @@ def _sem_comentario_nenhum(fonte):
     return "".join(partes)
 
 
+# 🆕 23/09: o `operacoes.css` é carregado por DUAS páginas -- esta e o
+# Histórico de Operações. Classe usada só no Histórico (a `badge-cinza`, da OS
+# apagada) não é órfã; olhar só esta página a acusaria.
+HIST = io.open(RAIZ / "frontend" / "operacoes_historico.html", encoding="utf-8").read()
 CORPO = _sem_comentario_nenhum(HTML)
-orfas = sorted(c for c in classes_css if c not in CORPO)
+orfas = sorted(c for c in classes_css
+               if c not in CORPO + _sem_comentario_nenhum(HIST))
 checar("nenhuma classe CSS órfã (arquivo + inline)", not orfas, str(orfas))
 checar("nenhum bloco de estilo inline sobrou",
        not re.search(r"<style[^>]*>", CORPO))
@@ -283,7 +288,11 @@ checar("abrir_lote guarda o cliente",
        "reg.guardar_cliente" in chamadas_em("abrir_lote"))
 checar("criar_uma_placa marca a etapa 3",
        "reg.marcar_etapa" in chamadas_em("criar_uma_placa"))
-checar("gerar_os encerra o lote", "reg.encerrar" in chamadas_em("gerar_os"))
+# 🆕 23/09: a gravação saiu para `_gravar_as_os`, para as travas de
+# duplicidade (C1, N1) envolverem tudo. A cadeia é a mesma, com um elo a mais.
+checar("gerar_os encerra o lote (via _gravar_as_os)",
+       "_gravar_as_os" in chamadas_em("gerar_os")
+       and "reg.encerrar" in chamadas_em("_gravar_as_os"))
 
 # ── 7. geometria por JavaScript ────────────────────────────────────────────
 print()

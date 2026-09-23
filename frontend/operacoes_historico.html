@@ -209,8 +209,11 @@ async function abrirLote(lote) {
   document.getElementById('detalheTitulo').textContent = 'Rodada ' + lote;
   document.getElementById('detalheSub').innerHTML = 'Carregando… <span class="spinner"></span>';
   try {
-    const res = await fetch('/painel/api/operacoes/lote/' + encodeURIComponent(lote),
-                            { headers: auth() });
+    /* 🆕 23/09 (C2): `conferir=1` pergunta ao Harmonit se cada OS ainda
+       existe. Sem isso o Histórico dizia "criado" para OS apagadas -- 13 na
+       auditoria de 23/09. */
+    const res = await fetch('/painel/api/operacoes/lote/' + encodeURIComponent(lote) +
+                            '?conferir=1', { headers: auth() });
     const d = await lerResposta(res);
     const cab = d.lote || {};
     document.getElementById('detalheSub').innerHTML =
@@ -222,7 +225,20 @@ async function abrirLote(lote) {
        pintar de vermelho ensinaria a equipe a ignorar o vermelho. */
     const cor = { criado: 'badge-green', ja_existia: 'badge-blue',
                   confere_ok: 'badge-green', confere_falta: 'badge-red',
-                  falhou: 'badge-red', ignorado: 'badge-blue' };
+                  falhou: 'badge-red', ignorado: 'badge-blue',
+                  /* 🆕 23/09 (C3): OS criada com material recusado */
+                  criado_incompleto: 'badge-ambar' };
+    /* A ação que o registro gravou, e o que o Harmonit diz HOJE. Apagada vence:
+       é o que existe de fato. Não conferida fica como estava, com a ressalva. */
+    const acaoNaTela = (p) => {
+      if (p.no_harmonit === 'apagada') {
+        return `<span class="badge badge-cinza" title="Registrada como ${escapeHtml(p.acao)}">apagada no Harmonit</span>`;
+      }
+      const nome = p.acao === 'criado_incompleto' ? 'criada incompleta' : p.acao;
+      const ressalva = p.no_harmonit === 'nao_conferida'
+        ? ' <span class="dim-pequeno">(não conferida)</span>' : '';
+      return `<span class="badge ${cor[p.acao] || 'badge-blue'}">${escapeHtml(nome || '')}</span>${ressalva}`;
+    };
     document.querySelector('#tabelaPassos thead').innerHTML = `<tr>
       <th>Quando</th><th>Etapa</th><th>Sistema</th><th>Ação</th>
       <th>Placa</th><th>Id externo</th><th>Detalhe</th></tr>`;
@@ -231,9 +247,9 @@ async function abrirLote(lote) {
         <td>${escapeHtml(quando(p.criado_em))}</td>
         <td>${p.etapa}</td>
         <td>${escapeHtml(p.sistema || '')}</td>
-        <td><span class="badge ${cor[p.acao] || 'badge-blue'}">${escapeHtml(p.acao || '')}</span></td>
+        <td>${acaoNaTela(p)}</td>
         <td>${escapeHtml(p.placa_gravada || p.placa_digitada || '')}</td>
-        <td>${escapeHtml(String(p.id_externo || ''))}</td>
+        <td>${p.numero_os ? `OS <strong>${escapeHtml(String(p.numero_os))}</strong> · ` : ''}${escapeHtml(String(p.id_externo || ''))}</td>
         <td style="font-size:.74rem">${escapeHtml(p.erro || p.descricao || '')}</td>
       </tr>`).join('') || `<tr><td colspan="7" style="color:var(--text2)">
         Sem passos registrados nesta rodada.</td></tr>`;

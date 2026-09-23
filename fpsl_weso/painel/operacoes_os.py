@@ -107,6 +107,9 @@ class MontarInput(BaseModel):
     # ressarcimento sem termo: o operador digita o valor
     valor_ressarcimento: float | None = None
     confirmar: bool = False
+    # 🆕 23/09 (N1): o termo já gerou OS noutro lote e a pessoa marcou "sei
+    # que já existe e quero gerar de novo". Sem isto o `/os/gerar` recusa.
+    confirmar_duplicado: bool = False
 
 
 # ── Conversões ───────────────────────────────────────────────────────────────

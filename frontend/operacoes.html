@@ -226,6 +226,18 @@
 
         <div id="previaOS"></div>
 
+        <!-- 🆕 23/09 (N1): O TERMO JÁ GEROU OS NOUTRA RODADA. Só aparece
+             quando a prévia devolve `ja_gerado.trava`. O Gerar fica preso até a
+             caixa ser marcada -- e o servidor recusa sem ela, então a trava não
+             depende desta tela. -->
+        <div id="duplicadoWrap" style="display:none">
+          <div class="msg msg-erro" style="display:block" id="duplicadoTexto"></div>
+          <label class="linha-check">
+            <input type="checkbox" id="confirmaDuplicado" onchange="liberarGerar()">
+            Sei que já existe e quero gerar de novo
+          </label>
+        </div>
+
         <div class="acoes">
           <button class="btn btn-ghost" onclick="conferirOS()">Ver prévia</button>
           <button class="btn btn-perigo" id="btnGerar" onclick="gerarOS()" disabled>
@@ -624,6 +636,8 @@ function zerarRodada() {
   document.getElementById('docWrap').style.display = 'none';
   document.getElementById('relacionadoWrap').style.display = 'none';
   document.getElementById('relacionadoDigitado').value = '';
+  document.getElementById('duplicadoWrap').style.display = 'none';
+  document.getElementById('confirmaDuplicado').checked = false;
   document.getElementById('dropLabel').textContent =
     'Clique ou arraste o PDF do termo aqui';
   document.getElementById('arquivo').value = '';
@@ -1796,6 +1810,7 @@ function corpoOS(confirmar) {
       comodato_ou_aquisicao: i.comodato_ou_aquisicao,
     })),
     confirmar: !!confirmar,
+    confirmar_duplicado: !!(document.getElementById('confirmaDuplicado') || {}).checked,
   };
 }
 
@@ -1926,10 +1941,50 @@ function desenharPrevia(d) {
      esta indo. */
   document.getElementById('osInfo').innerHTML = d.pode_gerar ? ''
     : '<strong>Bloqueado</strong> — resolva os vínculos pendentes.';
-  const btn = document.getElementById('btnGerar');
-  btn.disabled = !d.pode_gerar;
+  desenharDuplicado(d.ja_gerado);
+  liberarGerar();
   const quantas = (d.operacoes || []).length;
-  btn.textContent = quantas ? `Gerar ${quantas} OS` : 'Gerar as OS';
+  document.getElementById('btnGerar').textContent =
+    quantas ? `Gerar ${quantas} OS` : 'Gerar as OS';
+}
+
+/* 🆕 23/09 (N1): o termo já gerou OS noutra rodada. Diz QUANTAS, QUAIS, QUANDO
+   e QUEM -- é o que deixa a pessoa decidir sem abrir o Histórico. As apagadas
+   entram só na contagem: não travam nada. */
+function desenharDuplicado(j) {
+  const wrap = document.getElementById('duplicadoWrap');
+  const trava = !!(j && j.trava);
+  wrap.style.display = trava ? 'block' : 'none';
+  document.getElementById('confirmaDuplicado').checked = false;
+  if (!trava) return;
+  const porRodada = {};
+  j.existentes.forEach((e) => {
+    const k = `${dataHoraCurta(e.quando)} · ${e.usuario || '—'} · ${e.perfil || ''}`;
+    (porRodada[k] = porRodada[k] || []).push(
+      e.numero ? String(e.numero) : `id ${e.os_id}` + (e.conferida ? '' : ' (não conferida)'));
+  });
+  document.getElementById('duplicadoTexto').innerHTML =
+    `<strong>O termo ${escapeHtml(j.termo)} já gerou ${j.existentes.length} OS ` +
+    `que ainda existem no Harmonit.</strong> Gerar de novo cria outras.<ul>` +
+    Object.entries(porRodada).map(([k, nums]) =>
+      `<li>${escapeHtml(k)}: ${escapeHtml(nums.join(', '))}</li>`).join('') +
+    `</ul>` +
+    (j.apagadas ? `${j.apagadas} OS desse termo já foram apagadas e não contam.` : '');
+}
+
+/* Data e hora curtas, no fuso do navegador. O registro grava em UTC. */
+function dataHoraCurta(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return isNaN(d) ? String(iso).slice(0, 16)
+                  : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function liberarGerar() {
+  const trava = document.getElementById('duplicadoWrap').style.display === 'block';
+  const ok = !!(previa && previa.pode_gerar) &&
+    (!trava || document.getElementById('confirmaDuplicado').checked);
+  document.getElementById('btnGerar').disabled = !ok;
 }
 
 async function gerarOS() {
@@ -1961,12 +2016,16 @@ async function gerarOS() {
        ofereceria retomar algo que ja terminou. */
     esquecerLote();
     prog.textContent = '';
+    /* 🆕 23/09 (C3): SEMÁFORO. O servidor decide a cor de cada OS
+       (`semaforo`) e a tela só pinta -- a mesma cor que o Histórico mostra. */
+    const COR = { verde: 'badge-green', amarelo: 'badge-ambar', vermelho: 'badge-red' };
+    const ROTULO = { verde: 'ok', amarelo: 'incompleta', vermelho: 'falhou' };
     document.getElementById('previaOS').innerHTML =
       `<table><thead><tr><th>OS</th><th>Placa</th><th>Tipo</th>
         <th>Materiais</th></tr></thead><tbody>` +
       (d.criadas || []).map((r) => `<tr>
-        <td>${r.ok ? `<strong>${escapeHtml(String(r.numero_ordem || ''))}</strong>`
-                   : '<span class="badge badge-red">falhou</span>'}</td>
+        <td>${r.ok ? `<strong>${escapeHtml(String(r.numero_ordem || ''))}</strong> ` : ''}<span
+              class="badge ${COR[r.semaforo] || 'badge-red'}">${ROTULO[r.semaforo] || 'falhou'}</span></td>
         <td>${escapeHtml(r.placa || '')}</td>
         <td>${escapeHtml(r.rotulo || '')}</td>
         <td class="mini">${escapeHtml(
@@ -1978,13 +2037,16 @@ async function gerarOS() {
     const avisoTipo = d.tipos_com_falha
       ? ' Verificar os tipos de veículo, alguns não foram ajustados corretamente por instabilidade na WESO.'
       : '';
+    /* A mensagem de cima assume a PIOR cor da tabela. Verde só quando tudo
+       saiu inteiro -- era o verde com material recusado que mentia. */
+    const pendTxt = (d.pendencias || []).length
+      ? ` ${d.pendencias.length} ficaram esperando a rotina (recipiente ou oficina).` : '';
     msg('msgEtapa4', (d.com_erro
-        ? `<strong>${d.com_erro} de ${d.total} OS com problema.</strong> Os números acima são o que existe no Harmonit.`
-        : `<strong>${d.total} OS criadas.</strong>` +
-          ((d.pendencias || []).length
-            ? ` ${d.pendencias.length} ficaram esperando a rotina (recipiente ou oficina).`
-            : '')) + avisoTipo,
-        d.com_erro ? 'msg-erro' : 'msg-ok');
+        ? `<strong>${d.com_erro} de ${d.total} OS não foram criadas.</strong> Os números acima são o que existe no Harmonit.`
+        : d.com_incompleto
+          ? `<strong>${d.total} OS criadas, ${d.com_incompleto} com material recusado</strong> — veja a coluna Materiais e complete no Harmonit.` + pendTxt
+          : `<strong>${d.total} OS criadas.</strong>` + pendTxt) + avisoTipo,
+        d.com_erro ? 'msg-erro' : d.com_incompleto ? 'aviso' : 'msg-ok');
     /* A rodada acabou: o Concluir aparece e é a única ação que resta aqui.
        Guardo o resultado porque o `previaOS` da tela vai ser jogado fora no
        reinício, e é dele que sai o resumo. */

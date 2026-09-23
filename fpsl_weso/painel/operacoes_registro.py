@@ -84,7 +84,14 @@ def _criar():
 #
 # ⚠️ NÃO EXISTE `simulado`. Ele era do interruptor do Cadastro de Placas, que
 # saiu em 19/08: a aba é rotina nativa, subir grava.
-ACOES = ("criado", "ja_existia", "confere_ok", "confere_falta", "falhou", "ignorado")
+ACOES = ("criado", "ja_existia", "confere_ok", "confere_falta", "falhou", "ignorado",
+         # 🆕 23/09 (C3): a OS nasceu, mas o Harmonit recusou material. Antes
+         # isto era gravado `criado`, e o Histórico dizia "tudo certo" para uma
+         # OS incompleta. Os materiais recusados vão no campo `erro`.
+         "criado_incompleto")
+
+# As ações da etapa 4 que significam "existe uma OS no Harmonit".
+OS_CRIADA = ("criado", "criado_incompleto")
 SISTEMAS = ("harmonit", "weso")
 
 
@@ -208,6 +215,41 @@ async def ja_resolvidas(lote: str) -> dict[str, set]:
     return saida
 
 
+async def os_criadas(*, lote: str | None = None, termo: str | None = None,
+                     exceto_lote: str | None = None) -> list[dict]:
+    """As OS que a etapa 4 registrou, de um lote OU de um termo.
+
+    🆕 23/09. É a base das duas travas de duplicidade: o lote que já gerou
+    (C1) e o termo que já gerou noutro lote (N1). Medido na auditoria: o
+    termo 8872 gerou 11 OS duas vezes no MESMO lote, com 3 minutos de
+    diferença, e o 8883 gerou em dois lotes, em dias seguidos.
+    """
+    if not lote and not termo:
+        return []
+
+    def _run():
+        _criar()
+        with storage._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            sql = ("SELECT p.id_externo AS os_id, p.criado_em, p.placa_gravada, "
+                   "p.descricao AS rotulo, p.acao, l.lote, l.perfil, l.usuario, l.termo "
+                   "FROM operacoes_passo p JOIN operacoes_lote l ON l.lote = p.lote "
+                   "WHERE p.etapa = 4 AND p.acao IN (%s) AND p.id_externo IS NOT NULL"
+                   % ",".join("?" * len(OS_CRIADA)))
+            args: list = list(OS_CRIADA)
+            if lote:
+                sql += " AND l.lote = ?"
+                args.append(lote)
+            if termo:
+                sql += " AND l.termo = ?"
+                args.append(termo)
+            if exceto_lote:
+                sql += " AND l.lote != ?"
+                args.append(exceto_lote)
+            return [dict(r) for r in conn.execute(sql + " ORDER BY p.id", args)]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
 async def resumo(lote: str) -> dict:
     linhas = await passos(lote)
     por_acao: dict[str, int] = {}
@@ -233,11 +275,11 @@ async def listar_lotes(limite: int = 100) -> list[dict]:
                          WHERE p.lote = l.lote) AS passos,
                        (SELECT COUNT(*) FROM operacoes_passo p
                          WHERE p.lote = l.lote AND p.etapa = 4
-                           AND p.acao = 'criado') AS os_criadas,
+                           AND p.acao IN ('criado', 'criado_incompleto')) AS os_criadas,
                        (SELECT COUNT(*) FROM operacoes_passo p
                          WHERE p.lote = l.lote AND p.acao = 'falhou') AS falhas
                   FROM operacoes_lote l
-                 -- A chave e o  (texto), nao ha uid=197609(Lenovo) gid=197121 groups=197121: ordena pelo
+                 -- A chave e o `lote` (texto), nao ha `id`: ordena pelo
                  -- carimbo, que e o que a pessoa procura de qualquer jeito.
                  ORDER BY l.criado_em DESC LIMIT ?
             """, (int(limite),)).fetchall()
