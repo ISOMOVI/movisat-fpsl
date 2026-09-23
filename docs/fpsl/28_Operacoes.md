@@ -1829,13 +1829,56 @@ Suíte na rodada: **52 arquivos, 1.955 verificações OK, 1 falha** — externa:
 
 ## Achados que ficam para ele
 
-1. **A aba nunca mandou o `termo_relacionado`**: a OS dos perfis 5 e 6 gerada
-   aqui sai sem o nº do contrato do outro lado (a tela velha mandava). O
-   `/extrair` agora devolve o campo; a tela **não** passa a enviá-lo nos 5/6,
-   porque mudaria a descrição deles sem pedido.
+1. ~~A aba nunca mandou o `termo_relacionado`~~ — **corrigido no mesmo dia**,
+   ver a seção seguinte.
 2. **Os `avisos_extracao` nunca eram desenhados** — inclusive os da taxa de
    migração do Upgrade. Passaram a aparecer, em vermelho, na etapa 1.
 3. **O caminho híbrido (placa que rescinde) só foi exercitado com dado
    sintético.** Quando chegar o primeiro termo real com rescisão, ele vira
    fixture — e se trouxer cobrança numa tabela, o leitor vai avisar que não a
    conhece, e ela precisa ser ensinada.
+
+
+---
+
+# 🆕 O contrato do outro lado nas OS de titularidade (2026-09-23)
+
+## O defeito
+
+A aba Operações **nunca enviou** o `termo_relacionado`: as OS dos perfis 5 e 6
+saíam sem o `| termo relacionado N` que a tela velha escrevia. No uso real, a
+**OS 16799** (antigo titular, termo 8850) e a **16801** (novo titular, termo
+8835) são as duas pontas da mesma transferência — as mesmas 11 placas — e
+nenhuma cita a outra. Não foram alteradas; ajuste delas é à mão, se ele quiser.
+
+E o lado do **novo titular** não lia o número nem na tela velha: o extrator só
+conhece as frases do antigo.
+
+## As decisões dele (23/09)
+
+- **Só** a frase *"transferência de titularidade contrato nº N"* (8771 → 2395).
+  *"Já instalado através do contrato nº N"* (8785) **não** é o outro lado: é o
+  contrato novo ou aditivo que o novo titular usou para se vincular.
+- **O padrão dos demais campos:** o termo traz, a etapa 1 só mostra
+  ("Contrato do outro lado: N"); não traz, aviso + campo para digitar — como o
+  CNPJ da rescisão. Em branco, a OS sai como sempre saiu. Não bloqueia.
+- Os termos antigos continuam funcionando.
+
+## Como ficou
+
+- `operacoes_extracao.relacionado_novo_titular` lê a frase, só no perfil 5, e
+  só quando o extrator compartilhado não achou nada.
+- `/perfis` ganhou `pede_relacionado` (antigo e novo titular, e só eles).
+- A `corpoOS` envia o do termo; o digitado só quando o termo não trouxe, só
+  dígitos.
+
+## Prova
+
+- **Foto do `/extrair` antes e depois**, 20 fixtures × 9 perfis com termo =
+  **180 leituras: 178 idênticas**; as 2 diferentes são o `termo_relacionado`
+  do 8771 no perfil de novo titular (`transferencia_novo.pdf` e
+  `cliente_novo2.pdf`, o mesmo termo), de vazio para 2395. Nenhum outro campo,
+  perfil ou termo mudou.
+- `tests/teste_termo_relacionado.py`, **17 verificações**, incluindo a tela
+  dirigida com as respostas REAIS do router. Conferido **numa cópia** da tela
+  que o payload vira `None` sem a linha da `corpoOS`.
