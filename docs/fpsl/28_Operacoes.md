@@ -1935,3 +1935,19 @@ Suíte: **54 arquivos, 2.020 verificações OK, 1 falha** — a externa de sempr
 testes que mediam `reg.encerrar` dentro de `gerar_os` passaram a seguir a
 cadeia `gerar_os → _gravar_as_os → reg.encerrar`; a checagem de CSS órfão
 passou a olhar as duas páginas que carregam o `operacoes.css`.
+
+## Fechamento (23/09, decisões dele)
+
+- **P1 aplicado — R$ 999,90 nos 2G do de-para**, o valor de comodato que os
+  termos trazem (6 ocorrências medidas; 4G segue 1.100,00). Aplicado por
+  PRODUTO, não por nome: 5 linhas (`Suntech ST310` e `ST310U` → 20314;
+  `ST300` e `ST300HD` → 7006; `ST340` → 7004), uma primeiro e relida, depois
+  as outras. Sem valor, de propósito: ST340RB/UR, ST215, ST350, ST940, CRX1,
+  J16, RST-Mini, TK-100.
+  Efeito: rescisão e substituição 2G saem com comodato **R$ 999,90** (era 0,00,
+  DANFE zerada); antigo titular mostra o valor sem flag; manutenção segue 0,00.
+  ⚠️ A regra de 14/08 continua: **de-para primeiro, termo só quando o de-para
+  não tem**. `teste_upgrade_8820` passou a tirar o esperado do próprio de-para.
+- **A1 e A2 arquivados** — *"não são problemas, mas futuramente podem fazer
+  sentido"*. O A2 ficou quase todo coberto pelo C1, cuja recusa já manda
+  conferir o Histórico.

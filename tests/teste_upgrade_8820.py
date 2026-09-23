@@ -284,18 +284,34 @@ _perfil_placa = {"label": "teste", "os_por_placa": 1, "modelo_origem": "placa"}
 _do_termo = [{"descricao": "RASTREADOR", "harmonit_id": 20314, "quantidade": 1,
               "valor_unitario": 1100.0, "comodato": True, "cobrar": False}]
 
+# 🆕 23/09: o de-para dos 2G passou a ter valor (R$ 999,90, decisao dele). A
+# regra de 14/08 continua -- de-para PRIMEIRO, termo so quando o de-para nao
+# tem --, entao o esperado depende do de-para e sai DELE.
+from fpsl_weso import storage as _storage  # noqa: E402
+
+
+def _valor_no_depara(harmonit_id):
+    return next((float(m["valor_patrimonial"]) for m in _storage.listar_modelos_produto()
+                 if m.get("harmonit_id") == harmonit_id and m.get("valor_patrimonial")), 0.0)
+
+
 _novo = os_router._material_do_equipamento(_perfil_placa, "GJN 8689", _do_termo)
 checar("achou o equipamento da placa real", True, _novo is not None)
 if _novo:
-    checar("herdou o valor do item do contrato", 1100.0, _novo["valor_unitario"])
+    checar("valor do de-para, ou herdado do contrato quando o de-para nao tem",
+           _valor_no_depara(_novo.get("harmonit_id")) or 1100.0, _novo["valor_unitario"])
     checar("e continua comodato", True, _novo["comodato"])
     checar("sem cobrar", False, _novo["cobrar"])
 
-# ⚠️ Sem item de contrato para herdar, o valor fica 0 -- e honesto: nao ha
-# de onde tirar. O que nao pode e PERDER um valor que existia.
+# ⚠️ Sem item de contrato para herdar, vale o DE-PARA. Ate 23/09 os 2G nao
+# tinham valor la e isto dava 0; em 23/09 o usuario decidiu R$ 999,90 para os
+# 2G (ST310/ST310U, ST300/ST300HD, ST340) -- o valor de comodato que os termos
+# trazem. O esperado sai do proprio de-para, para o teste nao virar dono do
+# numero: se a decisao mudar, muda la, e este continua verdadeiro.
 _sem_termo_algum = os_router._material_do_equipamento(_perfil_placa, "GJN 8689", [])
 if _sem_termo_algum:
-    checar("sem nada para herdar, o valor e 0", 0.0,
+    checar("sem nada para herdar, vale o de-para",
+           _valor_no_depara(_sem_termo_algum.get("harmonit_id")),
            _sem_termo_algum["valor_unitario"])
 
 # ── 10. o upgrade DEVOLVE o recipiente (17/08) ───────────────────────────────
