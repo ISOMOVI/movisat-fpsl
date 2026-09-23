@@ -87,6 +87,10 @@ async def listar_perfis(_=Depends(requer_aba("operacoes"))):
                 "os_por_placa": p.get("os_por_placa"),
                 "agregada": bool(p.get("agregada")),
                 "hibrida": bool(p.get("hibrida")),
+                # 🆕 23/09: os perfis cuja OS cita o contrato do outro lado
+                # (`descricao_titularidade`). É por isto que a etapa 1 mostra
+                # o número, ou pede quando o termo não traz.
+                "pede_relacionado": p.get("titularidade") in ("novo", "antigo"),
             }
             for nome, p in cfg.PERFIS.items() if nome in cfg.ativos()
         ]
@@ -168,6 +172,13 @@ async def extrair(pedido: Request,
     # arquivo das três telas para poupar 450 ms num perfil não se paga.
     extras, avisos_extras = extracao.itens_extras(io.BytesIO(conteudo), perfil)
     avisos_extras = list(avisos_extras) + list(campos.get("avisos_extracao") or [])
+
+    # 🆕 23/09: O CONTRATO DO OUTRO LADO, NO NOVO TITULAR. O extrator só
+    # conhece as frases do antigo; a do novo mora em `operacoes_extracao`.
+    # Terceira leitura do PDF, e só neste perfil.
+    termo_relacionado = campos.get("termo_relacionado")
+    if not termo_relacionado and p.get("titularidade") == "novo":
+        termo_relacionado = extracao.relacionado_novo_titular(io.BytesIO(conteudo))
 
     # 🚨 A SUBSTITUIÇÃO NÃO USA `placas`, USA `pares` (medido em 19/08). O
     # extrator devolve `{placa_saida, veiculo_saida, placa_entrada,
@@ -274,7 +285,7 @@ async def extrair(pedido: Request,
         # 🆕 23/09: o contrato do OUTRO lado e o novo titular. Existiam no
         # extrator desde julho e esta aba nunca os devolveu -- por isso a OS
         # de titularidade gerada aqui saía sem o "termo relacionado".
-        "termo_relacionado": campos.get("termo_relacionado"),
+        "termo_relacionado": termo_relacionado,
         "novo_titular": campos.get("novo_titular"),
         "resumo": {
             "veiculos": len(itens),

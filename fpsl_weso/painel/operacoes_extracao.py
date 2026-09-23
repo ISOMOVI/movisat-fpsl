@@ -144,6 +144,30 @@ def itens_extras(fonte, perfil: str) -> tuple[list[dict], list[str]]:
     return ([item] if item else []), avisos
 
 
+# ── O contrato do outro lado, no termo do NOVO titular (23/09) ───────────────
+#
+# O extrator compartilhado lê o "termo relacionado" pelas frases do ANTIGO
+# titular ("passará a fazer parte do contrato nº 8785") e não reconhece a do
+# novo: o 8771 escreve "transferência de titularidade contrato nº 2395" e saía
+# sem número. Mora aqui, e não no `pdf_extractor`, pela regra de sempre: o
+# ajuste é da aba nova.
+#
+# 🚨 SÓ ESTA FRASE. "Já instalado através do contrato nº 2702" (termo 8785)
+# NÃO é o outro lado -- é o contrato novo ou aditivo que o novo titular usou
+# para se vincular à empresa (usuário, 23/09). Termo sem a frase fica sem
+# número, e a tela pede para digitar.
+_RELACIONADO_NOVO_TITULAR_RE = re.compile(
+    r"transfer[eê]ncia\s+de\s+titularidade\s+(?:do\s+)?contrato\s*n\S?\s*[:.]?\s*(\d+)",
+    re.IGNORECASE)
+
+
+def relacionado_novo_titular(fonte) -> str | None:
+    """Nº do contrato do antigo titular, lido no termo do NOVO, ou None."""
+    texto = " ".join("\n".join(p["texto"] for p in _ler_paginas(fonte)).split())
+    m = _RELACIONADO_NOVO_TITULAR_RE.search(texto)
+    return m.group(1) if m else None
+
+
 # ── O termo novo de transferência (23/09) ────────────────────────────────────
 #
 # "TERMO DE TRANSF. DE TIT.: RESCISÃO", medido nos termos 8873 e 8880. O

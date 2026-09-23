@@ -71,6 +71,18 @@
         <div id="leitura" style="display:none">
           <div class="aviso-info" id="leituraResumo"></div>
           <div id="leituraNaoLidos"></div>
+          <!-- 🆕 23/09: SÓ APARECE QUANDO O TERMO NÃO TRAZ o contrato do outro
+               lado, e só nos perfis de titularidade -- o mesmo padrão do
+               CNPJ da rescisão (`docWrap`). Não bloqueia: vazio, a OS sai
+               como sempre saiu, sem o trecho. -->
+          <div id="relacionadoWrap" style="display:none">
+            <div class="aviso bloco">
+              <strong>Este termo não traz o contrato do outro lado da transferência.</strong>
+              Se souber, digite: ele vai na descrição da OS. Em branco, a OS sai sem ele.
+            </div>
+            <input type="text" id="relacionadoDigitado" inputmode="numeric"
+                   placeholder="Nº do contrato do outro lado (opcional)">
+          </div>
         </div>
       </div>
 
@@ -610,6 +622,8 @@ function zerarRodada() {
   document.getElementById('leitura').style.display = 'none';
   document.getElementById('cliente').style.display = 'none';
   document.getElementById('docWrap').style.display = 'none';
+  document.getElementById('relacionadoWrap').style.display = 'none';
+  document.getElementById('relacionadoDigitado').value = '';
   document.getElementById('dropLabel').textContent =
     'Clique ou arraste o PDF do termo aqui';
   document.getElementById('arquivo').value = '';
@@ -781,6 +795,19 @@ function desenharLeitura(d) {
       (d.termo_relacionado ? ` para o contrato <strong>${escapeHtml(d.termo_relacionado)}</strong>` : '') +
       ` · <strong>${resc}</strong> rescindem`;
   }
+
+  /* 🆕 23/09, PERFIS DE TITULARIDADE (5 e 6): o contrato do outro lado. O
+     termo trouxe, só mostra; não trouxe, pede -- o padrão do CNPJ da
+     rescisão. A aba nunca tinha mandado este número, e a OS dos dois perfis
+     saía sem ele desde a F4. */
+  const pedeRelacionado = !!perfilAtual().pede_relacionado;
+  if (pedeRelacionado && d.termo_relacionado) {
+    document.getElementById('leituraResumo').innerHTML +=
+      `<br>Contrato do outro lado: <strong>${escapeHtml(d.termo_relacionado)}</strong>`;
+  }
+  document.getElementById('relacionadoDigitado').value = '';
+  document.getElementById('relacionadoWrap').style.display =
+    (pedeRelacionado && !d.termo_relacionado) ? 'block' : 'none';
 
   /* 🚨 O AVISO DA LEITURA APARECE. O servidor devolvia `avisos_extracao`
      desde 26/08 e a tela nunca o desenhou. No termo novo de transferência é
@@ -1718,6 +1745,11 @@ function corpoOS(confirmar) {
     cliente_id: (cliente && cliente.harmonit) ? cliente.harmonit.id : 0,
     lote: lote,
     termo: (extraido && extraido.termo) || '',
+    /* 🆕 23/09: o do termo vence; o digitado só existe quando o termo não
+       trouxe. Só dígitos -- é número de contrato, e vai para a descrição. */
+    termo_relacionado: (extraido && extraido.termo_relacionado) ||
+      ((document.getElementById('relacionadoDigitado') || {}).value || '')
+        .replace(/\D/g, ''),
     observacao: document.getElementById('observacao').value,
     /* 🚨 OS DOIS CAMPOS QUE O SERVIDOR SEMPRE ESPEROU. `valor_ressarcimento` e
        `motivo_financeira_zero` existem no `MontarInput` desde sempre e a tela

@@ -206,6 +206,13 @@ global.fetch = async (url, opcoes) => {
       { id: "transferencia_termo_novo",
         label: "NOVO - Termo de transf. de tit.: Rescisão", sem_termo: false,
         etapa_placas: "confere", recipiente: null, sem_financeira: false },
+      /* 🆕 23/09: os dois de titularidade, com `pede_relacionado`. */
+      { id: "transferencia_antigo_titular", label: "Transferência — Antigo titular",
+        sem_termo: false, etapa_placas: "confere", recipiente: null,
+        sem_financeira: true, pede_relacionado: true },
+      { id: "transferencia_novo_titular", label: "Transferência — Novo titular",
+        sem_termo: false, etapa_placas: "confere", recipiente: null,
+        sem_financeira: false, pede_relacionado: true },
     ] });
   }
   if (u.includes("/operacoes/extrair")) {
@@ -213,6 +220,14 @@ global.fetch = async (url, opcoes) => {
        `teste_transf_termo_novo.py` a partir da fixture do 8873 e passada em
        `EXTRAIR_REAL`. JSON escrito a mão aqui seria o duble complacente de
        14/08: aprovaria a tela lendo o formato que EU acho que o router manda. */
+    /* 🆕 23/09: idem para os perfis 5 e 6 -- `EXTRAIR_REL` traz as respostas
+       REAIS do router: o antigo titular do 8787 (o termo traz o número) e o
+       novo titular do 8785 (não traz). */
+    if (process.env.EXTRAIR_REL) {
+      const rel = JSON.parse(fs.readFileSync(process.env.EXTRAIR_REL, "utf8"));
+      if (u.includes("perfil=transferencia_antigo_titular")) return ok(rel.com);
+      if (u.includes("perfil=transferencia_novo_titular")) return ok(rel.sem);
+    }
     if (u.includes("perfil=transferencia_termo_novo") && process.env.EXTRAIR_REAL) {
       return ok(JSON.parse(fs.readFileSync(process.env.EXTRAIR_REAL, "utf8")));
     }
@@ -902,6 +917,38 @@ function registrarCelulas(quantas) {
       r.t12_payload = payload12.placas.map((p) => [p.placa, p.novo_contrato]);
       r.t12_perfil = payload12.perfil;
       r.t12_itens = payload12.itens.map((i) => [i.descricao, i.quantidade]);
+    }
+
+    /* ── 23. 🆕 O CONTRATO DO OUTRO LADO (23/09) ───────────────────────────
+       O padrão do CNPJ da rescisão: o termo trouxe, só mostra; não trouxe,
+       pede -- e o número, lido ou digitado, tem de chegar ao payload. */
+    if (process.env.EXTRAIR_REL) {
+      await escolherPerfil("transferencia_antigo_titular");
+      await espera(20);
+      elemento("arquivo").files = [{ name: "8787.pdf" }];
+      await lerTermo();
+      await espera(20);
+      r.rel_com_resumo = elemento("leituraResumo").innerHTML;
+      r.rel_com_pede = elemento("relacionadoWrap").style.display;
+      r.rel_com_payload = global.__corpoOS(false).termo_relacionado;
+
+      await escolherPerfil("transferencia_novo_titular");
+      await espera(20);
+      elemento("arquivo").files = [{ name: "8785.pdf" }];
+      await lerTermo();
+      await espera(20);
+      r.rel_sem_pede = elemento("relacionadoWrap").style.display;
+      r.rel_sem_payload_vazio = global.__corpoOS(false).termo_relacionado;
+      elemento("relacionadoDigitado").value = " 88.35 ";
+      r.rel_sem_payload_digitado = global.__corpoOS(false).termo_relacionado;
+
+      /* perfil que não é de titularidade não pede nada */
+      await escolherPerfil("aditivo");
+      await espera(20);
+      elemento("arquivo").files = [{ name: "t.pdf" }];
+      await lerTermo();
+      await espera(20);
+      r.rel_aditivo_pede = elemento("relacionadoWrap").style.display;
     }
 
     r.chamadas = chamadas;
