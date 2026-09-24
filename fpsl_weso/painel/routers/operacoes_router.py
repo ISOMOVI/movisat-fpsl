@@ -991,7 +991,7 @@ async def _preparar(body: "oos.MontarInput"):
     body.placas, _dedup = oos.dedup_placas(body.placas)
     avisos = _globais(_dedup)
     resolvidos, pendentes, descartados, ocultados = \
-        await oos.resolver_vinculos(body.itens)
+        await oos.resolver_vinculos(body.itens, perfil_chave=body.perfil)
 
     # 🚨 SEPARA ANTES DE ALOCAR. A alocação por placa vale só para o que vai na
     # OS operacional; distribuir item de cobrança pelas placas o faria aparecer
@@ -1005,6 +1005,13 @@ async def _preparar(body: "oos.MontarInput"):
         avisos.append(oos.aviso(
             "Itens marcados NÃO CONTRATADO ou NÃO POSSUI no termo, fora da OS: "
             + "; ".join(descartados)))
+    # 🔵 24/09: quem gera precisa ver POR QUE um item com valor no termo saiu
+    # zerado -- silêncio aqui pareceria defeito de extração.
+    do_cliente = [i["descricao"] for i in resolvidos if i.get("aquisicao_do_cliente")]
+    if do_cliente:
+        avisos.append(oos.aviso(
+            "Aquisição do cliente (já é dele, não devolve e não é cobrado): "
+            + "; ".join(do_cliente) + ". Vai na financeira com valor zero."))
     # 🚨 OCULTO NÃO PODE SER MUDO. Era a única forma de um item do termo
     # desaparecer da OS sem deixar rastro na tela -- e foi por ela que os
     # R$ 131,74 do termo 8848 saíram da financeira em 25/08. O texto diz onde

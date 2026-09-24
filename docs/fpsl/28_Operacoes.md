@@ -1951,3 +1951,35 @@ passou a olhar as duas páginas que carregam o `operacoes.css`.
 - **A1 e A2 arquivados** — *"não são problemas, mas futuramente podem fazer
   sentido"*. O A2 ficou quase todo coberto pelo C1, cuja recusa já manda
   conferir o Histórico.
+
+## 24/09 — Aquisição na retirada não cobra (termos 8893 e 8876)
+
+🔵 Pedido dele, ao ver a cobrança do leitor no 8893: *"quando é 'aquisição'
+na verdade, no caso da recisão, é que ele ja comprou e não vai devolver"* — e,
+sobre o 8876: *"se tiver que os leitores foram aquisição, não pode cobrar, pois
+são do cliente"*.
+
+**O defeito.** `resolver_vinculos` aplicava a regra do CONTRATO em todo
+perfil: *"não é comodato e tem valor, cobra"*. Na retirada, AQUISIÇÃO quer
+dizer que o cliente já é dono: o LEITOR I-BUTTON (R$ 150,00) saía com `cobrar`
+marcado na financeira. A coluna "SERÁ DEVOLVIDO" nem é lida (a extração a
+deixa `None`).
+
+**Medido nas 13 financeiras de rescisão geradas pelo FPSL:** 4 com o leitor —
+8857 (871856), 8863 (878020), 8893 (894481) com `cobrar` desmarcado à mão no
+Harmonit; **8876 (id 891577, OS nº 16929) ainda cobrando 12 × R$ 150,00 =
+R$ 1.800,00**, que o termo não tem (total do termo R$ 7.426,68 = aviso
+3.838,68 + retirada 3.588,00; os 12 leitores são AQUISIÇÃO / NÃO devolve).
+
+**A regra (decisão 1a dele):** nos perfis de `cfg.PERFIS_RETIRADA` — rescisão,
+transferência antigo titular, termo novo de transferência (o lado rescisão do
+híbrido lê o perfil `rescisao`) — item AQUISIÇÃO entra na financeira **zerado
+e sem cobrar**, como a Central. Zera o VALOR, não só a flag:
+`itens_de_cobranca` recalcula o `cobrar` a partir do valor. A prévia avisa:
+*"Aquisição do cliente (já é dele, não devolve e não é cobrado)"*.
+
+Fora da regra, de propósito: contrato novo, aditivo, upgrade, substituição e
+novo titular (lá aquisição é compra nova) e ressarcimento (existe para cobrar
+equipamento).
+
+Teste: `tests/teste_aquisicao_retirada.py` (16 verificações, termo 8893 real).

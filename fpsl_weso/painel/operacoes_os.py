@@ -260,7 +260,7 @@ def eh_nao_tem(tipo_normalizado: str) -> bool:
 
 # ── Vínculos ─────────────────────────────────────────────────────────────────
 
-async def resolver_vinculos(itens: list[ItemContrato]):
+async def resolver_vinculos(itens: list[ItemContrato], perfil_chave: str | None = None):
     """(resolvidos, pendentes, descartados, ocultados).
 
     🚨 O QUARTO VALOR NASCEU DE UM PREJUÍZO. Item com vínculo marcado OCULTO
@@ -349,6 +349,20 @@ async def resolver_vinculos(itens: list[ItemContrato]):
         if vinc.get("nas_duas") and not comodato:
             resolvido.update({"nas_duas": True, "valor_unitario": 0.0,
                               "comodato": False, "cobrar": False})
+        # 🚨 AQUISIÇÃO NA RETIRADA NÃO COBRA (24/09, termo 8893). O cliente já
+        # comprou o item: não devolve e não paga de novo. Até aqui a regra era a
+        # do contrato -- "não é comodato e tem valor, cobra" -- e o LEITOR
+        # I-BUTTON de R$ 150,00 saía COBRADO na financeira da rescisão (medido:
+        # 4 de 13 rescisões, uma ainda cobrando). Decisão dele (1a): entra na
+        # financeira ZERADO e sem cobrar, como a Central -- o financeiro vê que
+        # o item existe e que não é cobrado.
+        #
+        # ⚠️ ZERA O VALOR, NÃO SÓ A FLAG: `itens_de_cobranca` RECALCULA o
+        # `cobrar` a partir do valor, e desfaria uma flag sozinha.
+        if (perfil_chave in cfg.PERFIS_RETIRADA and not comodato
+                and tipo.startswith("AQUISI")):
+            resolvido.update({"valor_unitario": 0.0, "cobrar": False,
+                              "aquisicao_do_cliente": True})
         resolvidos.append(resolvido)
     return resolvidos, pendentes, descartados, ocultados
 

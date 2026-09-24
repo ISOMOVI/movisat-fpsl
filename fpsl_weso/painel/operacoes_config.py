@@ -526,3 +526,19 @@ def ativos() -> list[str]:
     quando o modelo velho de transferência acabar -- decisão do usuário, e
     ainda não tomada (23/09)."""
     return [n for n, p in PERFIS.items() if p.get("ativo", True)]
+
+
+# 🔵 24/09 — PERFIS DE RETIRADA: onde "AQUISIÇÃO" no termo quer dizer que o
+# cliente JÁ COMPROU o item e fica com ele. Decisão do usuário ao ver o termo
+# 8893: *"quando é 'aquisição' na verdade, no caso da recisão, é que ele ja
+# comprou e não vai devolver"* -- não devolve e NÃO é cobrado. Ele confirmou
+# que vale para os outros perfis de retirada.
+#
+# ⚠️ Fora daqui (contrato novo, aditivo, upgrade, substituição, novo titular)
+# "aquisição" é COMPRA NOVA e continua cobrando. Ressarcimento fica fora de
+# propósito: ele existe para cobrar equipamento.
+PERFIS_RETIRADA = frozenset({
+    "rescisao",
+    "transferencia_antigo_titular",
+    "transferencia_termo_novo",
+})
