@@ -1983,3 +1983,10 @@ novo titular (lá aquisição é compra nova) e ressarcimento (existe para cobra
 equipamento).
 
 Teste: `tests/teste_aquisicao_retirada.py` (16 verificações, termo 8893 real).
+
+**OS 16929 corrigida no mesmo dia**, com a palavra dele (*"pode desmarcar"*):
+linha 1572000 do LEITOR I-BUTTON com `cobrar` desmarcado via
+`SalvarMaterialOrdemServico` passando o `id` DA LINHA (com `id` a rota ALTERA;
+com `id: 0` cria outra). Relida: uma linha só, as demais intactas, cobrança de
+volta aos R$ 7.426,68 do termo. Estado anterior em
+`backups/os_16929_materiais_antes_2026-09-24.json`.
