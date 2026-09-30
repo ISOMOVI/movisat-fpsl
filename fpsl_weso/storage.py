@@ -95,6 +95,33 @@ def init_db():
                 atualizado_em TEXT NOT NULL
             )
         """)
+        # Conferência de Fechamento (29/09) — Painel Financeiro. Uma linha por
+        # OS finalizada, cruzando Harmonit (status_str da própria os_historico)
+        # com DataScope (form_state) e WESO (situação do rastreador).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS conferencia_fechamento (
+                numero_os             INTEGER PRIMARY KEY,
+                harmonit_ok           INTEGER NOT NULL,
+                datascope_ok          INTEGER,
+                datascope_form_state  TEXT,
+                weso_ok               INTEGER,
+                detalhe               TEXT,
+                conferido_em          TEXT NOT NULL
+            )
+        """)
+        # Cache local das respostas do DataScope (form "Serviços Técnicos"),
+        # sincronizado incrementalmente por `updated_at` -- evita repuxar a
+        # API inteira a cada rodada da rotina.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS datascope_respostas (
+                form_answer_id  INTEGER PRIMARY KEY,
+                numero_os       INTEGER,
+                form_state      TEXT,
+                updated_at      TEXT NOT NULL,
+                sincronizado_em TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_dr_numero_os ON datascope_respostas(numero_os)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS harmonit_chamadas (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,6 +144,13 @@ def init_db():
         _cols = [r[1] for r in conn.execute("PRAGMA table_info(os_historico)").fetchall()]
         if "excluida" not in _cols:
             conn.execute("ALTER TABLE os_historico ADD COLUMN excluida INTEGER NOT NULL DEFAULT 0")
+        # migração (29/09): status da OS no Harmonit, capturado de graça pela
+        # mesma varredura que já lê `ObterOrdemServicoPorNumero` -- alimenta a
+        # Conferência de Fechamento (quem virou "Finalizado" agora).
+        if "status" not in _cols:
+            conn.execute("ALTER TABLE os_historico ADD COLUMN status INTEGER")
+        if "status_str" not in _cols:
+            conn.execute("ALTER TABLE os_historico ADD COLUMN status_str TEXT")
 
         # migração (2026-08-14): `nas_duas` -- o item aparece TAMBÉM na OS
         # operacional, além da financeira. Nasceu do termo 8839: "Central 24
@@ -337,8 +371,16 @@ async def listar_config() -> list[dict]:
 # ── os_historico (scan sequencial de OS) ─────────────────────────────────────
 
 async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, cliente_id,
-                              data_previsao, oficinas: list) -> bool:
-    """Grava/atualiza uma OS no histórico. Retorna True se era NOVA (não existia)."""
+                              data_previsao, oficinas: list,
+                              status: int | None = None,
+                              status_str: str | None = None) -> bool:
+    """Grava/atualiza uma OS no histórico. Retorna True se era NOVA (não existia).
+
+    🔵 29/09: `status`/`status_str` são opcionais, de propósito -- os dois
+    únicos chamadores (`varrer_os`/`resync_os`) já leem esses campos da
+    mesma resposta do Harmonit que usam para tudo o mais, então passam a
+    mandar; um chamador futuro que não tenha esse dado não é obrigado.
+    """
     def _run():
         agora = datetime.now(timezone.utc).isoformat()
         with _connect() as conn:
@@ -351,10 +393,11 @@ async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, client
             conn.execute(
                 "INSERT OR REPLACE INTO os_historico "
                 "(numero_os, tipo, problema, produto_id, cliente_id, data_previsao, "
-                " oficinas_json, n_oficinas, visto_em, atualizado_em) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " oficinas_json, n_oficinas, visto_em, atualizado_em, status, status_str) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (numero_os, tipo, problema, produto_id, cliente_id, data_previsao,
-                 json.dumps(oficinas or [], ensure_ascii=False), len(oficinas or []), visto, agora),
+                 json.dumps(oficinas or [], ensure_ascii=False), len(oficinas or []), visto, agora,
+                 status, status_str),
             )
         return not existe
     return await asyncio.get_running_loop().run_in_executor(None, _run)
@@ -364,14 +407,52 @@ async def listar_os_historico(limit: int = 300, apenas_com_oficina: bool = False
     def _run():
         with _connect() as conn:
             sql = ("SELECT numero_os, tipo, problema, produto_id, cliente_id, data_previsao, "
-                   "oficinas_json, n_oficinas, visto_em, atualizado_em, excluida FROM os_historico ")
+                   "oficinas_json, n_oficinas, visto_em, atualizado_em, excluida, status, status_str "
+                   "FROM os_historico ")
             if apenas_com_oficina:
                 sql += "WHERE n_oficinas > 0 "
             sql += "ORDER BY numero_os DESC LIMIT ?"
             rows = conn.execute(sql, (limit,)).fetchall()
         return [{"numero_os": r[0], "tipo": r[1], "problema": r[2], "produto_id": r[3],
                  "cliente_id": r[4], "data_previsao": r[5], "oficinas": json.loads(r[6] or "[]"),
-                 "n_oficinas": r[7], "visto_em": r[8], "atualizado_em": r[9], "excluida": bool(r[10])} for r in rows]
+                 "n_oficinas": r[7], "visto_em": r[8], "atualizado_em": r[9], "excluida": bool(r[10]),
+                 "status": r[11], "status_str": r[12]} for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def os_nao_finalizadas_recentes(janela: int = 400) -> list[int]:
+    """Números das últimas `janela` OS (por número, mesma ideia de
+    `os_para_resync`) cujo `status_str` local AINDA NÃO é 'Finalizado' --
+    são as candidatas a reler antes de cada rodada da Conferência de
+    Fechamento, para pegar quem fechou desde a última passada.
+
+    ⚠️ NÃO É O `resync_os` GERAL (12h, reoficina). Esta é focada só no
+    campo de status, e roda a cada 1h -- reler as ~400 recentes de hora em
+    hora é mais tráfego no Harmonit que o resync já faz; se isso pesar,
+    o número certo de ajustar é `janela`, não duplicar o resync inteiro."""
+    def _run():
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT numero_os FROM os_historico WHERE excluida = 0 "
+                "AND (status_str IS NULL OR status_str != 'Finalizado') "
+                "ORDER BY numero_os DESC LIMIT ?", (janela,),
+            ).fetchall()
+        return [r[0] for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def os_finalizadas_sem_conferencia(limit: int = 200) -> list[dict]:
+    """OS com `status_str == 'Finalizado'` que ainda não têm linha em
+    `conferencia_fechamento` -- a fila de trabalho da rotina nova."""
+    def _run():
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT h.numero_os, h.oficinas_json FROM os_historico h "
+                "LEFT JOIN conferencia_fechamento c ON c.numero_os = h.numero_os "
+                "WHERE h.status_str = 'Finalizado' AND c.numero_os IS NULL "
+                "ORDER BY h.numero_os DESC LIMIT ?", (limit,),
+            ).fetchall()
+        return [{"numero_os": r[0], "oficinas": json.loads(r[1] or "[]")} for r in rows]
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
@@ -403,6 +484,77 @@ async def os_para_resync(janela: int = 400) -> list[int]:
                 "ORDER BY numero_os DESC LIMIT ?", (janela,),
             ).fetchall()
         return [r[0] for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+# ── datascope_respostas (cache local, form "Serviços Técnicos") ─────────────
+
+async def salvar_resposta_datascope(form_answer_id: int, numero_os: int | None,
+                                    form_state: str | None, updated_at: str) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO datascope_respostas "
+                "(form_answer_id, numero_os, form_state, updated_at, sincronizado_em) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (form_answer_id, numero_os, form_state, updated_at, agora),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def resposta_datascope_por_os(numero_os: int) -> dict | None:
+    """A resposta mais recente do DataScope para essa OS, se houver.
+
+    ⚠️ PODE HAVER MAIS DE UMA resposta com o mesmo `Nº da O.S.` (reenvio,
+    correção) -- pega a de `updated_at` mais recente, que é o estado atual
+    do workflow, não a primeira que apareceu."""
+    def _run():
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT form_answer_id, form_state, updated_at FROM datascope_respostas "
+                "WHERE numero_os = ? ORDER BY updated_at DESC LIMIT 1", (numero_os,),
+            ).fetchone()
+        return ({"form_answer_id": row[0], "form_state": row[1], "updated_at": row[2]}
+                if row else None)
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+# ── conferencia_fechamento (Painel Financeiro, 29/09) ────────────────────────
+
+async def salvar_conferencia_fechamento(numero_os: int, harmonit_ok: bool,
+                                        datascope_ok: bool | None,
+                                        datascope_form_state: str | None,
+                                        weso_ok: bool | None, detalhe: str) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO conferencia_fechamento "
+                "(numero_os, harmonit_ok, datascope_ok, datascope_form_state, "
+                " weso_ok, detalhe, conferido_em) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (numero_os, int(harmonit_ok),
+                 None if datascope_ok is None else int(datascope_ok),
+                 datascope_form_state,
+                 None if weso_ok is None else int(weso_ok),
+                 detalhe, agora),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_conferencia_fechamento(limit: int = 300) -> list[dict]:
+    def _run():
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT numero_os, harmonit_ok, datascope_ok, datascope_form_state, "
+                "weso_ok, detalhe, conferido_em FROM conferencia_fechamento "
+                "ORDER BY conferido_em DESC LIMIT ?", (limit,),
+            ).fetchall()
+        return [{"numero_os": r[0], "harmonit_ok": bool(r[1]),
+                 "datascope_ok": None if r[2] is None else bool(r[2]),
+                 "datascope_form_state": r[3],
+                 "weso_ok": None if r[4] is None else bool(r[4]),
+                 "detalhe": r[5], "conferido_em": r[6]} for r in rows]
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 

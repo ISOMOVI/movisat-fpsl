@@ -83,6 +83,7 @@ async def varrer_os(desde: int | None = None, limite_buracos: int = LIMITE_BURAC
                 numero_os=n, tipo=d.get("tipo"), problema=d.get("problema"),
                 produto_id=d.get("produtoId"), cliente_id=d.get("parceiro") or d.get("clienteId"),
                 data_previsao=d.get("dataPrevisao"), oficinas=oficinas,
+                status=d.get("status"), status_str=d.get("statusStr"),
             )
             if nova:
                 novas += 1
@@ -119,6 +120,7 @@ async def resync_os(janela: int = RESYNC_JANELA) -> dict:
                 numero_os=num, tipo=d.get("tipo"), problema=d.get("problema"),
                 produto_id=d.get("produtoId"), cliente_id=d.get("parceiro") or d.get("clienteId"),
                 data_previsao=d.get("dataPrevisao"), oficinas=d.get("oficina") or [],
+                status=d.get("status"), status_str=d.get("statusStr"),
             )
             reencontradas += 1
         return {"janela": len(numeros), "reencontradas": reencontradas, "excluidas": excluidas, "erros": erros}

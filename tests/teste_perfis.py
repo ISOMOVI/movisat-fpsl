@@ -63,8 +63,9 @@ async def main():
         # 10 desde 20/08: a aba Operações saiu de `no_menu` por decisão do
         # usuário. O número fica explícito de propósito -- tela nova no menu
         # tem de passar por aqui e ser deliberada.
-        checar("owner enxerga as 11 telas do menu",
-               len(me.get("abas", [])) == 11, str(len(me.get("abas", []))))
+        # 12 desde 29/09: FIN_1.1 (Conferência de Fechamento) nasceu no menu.
+        checar("owner enxerga as 12 telas do menu",
+               len(me.get("abas", [])) == 12, str(len(me.get("abas", []))))
         checar("e Operações é uma delas",
                any(a.get("id") == "operacoes" for a in me.get("abas", [])),
                str([a.get("id") for a in me.get("abas", [])]))
@@ -73,7 +74,8 @@ async def main():
         catalogo = r.json()
         ids = [a["id"] for a in catalogo]
         # 6 desde a F1 (19/08), quando a permissao `operacoes` nasceu.
-        checar("catalogo tem 6 abas concediveis", len(catalogo) == 6, str(ids))
+        # 7 desde 29/09: `financeiro` (FIN_1.1, Conferência de Fechamento).
+        checar("catalogo tem 7 abas concediveis", len(catalogo) == 7, str(ids))
         checar("operacoes e concedivel", "operacoes" in ids, str(ids))
         checar("cadastro_placas e concedivel", "cadastro_placas" in ids, str(ids))
         # a aba `placas` saiu do catalogo em 14/08 -- ver abas.py

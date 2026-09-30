@@ -93,6 +93,9 @@ ROTAS = [
     ("PUT",  "/painel/api/os-scan/checkpoint",  "os_historico",       {"numero": 16000}, True),
     ("GET",  "/painel/api/usuarios",            "usuarios",           None, False),
     ("GET",  "/painel/api/usuarios/abas",       "usuarios",           None, False),
+
+    ("GET",  "/painel/api/conferencia-fechamento",             "financeiro", None, False),
+    ("POST", "/painel/api/conferencia-fechamento/rodar-agora", "financeiro", None, True),
 ]
 
 

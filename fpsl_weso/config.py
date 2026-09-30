@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     harmonit_client_id:  str = ""
     harmonit_secret_id:  str = ""
 
+    # DataScope (29/09) — app onde o técnico fecha o checklist de campo.
+    # Painel Financeiro / Conferência de Fechamento consome a API de leitura.
+    datascope_base_url: str = "https://www.mydatascope.com/api/external"
+    datascope_api_key:  str = ""
+
     # Painel de geração de OS por contrato — login básico até o Google OAuth
     # entrar em produção (previsto ~20/07). Trocar/desligar quando isso acontecer.
     painel_admin_login: str = "admin"

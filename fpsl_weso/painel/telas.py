@@ -149,6 +149,26 @@ TELAS = [
         "permissao": "operacoes",
         "fase": 1,
     },
+    # ---- FIN: Painel Financeiro (29/09) ----
+    # 🔵 Pedido dele: primeira peça, uma rotina que confere se a OS marcada
+    # "Finalizado" no Harmonit tem confirmação real no DataScope (checklist
+    # do técnico) e na WESO (situação do equipamento). Substitui o desenho
+    # de ERP de 03/08 -- ver `docs/fpsl/29_...` (histórico) e
+    # `services/conferencia_fechamento.py` (a rotina).
+    #
+    # 🚨 NÃO CONFUNDIR COM A `HST_3.1` (Aderência, apagada em 19/08, código
+    # queimado): aquela comparava os dois sistemas de forma genérica e virou
+    # ruído sem dono. Esta pergunta é estreita e tem dono -- por OS, só as
+    # que acabaram de fechar.
+    {
+        "codigo": "FIN_1.1",
+        "titulo": "Conferência de Fechamento",
+        "rota": "/painel/conferencia-fechamento",
+        "icone": "bi-clipboard-check",
+        "descricao": "OS finalizadas no Harmonit, cruzadas com DataScope e WESO.",
+        "permissao": "financeiro",
+        "fase": 1,
+    },
     # ---- CFG: configuração ----
     {
         "codigo": "CFG_1.1",

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conferência de Fechamento — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/painel/static/barra_status.css">
+<style>
+  :root {
+    --blue:#2563EB; --blue-dim:#EFF6FF; --green:#16a34a; --green-dim:#F0FDF4;
+    --red:#DC2626; --red-dim:#FEF2F2; --amber:#D97706; --amber-dim:#FFFBEB;
+    --bg:#F8FAFC; --bg2:#F1F5F9; --text:#0F172A; --text2:#64748B;
+    --border:#E2E8F0; --card:#FFFFFF; --sidebar-bg:#0F172A; --sidebar-tx:#94A3B8; --sidebar-w:230px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .main { flex:1; padding:32px; max-width:1180px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:18px; }
+  .painel-ctrl { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px;
+                 background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px; border:1.5px solid transparent; cursor:pointer; }
+  .btn-primary { background:var(--blue); color:#fff; } .btn-primary:hover { background:#1d4ed8; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.03em;
+       padding:11px 12px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
+  td { padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  .badge { font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .badge-blue { background:var(--blue-dim); color:var(--blue); }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  .badge-amber { background:var(--amber-dim); color:var(--amber); }
+  .badge-gray { background:var(--bg2); color:var(--text2); }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-bottom:12px; }
+  .msg-ok { background:var(--green-dim); color:var(--green); display:block; }
+  .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
+  .empty { text-align:center; color:var(--text2); padding:24px; }
+  .detalhe { font-size:.78rem; color:var(--text2); max-width:360px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top"><h1>Conferência de Fechamento</h1></div>
+    <p class="sub">Rotina a cada 1h: quando uma OS vira "Finalizado" no Harmonit, confere se o checklist também
+       fechou no DataScope e se o equipamento está no estado certo na WESO. "Finalizado" no Harmonit é a alegação —
+       esta lista mostra o que os outros dois sistemas confirmam de fato.</p>
+
+    <div class="painel-ctrl">
+      <button class="btn btn-primary" id="btnRodar" onclick="rodarAgora()"><i class="bi bi-play-fill"></i> Rodar agora</button>
+      <span style="color:var(--text2); font-size:.82rem">Sem esperar o próximo ciclo de 1h — útil para validar.</span>
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="card">
+      <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>OS</th><th>Harmonit</th><th>DataScope</th><th>WESO</th><th>Detalhe</th><th>Conferido em</th>
+        </tr></thead>
+        <tbody id="tbody"><tr><td colspan="6" class="empty">Carregando…</td></tr></tbody>
+      </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="/painel/static/barra_status.js"></script>
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('financeiro');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showMsg(t, erro) { const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
+
+// `conferido_em` vem em UTC (mesmo padrão do resto do FPSL). dd/mm/aaaa
+// hh:mm na marra, convertendo pro horário local -- `toLocaleString` segue o
+// idioma do navegador, e foi essa dependência que produziu um prazo com ano
+// 0002 no painel de demandas em 07/08 (ver cadastro_placas_historico.html).
+function quando(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const z = (n) => String(n).padStart(2, '0');
+  return `${z(d.getDate())}/${z(d.getMonth() + 1)}/${d.getFullYear()} `
+       + `${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
+// `null` é "ainda não aconteceu" (amarelo) -- diferente de `false`, que é
+// "conferido e não bate" (vermelho). Não confundir os dois, mesma lição da
+// Aba Operações: `ignorado` não é `divergente`.
+function sinal(ok) {
+  if (ok === true) return '<span class="badge badge-green">bate</span>';
+  if (ok === false) return '<span class="badge badge-red">não bate</span>';
+  return '<span class="badge badge-amber">ainda não</span>';
+}
+
+async function carregar() {
+  const res = await fetch('/painel/api/conferencia-fechamento?limit=500', { headers: auth() });
+  if (res.status === 401) { window.location.href='/painel'; return; }
+  const data = await res.json();
+  const tb = document.getElementById('tbody');
+  if (!data.itens.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Nada conferido ainda.</td></tr>'; return; }
+  tb.innerHTML = data.itens.map(c => `<tr>
+      <td><strong>${esc(c.numero_os)}</strong></td>
+      <td>${sinal(c.harmonit_ok)}</td>
+      <td>${sinal(c.datascope_ok)}${c.datascope_form_state ? ` <span style="color:var(--text2); font-size:.76rem">(${esc(c.datascope_form_state)})</span>` : ''}</td>
+      <td>${sinal(c.weso_ok)}</td>
+      <td class="detalhe">${esc(c.detalhe)||'—'}</td>
+      <td style="color:var(--text2)">${esc(quando(c.conferido_em))}</td>
+    </tr>`).join('');
+}
+
+async function rodarAgora() {
+  const btn = document.getElementById('btnRodar'); btn.disabled = true; btn.textContent = 'Rodando…';
+  try {
+    const res = await fetch('/painel/api/conferencia-fechamento/rodar-agora', { method: 'POST', headers: auth() });
+    const r = await res.json();
+    if (!res.ok) throw new Error(r.detail || 'falha');
+    showMsg(`${r.conferidas} OS conferidas (${r.viraram_finalizado} viraram Finalizado nesta passada, ${r.datascope_sincronizadas} respostas do DataScope sincronizadas).`, false);
+    await carregar();
+  } catch (e) { showMsg('Erro: ' + e.message, true); }
+  finally { btn.disabled = false; btn.innerHTML = '<i class="bi bi-play-fill"></i> Rodar agora'; }
+}
+
+carregar();
+setInterval(carregar, 60000);
+</script>
+</body>
+</html>

@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fpsl_weso.client import start_client, stop_client
 from fpsl_weso.harmonit_client import start_harmonit_client, stop_harmonit_client
+from fpsl_weso.datascope_client import start_datascope_client, stop_datascope_client
 from fpsl_weso.routers import clientes, simcards, rastreadores, veiculos, admin
 from fpsl_weso.painel.routers import login_router, os_router as painel_os_router
 from fpsl_weso.painel.routers import harmonit_hist_router as painel_harmonit_hist_router
@@ -25,6 +26,8 @@ from fpsl_weso import demandas as quadro_demandas
 from fpsl_weso.painel.auth import seed_admin_inicial
 from fpsl_weso.services import onboarding
 from fpsl_weso.services.sync_inadimplencia import loop_inadimplencia
+from fpsl_weso.services.conferencia_fechamento import loop_conferencia_fechamento
+from fpsl_weso.painel.routers import conferencia_fechamento_router as painel_conferencia_fechamento_router
 from fpsl_weso import storage
 
 log = logging.getLogger("fpsl")
@@ -101,6 +104,7 @@ async def lifespan(app: FastAPI):
     quadro_demandas.preparar()
     await start_client()
     await start_harmonit_client()
+    await start_datascope_client()
     asyncio.create_task(loop_inadimplencia())
     asyncio.create_task(painel_os_scan_router.loop_scan_os())
     asyncio.create_task(painel_os_scan_router.loop_resync_os())
@@ -108,7 +112,11 @@ async def lifespan(app: FastAPI):
     # que a etapa 4 deixou pendente. Ela LE o que o varredor
     # acima ja guardou -- por isso entra depois dele.
     asyncio.create_task(painel_operacoes_rotina.loop_rotina())
+    # Conferência de Fechamento (Painel Financeiro, 29/09): também lê o que
+    # o varredor de OS guardou, então entra depois dele também.
+    asyncio.create_task(loop_conferencia_fechamento())
     yield
+    await stop_datascope_client()
     await stop_harmonit_client()
     await stop_client()
 
@@ -166,6 +174,7 @@ app.include_router(painel_os_scan_router.router)
 app.include_router(painel_placas_router.router)
 app.include_router(painel_operacoes_router.router)
 app.include_router(demandas_router.router)
+app.include_router(painel_conferencia_fechamento_router.router)
 
 app.mount("/painel/static", StaticFiles(directory="frontend"), name="painel_static")
 
@@ -236,3 +245,9 @@ async def painel_registro_telas_page():
 @app.get("/painel/config")
 async def painel_config_page():
     return FileResponse("frontend/config.html")
+
+
+# ── Painel Financeiro (29/09) — primeira tela: Conferência de Fechamento ────
+@app.get("/painel/conferencia-fechamento")
+async def painel_conferencia_fechamento_page():
+    return FileResponse("frontend/conferencia_fechamento.html")
