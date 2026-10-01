@@ -381,6 +381,22 @@ async def conferir_cliente(documento: str = Query(...),
     }
 
 
+# 🚨 `tipoCliente` E `cnpjcpf` SO GRAVAM NA CRIACAO. Medido em 30/09: cinco
+# variantes de `/Clientes/Atualizar` (string e numerico, por id e por documento)
+# devolveram "Cliente atualizado com sucesso." e nao mudaram nada -- a WESO mente
+# no retorno, como o `ativar: false` do Harmonit. Quem nasce `NaoInformado` so se
+# conserta na tela da WESO, e foi trocar o tipo lá que apagou o CNPJ do cliente
+# 13690 (MAXI CONFORT), deixando-o invisivel para toda busca por documento e
+# derrubando seis tentativas de lote entre 14 e 16/09. Por isso o tipo vai JUNTO
+# com o cadastro: e a unica janela que existe.
+def _tipo_pessoa(doc: str) -> str | None:
+    """`Fisica`/`Juridica` pelo TAMANHO do documento, nunca por `isdigit()`: o
+    CNPJ novo tem letra (`WQ0P6GLD000108`, o da empresa de teste). Tamanho fora
+    de 11/14 devolve None -- deixar a WESO decidir e melhor que afirmar errado.
+    """
+    return {11: "Fisica", 14: "Juridica"}.get(len(doc))
+
+
 class CriarClienteInput(BaseModel):
     documento: str
 
@@ -421,9 +437,13 @@ async def criar_cliente_na_weso(body: CriarClienteInput,
             "O cliente do Harmonit veio sem nome — não dá para cadastrar na "
             "WESO sem `razaoSocial`.")
 
+    payload = {"cnpjcpf": doc, "razaoSocial": nome}
+    tipo = _tipo_pessoa(doc)
+    if tipo:
+        payload["tipoCliente"] = tipo
+
     try:
-        await weso_post("/Clientes/Cadastro",
-                        {"cnpjcpf": doc, "razaoSocial": nome}, allow_409=True)
+        await weso_post("/Clientes/Cadastro", payload, allow_409=True)
     except HTTPException as exc:
         # ⚠️ NÃO DESISTE NO ERRO. A WESO já gravou devolvendo erro HTML, e já
         # processou depois de estourar o tempo. Quem decide é a releitura.

@@ -205,6 +205,16 @@ Atualiza dados de um cliente existente. Apenas os campos enviados serão alterad
 
 Todos os campos do Cadastro são aceitos na Atualização. Envie apenas os que deseja modificar.
 
+> 🚨 **FALSO, medido em 2026-09-30.** `tipoCliente` e `cnpjcpf` são **write-once**:
+> gravam só no Cadastro. Na Atualização os dois são **ignorados em silêncio** — a
+> resposta vem `"Cliente atualizado com sucesso."` e nada muda. Testado em cinco
+> variantes (string e ID numérico, por `cliente_id` e por `cnpjcpf`, e reenviando
+> os dois juntos). Vale inclusive para preencher um `cnpjcpf` **nulo**.
+> Os outros campos (`nomeFantasia`, `contato`, `telefone`…) gravam normalmente.
+>
+> Consequência: cliente criado sem `tipoCliente` fica `NaoInformado` **para
+> sempre** pela API. Ver `docs/fpsl/10_Inconsistencias.md` § B13.
+
 ### Resposta de Sucesso (200)
 
 ```json

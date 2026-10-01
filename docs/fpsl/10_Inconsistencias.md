@@ -663,3 +663,73 @@ painel do Harmonit que 16549 é de fato a última real.
 
 **É por isso que recuar não custa nada** — não há dado sensível a tempo, então
 esperar é estritamente melhor que insistir.
+
+## B13 — `tipoCliente` e `cnpjcpf` são WRITE-ONCE, e `Atualizar` MENTE (2026-09-30)
+
+Origem: o usuário foi informado de que "cadastrar cliente na WESO não está
+cadastrando CNPJ". O CNPJ **estava** sendo gravado; o que faltava era o
+`tipoCliente`, e a investigação achou uma limitação maior.
+
+### O que foi medido
+
+`POST /Clientes/Atualizar` **não grava** `tipoCliente` nem `cnpjcpf`. Cinco
+variantes, todas respondendo `"Cliente atualizado com sucesso."` e **nenhuma**
+mudando o campo:
+
+| variante | identificado por | resultado |
+|---|---|---|
+| `tipoCliente: "Fisica"` | `cliente_id` | não gravou |
+| `tipoCliente: 1` (ID numérico) | `cliente_id` | não gravou |
+| `tipoCliente: "Fisica"` | `cnpjcpf` | não gravou |
+| `tipoCliente: 1` | `cnpjcpf` | não gravou |
+| `cnpjcpf` + `tipoCliente` juntos | `cliente_id` | não gravou |
+
+O `cnpjcpf` também não grava quando está **nulo** — não é regra de "não trocar
+identidade", é campo inerte na atualização. Outros campos do mesmo payload
+(`nomeFantasia`) gravam normalmente, então não é a rota inteira que falha.
+
+🚨 **A doc do fornecedor afirma o contrário.** `docs/weso/02_Clientes.md` diz
+*"Todos os campos do Cadastro são aceitos na Atualização"*. Não são.
+
+⚠️ **A WESO RECUSA criar cliente sem documento** (erro HTML não estruturado, que
+o `client.py` lê como `502: WESO retornou erro não estruturado`). Logo, registro
+com `cnpjcpf` nulo **nunca nasceu assim** — perdeu depois.
+
+### A consequência, e o caso real
+
+Cliente que nasce `NaoInformado` **não tem conserto por API**: só pela tela da
+WESO. E é **trocar o tipo na tela** que apaga o `cnpjcpf`.
+
+Foi o que aconteceu com o cliente WESO **13690** (MAXI CONFORT, harmonit
+1042226, CNPJ `20480457000158`):
+
+1. 14/09 12:26:46 — o painel criou pela aba Operações, mandando só
+   `{cnpjcpf, razaoSocial}`. Nasceu **`NaoInformado`**, com documento.
+2. Alguém editou na tela da WESO: entrou `tipoCliente: Juridica`, `nomeFantasia`
+   e `plano: "02 - PRÓ"` — três campos que o painel nunca envia, e que a nossa
+   API comprovadamente **não consegue** gravar.
+3. O `cnpjcpf` foi zerado nessa edição.
+4. Sem documento, `_na_weso(doc)` devolve vazio e `criar_cliente_na_weso`
+   levanta 502 *"a WESO não recusou, mas o cliente não aparece na releitura"* —
+   **6 tentativas de lote** entre 14 e 16/09, num cliente que já existia.
+
+Editar **sem tocar no tipo** não apaga: o GSV (13679) ganhou `plano` estando
+`NaoInformado` e manteve o documento. O gatilho é a troca de tipo.
+
+Resolvido em 30/09 com o usuário digitando o CNPJ na tela; o `plano` e o
+`tipoCliente` sobreviveram à edição, e a busca pelo documento sem pontuação
+acha o registro (a WESO grava formatado, `20.480.457/0001-58`).
+
+### A correção
+
+`operacoes_router.py` passou a derivar `tipoCliente` do **tamanho** do
+documento no cadastro (`_tipo_pessoa`): 11 = `Fisica`, 14 = `Juridica`, e
+`None` fora disso — tamanho, nunca `isdigit()`, porque o CNPJ novo tem letra
+(`WQ0P6GLD000108`). Coberto em `tests/teste_operacoes_f2.py`, bloco [5].
+
+⚠️ Passivo em 30/09: **IAGO SANTOS (13634)** e **GSV (13679)** seguem
+`NaoInformado` com documento intacto. Seguros enquanto ninguém trocar o tipo
+deles na tela — e sem conserto por API.
+
+⚠️ `plano` exige o **nome exato, com acento**: `"02 - PRO"` não casa com
+`"02 - PRÓ"`, e o cliente fica sem plano **sem erro nenhum**.

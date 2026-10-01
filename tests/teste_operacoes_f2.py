@@ -202,6 +202,23 @@ checar("mandou o nome do Harmonit, não outro",
        enviado and enviado[0][1]["razaoSocial"] == VELASCO_H["nome"], str(enviado))
 checar("e o documento sem pontuação",
        enviado and enviado[0][1]["cnpjcpf"] == "WQ0P6GLD000108")
+# 🚨 `tipoCliente` VAI NA CRIAÇÃO OU NUNCA MAIS. Medido em 30/09: cinco
+# variantes de `/Clientes/Atualizar` (string e número, por id e por documento)
+# responderam "Cliente atualizado com sucesso." e NÃO gravaram o campo -- e o
+# `cnpjcpf` é write-once do mesmo jeito. Cliente que nasce `NaoInformado` só se
+# conserta na tela da WESO, e foi trocar o tipo lá que apagou o CNPJ do cliente
+# 13690 (MAXI CONFORT), deixando-o invisível para toda busca por documento.
+checar("mandou tipoCliente derivado do documento",
+       enviado and enviado[0][1].get("tipoCliente") == "Juridica",
+       str(enviado and enviado[0][1].get("tipoCliente")))
+checar("14 caracteres é Juridica e 11 é Fisica",
+       opr._tipo_pessoa("20480457000158") == "Juridica"
+       and opr._tipo_pessoa("23481946864") == "Fisica")
+# ⚠️ POR TAMANHO, NUNCA POR `isdigit()`: o CNPJ novo tem letra.
+checar("o CNPJ novo alfanumérico também é Juridica",
+       opr._tipo_pessoa("WQ0P6GLD000108") == "Juridica")
+checar("tamanho fora de 11/14 não afirma tipo nenhum",
+       opr._tipo_pessoa("1234567890123") is None)
 
 try:
     rodar(opr.criar_cliente_na_weso, com_dubles(None, None),
