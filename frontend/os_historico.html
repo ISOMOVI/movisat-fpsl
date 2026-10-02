@@ -53,6 +53,17 @@
   .badge-green { background:var(--green-dim); color:var(--green); }
   .badge-amber { background:var(--amber-dim); color:var(--amber); }
   .badge-gray { background:var(--bg2); color:var(--text2); }
+  /* 🚨 `badge-red` era USADA (OS excluída) e nunca DEFINIDA: o vermelho não
+     aparecia. Achado em 01/10 ao acrescentar a sub-aba, que também precisa dele. */
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  /* Sub-abas: padrão copiado de harmonit_historico.html (linhas 113-116). */
+  .subabas { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 14px; }
+  .subabas button { padding:6px 13px; border:1px solid var(--border); background:var(--card);
+                    border-radius:20px; font-size:.8rem; cursor:pointer; color:var(--text2); font-family:inherit; }
+  .subabas button.on { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
+  .oculto { display:none; }
+  .linhas-of { font-size:.74rem; color:var(--text2); margin-top:4px; line-height:1.5; }
+  .det { font-size:.78rem; color:var(--text2); max-width:420px; }
   .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-bottom:12px; }
   .msg-ok { background:var(--green-dim); color:var(--green); display:block; }
   .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
@@ -72,8 +83,14 @@
   <main class="main">
     <div class="top"><h1>Histórico de OS</h1></div>
     <p class="sub">Varredura sequencial das OS do Harmonit (por número crescente), lendo a oficina embutida em cada uma.
-       <strong>Fase 1: só leitura</strong> — nada é gravado na WESO ainda.</p>
+       <strong>Só leitura</strong> — nada é gravado na WESO.</p>
 
+    <div class="subabas" id="subabas">
+      <button id="abBtnVarredura" class="on" onclick="trocarAba('varredura')">Varredura</button>
+      <button id="abBtnConferencia" onclick="trocarAba('conferencia')">ID × modelo</button>
+    </div>
+
+    <div id="abaVarredura">
     <div class="painel-ctrl">
       <div class="stat"><b id="stTotal">—</b><span>OS no histórico</span></div>
       <div class="stat"><b id="stCheckpoint">—</b><span>Última OS (checkpoint)</span></div>
@@ -101,6 +118,35 @@
         </tr></thead>
         <tbody id="tbody"><tr><td colspan="6" class="empty">Carregando…</td></tr></tbody>
       </table>
+      </div>
+    </div>
+    </div>
+
+    <div id="abaConferencia" class="oculto">
+      <p class="sub">Para cada OS com oficina, confere três coisas contra a WESO:
+        <strong>a ação</strong> (instalação/retirada) bate com o <em>problema</em> da OS;
+        <strong>o vínculo</strong> — a série está, ou saiu, daquela placa;
+        e <strong>o modelo</strong> que a WESO dá para a série bate com o material lançado na OS.
+        <br>"—" não é erro: é OS ainda em andamento, série mexida por uma OS posterior, ou dado que falta para afirmar.
+        Só o vermelho pede alguém olhar.</p>
+
+      <div class="painel-ctrl">
+        <label class="chk"><input type="checkbox" id="soDiverg" onchange="carregarConferencia()"> só divergências</label>
+        <label class="chk"><input type="checkbox" id="soServico" onchange="carregarConferencia()"> só "Serviço Realizado"</label>
+        <span id="confResumo" style="color:var(--text2); font-size:.82rem"></span>
+        <span style="flex:1"></span>
+        <button class="btn btn-ghost" onclick="carregarConferencia()"><i class="bi bi-arrow-repeat"></i> Recarregar</button>
+      </div>
+
+      <div class="card">
+        <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>OS</th><th>Situação OS</th><th>Ação × problema</th><th>Vínculo na WESO</th><th>Modelo</th><th>Detalhe</th>
+          </tr></thead>
+          <tbody id="tbConf"><tr><td colspan="6" class="empty">Abra esta aba para conferir.</td></tr></tbody>
+        </table>
+        </div>
       </div>
     </div>
   </main>
@@ -187,8 +233,81 @@ async function salvarCheckpoint() {
   else showMsg('Falha ao salvar checkpoint.', true);
 }
 
+// ── Sub-aba "ID × modelo" ───────────────────────────────────────────────────
+// Só leitura. O servidor confere tudo contra o banco local e o cache da WESO,
+// sem chamar API externa. NÃO entra no setInterval de 60 s: lê todas as OS com
+// oficina a cada vez, e o cache da WESO só muda uma vez por dia (04:15).
+let abaAtiva = 'varredura';
+
+function trocarAba(a) {
+  abaAtiva = a;
+  document.getElementById('abaVarredura').classList.toggle('oculto', a !== 'varredura');
+  document.getElementById('abaConferencia').classList.toggle('oculto', a !== 'conferencia');
+  document.getElementById('abBtnVarredura').classList.toggle('on', a === 'varredura');
+  document.getElementById('abBtnConferencia').classList.toggle('on', a === 'conferencia');
+  if (a === 'conferencia') carregarConferencia();
+}
+
+const ACAO_ESPERADA = { instalacao: 'prevê instalação', desinstalacao: 'prevê retirada',
+                        misto: 'admite as duas', sem_regra: 'sem regra' };
+
+function veredito(v) {
+  if (v === 'ok') return '<span class="badge badge-green">bate</span>';
+  if (v === 'divergente') return '<span class="badge badge-red">diverge</span>';
+  if (v === 'sem_regra') return '<span class="badge badge-gray">sem regra</span>';
+  return '<span class="badge badge-gray">—</span>';
+}
+
+function linhasHtml(ls) {
+  if (!ls || !ls.length) return '';
+  return '<div class="linhas-of">' + ls.map(li => {
+    const ac = li.acao === 1 ? 'entra' : li.acao === 2 ? 'sai' : ('st' + esc(li.acao));
+    const sup = li.anulada_na_mesma_os ? ' <em>(superada na mesma OS)</em>' : '';
+    const hoje = li.placa_atual_da_serie ? ` · hoje em <strong>${esc(li.placa_atual_da_serie)}</strong>` : '';
+    return `${ac} ${esc(li.serial)} na ${esc(li.placa)} · WESO: ${esc(li.modelo_weso || '?')}, `
+         + `${esc(li.situacao_weso || '?')}${hoje}${sup}`;
+  }).join('<br>') + '</div>';
+}
+
+async function carregarConferencia() {
+  const tb = document.getElementById('tbConf');
+  tb.innerHTML = '<tr><td colspan="6" class="empty">Conferindo…</td></tr>';
+  const so = document.getElementById('soDiverg').checked;
+  const sr = document.getElementById('soServico').checked;
+  try {
+    const res = await fetch('/painel/api/os-scan/conferencia-oficina?limit=300&so_divergentes=' + so
+                            + '&so_servico_realizado=' + sr, { headers: auth() });
+    if (res.status === 401) { window.location.href = '/painel'; return; }
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'falha');
+    // 🚨 A idade do cache aparece SEMPRE: serviço feito hoje está com a WESO de
+    // ontem até as 04:15. Esconder isso faria a tela mentir por omissão.
+    const idade = d.cache_idade_horas == null ? 'cache da WESO indisponível'
+                : `WESO lida do cache de ${Math.round(d.cache_idade_horas)} h atrás (atualiza 04:15)`;
+    document.getElementById('confResumo').textContent =
+      `${d.itens.length} OS · ${idade} · ${d.modelos_no_de_para} modelos no de-para`;
+    if (!d.itens.length) {
+      const vazio = sr ? 'Nenhuma OS com oficina em "Serviço Realizado"' + (so ? ' com divergência.' : '.')
+                  : (so ? 'Nenhuma divergência.' : 'Nenhuma OS com oficina.');
+      tb.innerHTML = `<tr><td colspan="6" class="empty">${vazio}</td></tr>`;
+      return;
+    }
+    tb.innerHTML = d.itens.map(x => `<tr>
+        <td><strong>${esc(x.numero_os)}</strong>${linhasHtml(x.linhas)}</td>
+        <td style="color:var(--text2)">${esc(x.status_str || '—')}</td>
+        <td>${veredito(x.veredito_acao)}<div class="linhas-of">${esc(ACAO_ESPERADA[x.acao_esperada] || '')}</div></td>
+        <td>${veredito(x.veredito_weso)}</td>
+        <td>${veredito(x.veredito_modelo)}</td>
+        <td class="det">${esc(x.detalhe)}</td>
+      </tr>`).join('');
+  } catch (e) {
+    tb.innerHTML = `<tr><td colspan="6" class="empty">Erro: ${esc(e.message)}</td></tr>`;
+  }
+}
+
 carregar();
-setInterval(carregar, 60000);  // acompanha o scan de 5 min do servidor sem recarregar a página
+// Só a varredura se atualiza sozinha -- acompanha o scan de 5 min do servidor.
+setInterval(() => { if (abaAtiva === 'varredura') carregar(); }, 60000);
 </script>
 </body>
 </html>

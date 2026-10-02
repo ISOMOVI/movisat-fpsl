@@ -56,3 +56,85 @@ Manter **placa × equipamento × cliente** alinhados na WESO a partir do que é 
 - **1 escrita real na WESO** pra confirmar a cadeia (cliente/veículo/vínculo) e resolver o **D** (apagar vs desativar).
 - **Custo ocioso:** ~10 sondagens a cada 5 min quando não há OS nova (~2.880 chamadas/dia). Afinável (intervalo/limiar).
 - **Nº da OS** só existe via scan (o evento de oficina da API não carrega).
+
+
+---
+
+## 01/10 — `materiais_json` e `situacao_id` (E1 da frente de Fechamentos)
+
+**Status:** ✅ no ar desde 2026-10-01 13:35 (restart autorizado). Contexto da
+frente em `30_Painel_Financeiro.md`.
+
+**Por quê:** a varredura já lia `materiais[]` e `situacaoId` na mesma chamada
+`ObterOrdemServicoPorNumero` e descartava os dois. O material é o **único**
+lugar onde o modelo do equipamento da OS existe — sem ele não há como comparar
+com o que a WESO diz do rastreador. `situacaoId` é a "Situação de Ordem de
+Serviço" (catálogo `SituacaoOrdemServico`), campo **diferente** de
+`status`/`status_str`.
+
+**O que mudou:**
+
+| Arquivo | Mudança |
+|---|---|
+| `storage.py` (init) | `ALTER TABLE os_historico ADD COLUMN materiais_json TEXT` e `situacao_id INTEGER`, padrão `PRAGMA table_info` |
+| `storage.salvar_os_historico` | dois parâmetros opcionais, `materiais` e `situacao_id`; uma leitura só da linha anterior (antes eram duas) |
+| `os_scan_router.varrer_os` / `resync_os` | repassam `d.get("materiais")` e `d.get("situacaoId")` — nenhuma chamada nova à API |
+
+🚨 **A guarda do `None`.** `materiais=None` (ou `situacao_id=None`) **preserva**
+o que já está gravado — quem não tem o dado não sobrescreve quem tem. Existe um
+**terceiro chamador**, `services/conferencia_fechamento.py:87`, que grava sem
+esses campos; sem a guarda, a rotina de 1h zeraria o material que a varredura
+acabou de gravar. `oficinas` **não** ganhou essa proteção de propósito: lista
+vazia ali é informação (OS sem oficina). `situacao_id = 0` grava `0` — é valor
+real do Harmonit ("sem situação"), não ausência.
+
+**Teste com dado real (5 OS):**
+
+| OS | tipo | situacao_id | status_str | oficinas | materiais |
+|---|---|---|---|---|---|
+| 16450 | 55 Manutenção (troca) | 0 | Finalizado | 2 | 2 |
+| 16934 | 2 | 15746 (financeira) | Finalizado | 1 | 2 |
+| 16961 | 57 Retirada | 38 | Nova | 1 | 4 |
+| 16962 | 57 Retirada | 38 | Nova | 1 | 4 |
+| 16976 | 76 Instalação | 38 | Iniciada | 1 | 5 |
+
+Guarda provada: regravar a 16962 sem `materiais` manteve os 4 materiais e o 38.
+
+⚠️ **Incidente no teste, corrigido:** o teste da guarda gravou valores falsos em
+problema/cliente/oficina da 16962. Restaurada na hora a partir do Harmonit e
+conferida (problema 7502, cliente 330795, serial 007786380). Teste de escrita se
+faz na sandbox (OS 16991), não em OS de cliente.
+
+`listar_os_historico` **não** devolve `materiais` — a tela do Histórico de OS
+segue com o mesmo payload.
+
+---
+
+---
+
+## 01/10 — `os_id`, o id interno da OS
+
+A varredura passou a guardar também o **`os_id`**, o id INTERNO da OS no
+Harmonit, que **não é** o `numero_os`. Motivo: `ObterTimeLine` só aceita o id, e
+sem guardá-lo aqui toda leitura de linha do tempo gastaria uma chamada a mais só
+para descobri-lo. Vem na mesma resposta que a varredura já lê, de graça.
+
+⚠️ **O resync cobre as 400 OS mais recentes**, então uma OS que sai dessa janela
+não recebe `os_id` por aqui. Quem precisa dele resolve na hora e grava (ver
+`_os_id_resolvido` em `services/conferencia_fechamento.py`) — a varredura não é
+o único caminho, de propósito.
+
+Detalhe do uso em `30_Painel_Financeiro.md` (ordenação da `FIN_1.1`).
+
+
+---
+
+## 01/10 — sub-aba "ID × modelo"
+
+A tela ganhou duas sub-abas: **Varredura** (o que já existia) e **ID × modelo**,
+que confere cada linha de oficina contra a WESO. Só leitura, sem chamada de API.
+Regra, medições e números em `30_Painel_Financeiro.md` (seção E2).
+
+⚠️ A sub-aba **não** entra no recarregamento de 60 s da tela: ela lê todas as OS
+com oficina a cada vez, e o cache da WESO só muda uma vez por dia. Recarrega ao
+abrir a aba ou pelo botão.

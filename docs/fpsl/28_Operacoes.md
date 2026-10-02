@@ -1990,3 +1990,58 @@ linha 1572000 do LEITOR I-BUTTON com `cobrar` desmarcado via
 com `id: 0` cria outra). Relida: uma linha só, as demais intactas, cobrança de
 volta aos R$ 7.426,68 do termo. Estado anterior em
 `backups/os_16929_materiais_antes_2026-09-24.json`.
+
+
+---
+
+## 01/10 — medições sobre a Operações (nada da spec mudou)
+
+Nenhum arquivo da aba Operações foi alterado. Só leitura.
+
+### Uso real
+
+- **Aba Operações:** 109 lotes de 21/08 a 30/09 — Erika 55, Caio 32, admin 22.
+  POSTs humanos todo dia no journal (28/09 = 38, 29/09 = 27, 30/09 = 22).
+- **Tela `HST_4.1`:** 2 aberturas humanas em 7 dias (journal desde 25/09).
+  Critério: suíte chega de `127.0.0.1`; gente chega com IP externo pelo proxy.
+
+### 🚨 33 pendências em `desistiu`, numa tela que quase ninguém abre
+
+`operacoes_espera` em 01/10: 32 `concluido`, 12 `esperando`, **33 `desistiu`**
+(rescisão 19, substituição 9, recipiente 4, ressarcimento 1). A docstring do
+`GET /historico` diz que `desistiu` *"é o único jeito de alguém saber que um
+recipiente ficou preso ou que uma oficina nunca chegou"*. **19 rescisões
+desistidas podem ser 19 rastreadores que não voltaram ao estoque.** Pendente de
+triagem — só leitura, e nada se mexe aqui sem ele.
+
+### F7 — andando, em duas fases
+
+🔵 Pedido dele em 01/10: *"a aba 'hisotrico de placas' se não tiver uso, pode
+propor um expurgo seguro dela // o mesmo para as 'gerar OS' e ' Cadastro de
+placas' -- Aba de Operações deve permanecer 100% integra acima de tudo. Se algo
+mexer nela, pare e avalie corretamente o caminho a seguir"*.
+
+Uso medido das velhas: **nenhum humano.** Cadastro de Placas tem a última
+escrita em 17/08 (18 linhas, admin); Gerar OS nunca recebeu `POST` no journal;
+Histórico de Placas só a checagem de 01/10. **Nenhum dos 6 usuários tem
+`gerar_os` nem `cadastro_placas` no perfil** — só o owner alcança as três.
+
+🛑 **Ponto de parada achado:** três testes **da Operações** leem as telas
+velhas — `teste_tela_clonada.py:32` e `teste_acabamento.py:29` leem
+`gerar_os.html`; `teste_aba_ponta_a_ponta.py:190-197` exige `gerar_os.html`,
+`cadastro_placas.html` e `os_router.py` com mais de 1.200 linhas. Por isso:
+
+- **X1** (proposta, aguardando autorização): sai menu, rotas de página,
+  `placas_router.py`, `weso_lookup.py`, `clientes_router.py` + `cep.py`
+  (órfãos), `cadastro_placas_historico.html` e os testes exclusivos. Os dois
+  HTML lidos pelos testes da Operações **ficam no disco**, sem porta. Único
+  arquivo do conjunto da Operações tocado: `telas.py` (3 entradas saem).
+- **X2** (a F7 de fato: partir `os_router`, apagar os dois HTML e
+  `equipamentos.py`): encosta nos testes da Operações — **só com avaliação
+  dele.**
+
+Verificado: `abas.pode_acessar` devolve `False` para permissão inexistente, sem
+erro — as rotas de Vínculos que pedem `("gerar_os", "vinculos")` seguem abrindo
+para quem tem `vinculos`.
+
+Detalhe e mapa de dependências: plano da frente, seção "Expurgo".

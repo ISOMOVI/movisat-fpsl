@@ -91,11 +91,19 @@ ROTAS = [
     ("POST", "/painel/api/os-scan/varrer",      "os_historico",       None, True),
     ("POST", "/painel/api/os-scan/resync",      "os_historico",       None, True),
     ("PUT",  "/painel/api/os-scan/checkpoint",  "os_historico",       {"numero": 16000}, True),
+    # Sub-aba "ID x modelo" (01/10): só leitura, sem API externa.
+    ("GET",  "/painel/api/os-scan/conferencia-oficina", "os_historico", None, False),
     ("GET",  "/painel/api/usuarios",            "usuarios",           None, False),
     ("GET",  "/painel/api/usuarios/abas",       "usuarios",           None, False),
 
     ("GET",  "/painel/api/conferencia-fechamento",             "financeiro", None, False),
     ("POST", "/painel/api/conferencia-fechamento/rodar-agora", "financeiro", None, True),
+    # Interruptor da rotina (01/10). Ler é de quem tem a aba; MUDAR é só do
+    # dono, e a tranca disso é a permissão `config` -- que é `somente_owner`,
+    # logo não entra no conjunto `concediveis` do laço [7].
+    ("GET",  "/painel/api/conferencia-fechamento/interruptor", "financeiro", None, False),
+    ("PUT",  "/painel/api/conferencia-fechamento/interruptor", "config",
+     {"ativa": False}, True),
 ]
 
 

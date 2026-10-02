@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from ..auth import requer_aba
 from ...harmonit_client import harmonit_get
 from ... import storage
+from ...services.conferencia_oficina import conferir_do_banco
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/painel/api/os-scan", tags=["painel-os-scan"])
@@ -84,6 +85,8 @@ async def varrer_os(desde: int | None = None, limite_buracos: int = LIMITE_BURAC
                 produto_id=d.get("produtoId"), cliente_id=d.get("parceiro") or d.get("clienteId"),
                 data_previsao=d.get("dataPrevisao"), oficinas=oficinas,
                 status=d.get("status"), status_str=d.get("statusStr"),
+                materiais=d.get("materiais"), situacao_id=d.get("situacaoId"),
+                os_id=d.get("id"),
             )
             if nova:
                 novas += 1
@@ -121,6 +124,8 @@ async def resync_os(janela: int = RESYNC_JANELA) -> dict:
                 produto_id=d.get("produtoId"), cliente_id=d.get("parceiro") or d.get("clienteId"),
                 data_previsao=d.get("dataPrevisao"), oficinas=d.get("oficina") or [],
                 status=d.get("status"), status_str=d.get("statusStr"),
+                materiais=d.get("materiais"), situacao_id=d.get("situacaoId"),
+                os_id=d.get("id"),
             )
             reencontradas += 1
         return {"janela": len(numeros), "reencontradas": reencontradas, "excluidas": excluidas, "erros": erros}
@@ -190,6 +195,20 @@ async def historico(limit: int = Query(300, le=1000),
     return {"checkpoint": checkpoint, "total": total,
             "ultima_nova_em": await storage.get_config("os_scan_ultima_nova_em", ""),
             "alerta": await _alerta_data(), "itens": itens}
+
+
+@router.get("/conferencia-oficina")
+async def conferencia_oficina(limit: int = Query(200, le=1000),
+                              so_divergentes: bool = Query(False),
+                              so_servico_realizado: bool = Query(False),
+                              _=Depends(requer_aba("os_historico"))):
+    """Sub-aba "ID x modelo": confere cada linha de oficina contra a WESO.
+
+    SÓ LEITURA, e sem chamada de API: sai do `os_historico` e do cache
+    da WESO -- nenhuma chamada ao Harmonit nem à WESO.
+    Mesma aba da tela que ja existe -- nao nasce tela nova.
+    """
+    return await conferir_do_banco(limit, so_divergentes, so_servico_realizado)
 
 
 class CheckpointInput(BaseModel):

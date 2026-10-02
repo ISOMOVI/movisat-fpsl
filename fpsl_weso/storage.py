@@ -122,6 +122,25 @@ def init_db():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_dr_numero_os ON datascope_respostas(numero_os)")
+        # migração (01/10): quando a OS finalizou DE FATO, e por quem -- lido de
+        # `ObterTimeLine`, a única fonte que tem isso. Pedido dele: a lista mostra
+        # a mais antiga no topo, porque é fila de trabalho.
+        #
+        # 🚨 POR QUE NÃO SERVIA `conferido_em`: as 76 primeiras linhas desta
+        # tabela foram todas gravadas no mesmo intervalo de 16 segundos (a
+        # validação de 29/09). Ordenar por ela não ordena nada.
+        _cols_cf = [r[1] for r in conn.execute(
+            "PRAGMA table_info(conferencia_fechamento)").fetchall()]
+        if "finalizado_em" not in _cols_cf:
+            conn.execute("ALTER TABLE conferencia_fechamento ADD COLUMN finalizado_em TEXT")
+        if "finalizado_por" not in _cols_cf:
+            conn.execute("ALTER TABLE conferencia_fechamento ADD COLUMN finalizado_por TEXT")
+        # migração (01/10, E3): os dois vereditos que a regra da oficina acrescenta.
+        # 1 = bate, 0 = diverge, NULL = não dá para afirmar (nunca é vermelho).
+        if "acao_ok" not in _cols_cf:
+            conn.execute("ALTER TABLE conferencia_fechamento ADD COLUMN acao_ok INTEGER")
+        if "modelo_ok" not in _cols_cf:
+            conn.execute("ALTER TABLE conferencia_fechamento ADD COLUMN modelo_ok INTEGER")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS harmonit_chamadas (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,6 +170,23 @@ def init_db():
             conn.execute("ALTER TABLE os_historico ADD COLUMN status INTEGER")
         if "status_str" not in _cols:
             conn.execute("ALTER TABLE os_historico ADD COLUMN status_str TEXT")
+        # migração (01/10): `materiais_json` e `situacao_id`, os dois últimos
+        # campos que a varredura já lia e descartava. O material é o único lugar
+        # onde o modelo do equipamento da OS existe -- sem ele não há como
+        # comparar com o que a WESO diz do rastreador. `situacao_id` é a
+        # "Situação de Ordem de Serviço" (catálogo `SituacaoOrdemServico`), que
+        # é campo DIFERENTE de `status`/`status_str`: a OS nasce em 38 "Nova
+        # Solicitação" e o fechamento de serviço é 15694 "Serviço Realizado".
+        if "materiais_json" not in _cols:
+            conn.execute("ALTER TABLE os_historico ADD COLUMN materiais_json TEXT")
+        if "situacao_id" not in _cols:
+            conn.execute("ALTER TABLE os_historico ADD COLUMN situacao_id INTEGER")
+        # migração (01/10): `os_id`, o id INTERNO da OS no Harmonit -- que não é
+        # o `numero_os`. `ObterTimeLine` só aceita o id, e sem guardá-lo aqui
+        # toda leitura de linha do tempo gastaria uma chamada a mais só para
+        # descobri-lo. A varredura já o recebe na mesma resposta.
+        if "os_id" not in _cols:
+            conn.execute("ALTER TABLE os_historico ADD COLUMN os_id INTEGER")
 
         # migração (2026-08-14): `nas_duas` -- o item aparece TAMBÉM na OS
         # operacional, além da financeira. Nasceu do termo 8839: "Central 24
@@ -373,31 +409,44 @@ async def listar_config() -> list[dict]:
 async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, cliente_id,
                               data_previsao, oficinas: list,
                               status: int | None = None,
-                              status_str: str | None = None) -> bool:
+                              status_str: str | None = None,
+                              materiais: list | None = None,
+                              situacao_id: int | None = None,
+                              os_id: int | None = None) -> bool:
     """Grava/atualiza uma OS no histórico. Retorna True se era NOVA (não existia).
 
     🔵 29/09: `status`/`status_str` são opcionais, de propósito -- os dois
     únicos chamadores (`varrer_os`/`resync_os`) já leem esses campos da
     mesma resposta do Harmonit que usam para tudo o mais, então passam a
     mandar; um chamador futuro que não tenha esse dado não é obrigado.
+
+    🔵 01/10: `materiais`/`situacao_id` entram pela mesma porta e pela mesma
+    razão. ⚠️ `materiais=None` NÃO apaga o que já está gravado -- quem não
+    tem o dado não sobrescreve quem tem. `oficinas` não ganhou essa proteção
+    porque lista vazia ali é informação (OS sem oficina), e aqui não é.
     """
     def _run():
         agora = datetime.now(timezone.utc).isoformat()
         with _connect() as conn:
-            existe = conn.execute(
-                "SELECT 1 FROM os_historico WHERE numero_os = ?", (numero_os,)
-            ).fetchone() is not None
-            visto = agora if not existe else conn.execute(
-                "SELECT visto_em FROM os_historico WHERE numero_os = ?", (numero_os,)
-            ).fetchone()[0]
+            anterior = conn.execute(
+                "SELECT visto_em, materiais_json, situacao_id, os_id FROM os_historico "
+                "WHERE numero_os = ?", (numero_os,)
+            ).fetchone()
+            existe = anterior is not None
+            visto = anterior[0] if existe else agora
+            mat_json = (json.dumps(materiais, ensure_ascii=False)
+                        if materiais is not None else (anterior[1] if existe else None))
+            sit = situacao_id if situacao_id is not None else (anterior[2] if existe else None)
+            oid = os_id if os_id is not None else (anterior[3] if existe else None)
             conn.execute(
                 "INSERT OR REPLACE INTO os_historico "
                 "(numero_os, tipo, problema, produto_id, cliente_id, data_previsao, "
-                " oficinas_json, n_oficinas, visto_em, atualizado_em, status, status_str) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " oficinas_json, n_oficinas, visto_em, atualizado_em, status, status_str, "
+                " materiais_json, situacao_id, os_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (numero_os, tipo, problema, produto_id, cliente_id, data_previsao,
                  json.dumps(oficinas or [], ensure_ascii=False), len(oficinas or []), visto, agora,
-                 status, status_str),
+                 status, status_str, mat_json, sit, oid),
             )
         return not existe
     return await asyncio.get_running_loop().run_in_executor(None, _run)
@@ -438,6 +487,96 @@ async def os_nao_finalizadas_recentes(janela: int = 400) -> list[int]:
                 "ORDER BY numero_os DESC LIMIT ?", (janela,),
             ).fetchall()
         return [r[0] for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+# "Serviço Realizado" no catálogo `SituacaoOrdemServico` (empresaId 98). É a
+# PORTA da Conferência de Fechamento: marcada por uma pessoa, depois que a
+# resposta do DataScope existe (decisão dele, 01/10).
+SITUACAO_SERVICO_REALIZADO = 15694
+
+
+def _corte_dias(dias: int) -> str:
+    """ISO em UTC de `dias` atrás -- mesmo formato do `visto_em`, então a
+    comparação de texto ordena certo."""
+    from datetime import timedelta                     # noqa: PLC0415
+    return (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+
+
+def _linha_oficina(r) -> dict:
+    return {"numero_os": r[0], "tipo": r[1], "problema": r[2],
+            "situacao_id": r[3], "status_str": r[4],
+            "oficinas": json.loads(r[5] or "[]"),
+            "materiais": json.loads(r[6] or "[]")}
+
+
+_COLS_OFICINA = ("numero_os, tipo, problema, situacao_id, status_str, "
+                 "oficinas_json, materiais_json")
+
+
+async def os_com_oficina(limit: int = 200, so_servico_realizado: bool = False) -> list[dict]:
+    """OS que têm oficina registrada, com o que a conferência de oficina precisa.
+
+    🔵 *"pegue as OS que tem oficina no historico de oficina e quando tiver traga
+    para o grid dele"*. Mais recente primeiro: aqui não é fila de trabalho como a
+    `FIN_1.1`, é diagnóstico -- divergência nova é a que interessa achar."""
+    def _run():
+        sql = (f"SELECT {_COLS_OFICINA} FROM os_historico "
+               "WHERE n_oficinas > 0 AND excluida = 0 ")
+        args: list = []
+        if so_servico_realizado:
+            sql += "AND situacao_id = ? "
+            args.append(SITUACAO_SERVICO_REALIZADO)
+        sql += "ORDER BY numero_os DESC LIMIT ?"
+        args.append(limit)
+        with _connect() as conn:
+            rows = conn.execute(sql, args).fetchall()
+        return [_linha_oficina(r) for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def os_com_oficina_recentes(dias: int) -> list[int]:
+    """Números das OS com oficina vistas nos últimos `dias` -- o que a rotina da
+    Conferência relê no Harmonit a cada passada.
+
+    🔵 *"deve varrer somente a partir dos ultimos 30 dias"* (01/10). Medido no
+    dia: 63 OS cabem nessa janela. A data é o `visto_em` -- a varredura roda a
+    cada 5 min desde 24/07, então ele é a criação da OS com atraso de minutos."""
+    def _run():
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT numero_os FROM os_historico WHERE n_oficinas > 0 "
+                "AND excluida = 0 AND visto_em >= ? ORDER BY numero_os DESC",
+                (_corte_dias(dias),)).fetchall()
+        return [r[0] for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def os_para_conferir(dias: int) -> list[dict]:
+    """A FILA da Conferência de Fechamento: OS com oficina, em "Serviço
+    Realizado", vistas nos últimos `dias`. Reconferidas a CADA passada -- a WESO
+    e o DataScope mudam, e uma lista que guarda o veredito de ontem mente."""
+    def _run():
+        with _connect() as conn:
+            rows = conn.execute(
+                f"SELECT {_COLS_OFICINA} FROM os_historico WHERE n_oficinas > 0 "
+                "AND excluida = 0 AND situacao_id = ? AND visto_em >= ? "
+                "ORDER BY numero_os", (SITUACAO_SERVICO_REALIZADO, _corte_dias(dias))
+            ).fetchall()
+        return [_linha_oficina(r) for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def os_id_de(numero_os: int) -> int | None:
+    """O id INTERNO da OS no Harmonit (≠ `numero_os`), se a varredura já o viu.
+
+    `None` = ainda não sei. Quem precisa dele (`ObterTimeLine`) trata isso como
+    "fica para a próxima passada", nunca gasta chamada para descobrir."""
+    def _run():
+        with _connect() as conn:
+            row = conn.execute("SELECT os_id FROM os_historico WHERE numero_os = ?",
+                               (numero_os,)).fetchone()
+        return row[0] if row else None
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
@@ -522,39 +661,109 @@ async def resposta_datascope_por_os(numero_os: int) -> dict | None:
 
 # ── conferencia_fechamento (Painel Financeiro, 29/09) ────────────────────────
 
+def _tri(v):
+    """True/False/None -> 1/0/NULL. `None` é "não sei", e não vira 0."""
+    return None if v is None else int(v)
+
+
 async def salvar_conferencia_fechamento(numero_os: int, harmonit_ok: bool,
                                         datascope_ok: bool | None,
                                         datascope_form_state: str | None,
-                                        weso_ok: bool | None, detalhe: str) -> None:
+                                        weso_ok: bool | None, detalhe: str,
+                                        finalizado_em: str | None = None,
+                                        finalizado_por: str | None = None,
+                                        acao_ok: bool | None = None,
+                                        modelo_ok: bool | None = None) -> None:
+    """⚠️ `finalizado_em`/`finalizado_por` são opcionais e, quando vêm `None`,
+    PRESERVAM o que já estava gravado -- mesma guarda do `salvar_os_historico`.
+    Custam uma chamada a `ObterTimeLine`, então só se leem na primeira
+    conferência de cada OS; reconferir não deve apagar o que já se sabe."""
     def _run():
         agora = datetime.now(timezone.utc).isoformat()
         with _connect() as conn:
+            anterior = conn.execute(
+                "SELECT finalizado_em, finalizado_por FROM conferencia_fechamento "
+                "WHERE numero_os = ?", (numero_os,)).fetchone()
+            fim = finalizado_em if finalizado_em is not None else (
+                anterior[0] if anterior else None)
+            por = finalizado_por if finalizado_por is not None else (
+                anterior[1] if anterior else None)
             conn.execute(
                 "INSERT OR REPLACE INTO conferencia_fechamento "
                 "(numero_os, harmonit_ok, datascope_ok, datascope_form_state, "
-                " weso_ok, detalhe, conferido_em) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (numero_os, int(harmonit_ok),
-                 None if datascope_ok is None else int(datascope_ok),
-                 datascope_form_state,
-                 None if weso_ok is None else int(weso_ok),
-                 detalhe, agora),
+                " weso_ok, detalhe, conferido_em, finalizado_em, finalizado_por, "
+                " acao_ok, modelo_ok) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (numero_os, int(harmonit_ok), _tri(datascope_ok),
+                 datascope_form_state, _tri(weso_ok),
+                 detalhe, agora, fim, por, _tri(acao_ok), _tri(modelo_ok)),
             )
     await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
-async def listar_conferencia_fechamento(limit: int = 300) -> list[dict]:
+async def salvar_conferencia_fechamento_datas(numero_os: int, finalizado_em: str,
+                                              finalizado_por: str | None) -> None:
+    """Só as duas datas, numa linha que JÁ existe (backfill).
+
+    ⚠️ `UPDATE`, não `INSERT OR REPLACE`: aqui não se toca em veredito nenhum.
+    Reescrever a linha inteira para gravar duas colunas é como se perde
+    `conferido_em` e os `ok` sem querer."""
+    def _run():
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE conferencia_fechamento SET finalizado_em = ?, finalizado_por = ? "
+                "WHERE numero_os = ?", (finalizado_em, finalizado_por, numero_os))
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def conferencia_sem_finalizado_em(limit: int = 400) -> list[int]:
+    """OS já conferidas que ainda não têm a data real de finalização.
+
+    É a fila do backfill: as 76 linhas de 29/09 nasceram sem essa data, e cada
+    uma custa uma chamada ao Harmonit para preencher."""
     def _run():
         with _connect() as conn:
             rows = conn.execute(
-                "SELECT numero_os, harmonit_ok, datascope_ok, datascope_form_state, "
-                "weso_ok, detalhe, conferido_em FROM conferencia_fechamento "
-                "ORDER BY conferido_em DESC LIMIT ?", (limit,),
+                "SELECT numero_os FROM conferencia_fechamento "
+                "WHERE finalizado_em IS NULL ORDER BY numero_os DESC LIMIT ?",
+                (limit,)).fetchall()
+        return [r[0] for r in rows]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_conferencia_fechamento(limit: int = 300) -> list[dict]:
+    """🔵 MAIS ANTIGA NO TOPO, por pedido dele em 01/10 -- é fila de trabalho,
+    não diário: *"exibir ordenadamente o que foi finalizado mais antiamente no
+    topo"*.
+
+    ⚠️ Ordena por `finalizado_em` e cai em `conferido_em` quando ela falta
+    (OS cuja finalização foi cancelada, ou ainda não lida). Sem o `COALESCE`,
+    toda linha sem data iria para uma ponta só e a fila mentiria."""
+    def _b(v):
+        return None if v is None else bool(v)
+
+    def _run():
+        # 🔵 E3 (01/10): só OS em "Serviço Realizado" -- *"a rotina valida ele
+        # primeiro e parte dali"*. As linhas antigas da tabela (OS conferidas
+        # pela porta velha, status "Finalizado") ficam guardadas, mas saem da
+        # tela: a situação é relida do `os_historico`, então uma OS que sair de
+        # 15694 também sai da lista sem precisar apagar nada.
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT c.numero_os, c.harmonit_ok, c.datascope_ok, c.datascope_form_state, "
+                "c.weso_ok, c.detalhe, c.conferido_em, c.finalizado_em, c.finalizado_por, "
+                "c.acao_ok, c.modelo_ok, h.status_str, h.problema "
+                "FROM conferencia_fechamento c JOIN os_historico h USING (numero_os) "
+                "WHERE h.situacao_id = ? "
+                "ORDER BY COALESCE(c.finalizado_em, c.conferido_em) ASC LIMIT ?",
+                (SITUACAO_SERVICO_REALIZADO, limit),
             ).fetchall()
         return [{"numero_os": r[0], "harmonit_ok": bool(r[1]),
-                 "datascope_ok": None if r[2] is None else bool(r[2]),
-                 "datascope_form_state": r[3],
-                 "weso_ok": None if r[4] is None else bool(r[4]),
-                 "detalhe": r[5], "conferido_em": r[6]} for r in rows]
+                 "datascope_ok": _b(r[2]), "datascope_form_state": r[3],
+                 "weso_ok": _b(r[4]), "detalhe": r[5], "conferido_em": r[6],
+                 "finalizado_em": r[7], "finalizado_por": r[8],
+                 "acao_ok": _b(r[9]), "modelo_ok": _b(r[10]),
+                 "status_str": r[11], "problema": r[12]} for r in rows]
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 

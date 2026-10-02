@@ -91,6 +91,11 @@ A documentação é o produto final — o código é o meio de validá-la.
 | [11_Seguranca.md](11_Seguranca.md) | Segurança e Auditoria | ✅ Auditado — 2026-06-15 |
 | [12_Nginx.md](12_Nginx.md) | Nginx — Instalação e Configuração | ✅ Validado — 2026-06-15 |
 | [13_Status.md](13_Status.md) | Status do Projeto e Pendências | 🔄 Atualizado — 2026-06-17 |
+| [30_Painel_Financeiro.md](30_Painel_Financeiro.md) | Painel Financeiro: Conferência de Fechamento e frente de Fechamentos | 🔄 Em andamento — 2026-10-01 (FIN_1.1 e E1 no ar; E1b–E5 especificados) |
+
+> ⚠️ Os docs `14_` a `29_` existem em `docs/fpsl/` mas nunca entraram nesta
+> tabela (ela parou em 17/06). Ausência de linha aqui **não** quer dizer que o
+> doc não existe — listar a pasta.
 
 ---
 

@@ -54,6 +54,20 @@
   .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
   .empty { text-align:center; color:var(--text2); padding:24px; }
   .detalhe { font-size:.78rem; color:var(--text2); max-width:360px; }
+  /* Interruptor da rotina. `input` real e escondido: o rótulo inteiro é o
+     clique, e o teclado continua chegando nele. */
+  .chave { display:flex; align-items:center; gap:10px; }
+  .chave input { position:absolute; opacity:0; width:0; height:0; }
+  .chave .trilho { width:42px; height:24px; border-radius:999px; background:#CBD5E1;
+                   position:relative; transition:background .15s; flex-shrink:0; }
+  .chave .trilho::after { content:''; position:absolute; top:3px; left:3px; width:18px; height:18px;
+                          border-radius:50%; background:#fff; transition:transform .15s; }
+  .chave input:checked + .trilho { background:var(--green); }
+  .chave input:checked + .trilho::after { transform:translateX(18px); }
+  .chave input:focus-visible + .trilho { outline:2px solid var(--blue); outline-offset:2px; }
+  .chave.travada { opacity:.55; }
+  .chave.travada label { cursor:not-allowed; }
+  .chave label { display:flex; align-items:center; gap:10px; cursor:pointer; font-size:.86rem; font-weight:600; }
 </style>
 </head>
 <body>
@@ -66,13 +80,26 @@
 
   <main class="main">
     <div class="top"><h1>Conferência de Fechamento</h1></div>
-    <p class="sub">Rotina a cada 1h: quando uma OS vira "Finalizado" no Harmonit, confere se o checklist também
-       fechou no DataScope e se o equipamento está no estado certo na WESO. "Finalizado" no Harmonit é a alegação —
-       esta lista mostra o que os outros dois sistemas confirmam de fato.</p>
+    <p class="sub">Entram aqui as OS com oficina que alguém marcou como <strong>"Serviço Realizado"</strong> no Harmonit,
+       vistas nos <strong>últimos 30 dias</strong>. Para cada uma, confere se a ação (instalação/retirada) bate com o
+       problema da OS, se a WESO <em>de agora</em> mostra a série na placa certa, se o modelo bate com o material lançado,
+       e o que o DataScope diz.<br>
+       <strong>A mais antiga vem primeiro</strong>, pela data real de finalização no Harmonit — é fila de trabalho.
+       "Sem data" é OS ainda não finalizada no Harmonit; essas entram pela data da conferência.
+       "—" não é erro: é o que não dá para afirmar ainda. Só o vermelho pede alguém olhar.</p>
 
     <div class="painel-ctrl">
+      <div class="chave" id="chaveBox">
+        <label>
+          <input type="checkbox" id="chave" onchange="mudarChave()">
+          <span class="trilho"></span>
+          <span id="chaveTx">—</span>
+        </label>
+      </div>
+      <span id="chaveNota" style="color:var(--text2); font-size:.82rem"></span>
+      <span style="flex:1"></span>
       <button class="btn btn-primary" id="btnRodar" onclick="rodarAgora()"><i class="bi bi-play-fill"></i> Rodar agora</button>
-      <span style="color:var(--text2); font-size:.82rem">Sem esperar o próximo ciclo de 1h — útil para validar.</span>
+      <span style="color:var(--text2); font-size:.82rem">Roda na hora, ligada ou não.</span>
     </div>
 
     <div id="msg" class="msg"></div>
@@ -81,9 +108,9 @@
       <div style="overflow-x:auto">
       <table>
         <thead><tr>
-          <th>OS</th><th>Harmonit</th><th>DataScope</th><th>WESO</th><th>Detalhe</th><th>Conferido em</th>
+          <th>OS</th><th>Finalizada em</th><th>Ação × problema</th><th>Vínculo na WESO</th><th>Modelo</th><th>DataScope</th><th>Detalhe</th><th>Conferido em</th>
         </tr></thead>
-        <tbody id="tbody"><tr><td colspan="6" class="empty">Carregando…</td></tr></tbody>
+        <tbody id="tbody"><tr><td colspan="8" class="empty">Carregando…</td></tr></tbody>
       </table>
       </div>
     </div>
@@ -122,20 +149,87 @@ function sinal(ok) {
   return '<span class="badge badge-amber">ainda não</span>';
 }
 
+// Para os vereditos da oficina: `null` é "não dá para afirmar" (cinza), não
+// "ainda não" -- pode ser série mexida por OS posterior, placa fora da WESO,
+// modelo sem de-para. O motivo está no Detalhe.
+function veredito(ok) {
+  if (ok === true) return '<span class="badge badge-green">bate</span>';
+  if (ok === false) return '<span class="badge badge-red">diverge</span>';
+  return '<span class="badge badge-gray">—</span>';
+}
+
 async function carregar() {
   const res = await fetch('/painel/api/conferencia-fechamento?limit=500', { headers: auth() });
   if (res.status === 401) { window.location.href='/painel'; return; }
   const data = await res.json();
   const tb = document.getElementById('tbody');
-  if (!data.itens.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Nada conferido ainda.</td></tr>'; return; }
+  if (!data.itens.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Nenhuma OS com oficina em "Serviço Realizado" nos últimos 30 dias.</td></tr>'; return; }
   tb.innerHTML = data.itens.map(c => `<tr>
-      <td><strong>${esc(c.numero_os)}</strong></td>
-      <td>${sinal(c.harmonit_ok)}</td>
+      <td><strong>${esc(c.numero_os)}</strong>${c.status_str
+            ? `<div style="color:var(--text2); font-size:.74rem">${esc(c.status_str)}</div>` : ''}</td>
+      <td>${c.finalizado_em
+            ? esc(quando(c.finalizado_em)) + (c.finalizado_por
+                ? `<div style="color:var(--text2); font-size:.74rem">${esc(c.finalizado_por)}</div>` : '')
+            : '<span class="badge badge-gray">sem data</span>'}</td>
+      <td>${veredito(c.acao_ok)}</td>
+      <td>${veredito(c.weso_ok)}</td>
+      <td>${veredito(c.modelo_ok)}</td>
       <td>${sinal(c.datascope_ok)}${c.datascope_form_state ? ` <span style="color:var(--text2); font-size:.76rem">(${esc(c.datascope_form_state)})</span>` : ''}</td>
-      <td>${sinal(c.weso_ok)}</td>
       <td class="detalhe">${esc(c.detalhe)||'—'}</td>
       <td style="color:var(--text2)">${esc(quando(c.conferido_em))}</td>
     </tr>`).join('');
+}
+
+// ── Interruptor da rotina ────────────────────────────────────────────────────
+// 🚨 O ESTADO VEM DO SERVIDOR, SEMPRE. Nada de lembrar aqui se está ligado: a
+// flag vive no banco e pode ter sido mudada por outra pessoa, ou por SQL.
+// 🚨 LIGAR NÃO RODA NA HORA -- o laço relê a flag a cada `intervalo_min`. O
+// texto diz isso, porque prometer efeito imediato aqui seria mentira da tela.
+let ehDono = false;
+
+async function carregarChave() {
+  try {
+    const me = await (await fetch('/painel/api/me', { headers: auth() })).json();
+    ehDono = me.owner === true;
+    const r = await fetch('/painel/api/conferencia-fechamento/interruptor', { headers: auth() });
+    if (!r.ok) throw new Error('não consegui ler o interruptor');
+    pintarChave(await r.json());
+  } catch (e) {
+    document.getElementById('chaveTx').textContent = 'estado desconhecido';
+    document.getElementById('chaveNota').textContent = e.message;
+  }
+}
+
+function pintarChave(d) {
+  document.getElementById('chave').checked = d.ativa;
+  document.getElementById('chaveTx').textContent =
+    d.ativa ? 'Rotina ligada' : 'Rotina desligada';
+  document.getElementById('chaveNota').textContent = d.ativa
+    ? `Roda sozinha a cada ${d.intervalo_min} min — ligar não roda na hora.`
+    : (ehDono ? 'Nada roda sozinho enquanto estiver assim.'
+              : 'Nada roda sozinho enquanto estiver assim. Só o proprietário liga.');
+  document.getElementById('chave').disabled = !ehDono;
+  document.getElementById('chaveBox').classList.toggle('travada', !ehDono);
+}
+
+async function mudarChave() {
+  const el = document.getElementById('chave');
+  const querida = el.checked;
+  el.disabled = true;
+  try {
+    const r = await fetch('/painel/api/conferencia-fechamento/interruptor', {
+      method: 'PUT', headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ativa: querida }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'falha');
+    // Pinta com o que o SERVIDOR devolveu, não com o que eu cliquei.
+    pintarChave(d);
+    showMsg(d.ativa ? 'Rotina ligada.' : 'Rotina desligada.', false);
+  } catch (e) {
+    showMsg('Erro ao mudar o interruptor: ' + e.message, true);
+    await carregarChave();   // volta a mostrar a verdade do servidor
+  }
 }
 
 async function rodarAgora() {
@@ -144,13 +238,14 @@ async function rodarAgora() {
     const res = await fetch('/painel/api/conferencia-fechamento/rodar-agora', { method: 'POST', headers: auth() });
     const r = await res.json();
     if (!res.ok) throw new Error(r.detail || 'falha');
-    showMsg(`${r.conferidas} OS conferidas (${r.viraram_finalizado} viraram Finalizado nesta passada, ${r.datascope_sincronizadas} respostas do DataScope sincronizadas).`, false);
+    showMsg(`${r.conferidas} OS conferidas · ${r.em_servico_realizado} em "Serviço Realizado" na janela de ${r.janela_dias} dias · ${r.datascope_sincronizadas} respostas do DataScope sincronizadas · ${r.datas_preenchidas} datas de finalização preenchidas.`, false);
     await carregar();
   } catch (e) { showMsg('Erro: ' + e.message, true); }
   finally { btn.disabled = false; btn.innerHTML = '<i class="bi bi-play-fill"></i> Rodar agora'; }
 }
 
 carregar();
+carregarChave();
 setInterval(carregar, 60000);
 </script>
 </body>
