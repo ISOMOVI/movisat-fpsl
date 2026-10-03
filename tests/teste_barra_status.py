@@ -74,8 +74,10 @@ async def main():
     # ⚠️ ESTE NUMERO CRESCE COM CADA TELA NOVA, e e de proposito: ele existe
     # para o laco acima nao passar em silencio se o glob nao achar nada. Foi
     # 9 ate 19/08; a aba Operacoes (OPR_1.1) fez 10; a Conferência de
-    # Fechamento (FIN_1.1, 29/09) fez 12.
-    checar("achou as 12 paginas do painel", paginas == 12, f"achou {paginas}")
+    # Fechamento (FIN_1.1, 29/09) fez 12. O expurgo F7 (02/10) removeu o
+    # cadastro_placas_historico.html -> 11. (gerar_os.html e cadastro_placas.html
+    # ficam no disco enquanto os testes-espelho da Operações os leem.)
+    checar("achou as 11 paginas do painel", paginas == 11, f"achou {paginas}")
 
     print("\n[3] o servidor devolve o req id")
     u = await storage.buscar_usuario_painel("admin")
@@ -107,29 +109,14 @@ async def main():
             checar(f"{t['codigo']} FICA FORA do mapa", t["rota"] not in codigos)
             continue
         checar(f"{t['codigo']} esta no mapa", t["rota"] in codigos)
-    fora = "/painel/cadastro-placas/historico"
-    checar("tela FORA do menu tambem esta no mapa (a barra precisa dela)",
-           fora in codigos, "sem isso a barra mostra travessao no historico")
-    if fora in codigos:
-        checar("e com o codigo certo", codigos[fora]["codigo"] == "CAD_1.2",
-               str(codigos.get(fora)))
 
-    print("\n[6] Historico de Placas: no menu, abaixo de Historico de OS")
-    menu = abas_painel.do_usuario({"owner": True, "abas": []})
-    rotulos = [a["nome"] for a in menu]
-    checar("aparece no menu", "Histórico de Placas" in rotulos, str(rotulos))
-    if "Histórico de Placas" in rotulos and "Histórico de OS" in rotulos:
-        checar("logo ABAIXO de Historico de OS",
-               rotulos.index("Histórico de Placas") == rotulos.index("Histórico de OS") + 1,
-               str(rotulos))
-    cad12 = [t for t in telas.TELAS if t["codigo"] == "CAD_1.2"]
-    checar("CAD_1.2 continua existindo com o codigo intacto", len(cad12) == 1)
-    if cad12:
-        checar("e deixou de ser fora-do-menu", not cad12[0].get("no_menu"))
-        checar("permissao intacta: nao exigiu migrar conta nenhuma",
-               cad12[0]["permissao"] == "cadastro_placas")
-    checar("quem so tem cadastro_placas ve as duas telas",
-           len(abas_painel.do_usuario({"owner": False, "abas": ["cadastro_placas"]})) == 2)
+    # A seção do "Histórico de Placas" (CAD_1.2) saiu no expurgo F7 (02/10): a
+    # tela foi aposentada junto com a tabela `cadastro_placas_log` que ela lia.
+    print("\n[6] CAD_1.2 (Histórico de Placas) foi aposentada")
+    checar("CAD_1.2 fora do registro ativo", "CAD_1.2" not in {t["codigo"] for t in telas.TELAS})
+    checar("CAD_1.2 entre os aposentados", "CAD_1.2" in telas.CODIGOS_APOSENTADOS)
+    checar("ninguem com cadastro_placas ve tela nenhuma (permissao aposentada)",
+           len(abas_painel.do_usuario({"owner": False, "abas": ["cadastro_placas"]})) == 0)
 
     print("\n[7] a barra desenha de verdade, num DOM de mentira")
     # 🚨 O QUE FALTOU EM 17/08. As 677 verificacoes eram todas de backend; nada

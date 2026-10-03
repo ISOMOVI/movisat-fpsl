@@ -58,23 +58,17 @@ def checar(nome, esperado, obtido):
 # (método, rota, aba exigida, corpo, escreve?)
 # 🚨 `escreve=True` significa: NUNCA chamar autorizado. Só a tranca.
 ROTAS = [
-    ("GET",  "/painel/api/perfis",              "gerar_os",           None, False),
-    ("GET",  "/painel/api/prioridades",         "gerar_os",           None, False),
-    ("GET",  "/painel/api/problemas",           "gerar_os",           None, False),
+    # Expurgo F7 (02/10): saíram as linhas de `gerar_os` (prioridades,
+    # problemas, clientes/*) e `cadastro_placas` (placas/*) -- as telas Gerar OS
+    # e Cadastro de Placas foram aposentadas, `clientes_router` e `placas_router`
+    # apagados. `/perfis` e `/servicos/buscar` ficam (são do Vínculos) e passaram
+    # a exigir só `vinculos`.
+    ("GET",  "/painel/api/perfis",              "vinculos",           None, False),
     ("GET",  "/painel/api/vinculos",            "vinculos",           None, False),
     ("GET",  "/painel/api/produtos/buscar?q=ST310", "vinculos",       None, False),
-    ("GET",  "/painel/api/servicos/buscar?q=MANUT",  "gerar_os",      None, False),
-    ("GET",  "/painel/api/clientes/buscar?q=VELASCO", "gerar_os",     None, False),
-    ("POST", "/painel/api/clientes/previa",     "gerar_os",           {"cnpj": "00000000000000"}, True),
-    ("POST", "/painel/api/clientes/criar",      "gerar_os",           {}, True),
+    ("GET",  "/painel/api/servicos/buscar?q=MANUT",  "vinculos",      None, False),
     ("GET",  "/painel/api/harmonit/resumo",     "harmonit_historico", None, False),
     ("GET",  "/painel/api/harmonit/chamadas",   "harmonit_historico", None, False),
-    # Cadastro de Placas (17/08). ⚠️ `previa` NÃO escreve -- entra no laço [3]
-    # como leitura, e sem corpo válido ela para no 422 antes de tocar a WESO,
-    # que é o que se quer aqui: o assunto desta tabela é a TRANCA, não o fluxo.
-    # O fluxo tem teste próprio em `teste_cadastro_placas.py`.
-    ("POST", "/painel/api/placas/previa",       "cadastro_placas",    None, False),
-    ("POST", "/painel/api/placas/criar",        "cadastro_placas",    None, True),
     # Aba Operacoes (OPR_1.1, 19/08) -- router proprio, prefixo proprio. Ela
     # esta FORA DO MENU e com permissao que ninguem tem; a rota existe e exige
     # `operacoes`, que e o que este contrato mede.

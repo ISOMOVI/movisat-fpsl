@@ -2045,3 +2045,68 @@ erro — as rotas de Vínculos que pedem `("gerar_os", "vinculos")` seguem abrin
 para quem tem `vinculos`.
 
 Detalhe e mapa de dependências: plano da frente, seção "Expurgo".
+
+
+---
+
+## ✅ 02/10 — Expurgo F7, fase X1 executada (as velhas saem; a Operação intacta)
+
+🔵 Dele: *"vamos aos expurgos penendentes"*. Uso real confirmado antes: **zero**
+POST humano nas rotas de escrita das três telas velhas desde 25/09, e **nenhum
+dos 6 usuários** tem `gerar_os` ou `cadastro_placas` no perfil.
+
+Rede de segurança antes de apagar: `git tag pre-expurgo-x1-2026-10-02` e
+`backups/data_fpsl.db.bak_pre_expurgo_2026-10-02`.
+
+### O que saiu na X1
+
+| Saiu | Era |
+|---|---|
+| `fpsl_weso/painel/routers/placas_router.py` | API do Cadastro de Placas |
+| `fpsl_weso/painel/routers/clientes_router.py` | API de cliente da Gerar OS (órfã: nenhum HTML a chamava) |
+| `fpsl_weso/cep.py` | só o `clientes_router` usava |
+| `frontend/cadastro_placas_historico.html` | a tela CAD_1.2 |
+| `tests/`: `teste_cadastro_placas`, `teste_criar_uma`, `teste_auditoria_placas`, `teste_tela_cadastro_placas` | exclusivos das telas velhas |
+| `telas.py`: entradas `CAD_1.1`, `OSG_1.1`, `CAD_1.2` | → `CODIGOS_APOSENTADOS` |
+| `main.py`: includes de `placas_router`/`clientes_router`, rota de página do histórico | |
+
+### O que FICOU de propósito (sai só na X2)
+
+- **`gerar_os.html` e `cadastro_placas.html`** no disco, e as rotas de página
+  `/painel/gerar-os` e `/painel/cadastro-placas` respondendo 200 — porque os
+  **testes-espelho da Operação** (`teste_tela_clonada`, `teste_acabamento`,
+  `teste_aba_ponta_a_ponta`) leem esses HTML, e `teste_operacoes_f1` faz GET nas
+  páginas esperando 200. Apagá-los agora quebraria a Operação.
+- **`os_router.py` inteiro** (as rotas da Gerar OS viraram código morto, mas o
+  f1/ponta_a_ponta dependem do arquivo > 1200 linhas até a X2).
+- **`equipamentos.py`, `weso_lookup.py`** — ficam órfãos (ninguém importa depois
+  que `placas_router` saiu), sem quebrar nada; saem na X2.
+- **Tabela `cadastro_placas_log`** e suas funções no `storage.py` — a X2.
+
+### Permissões
+
+`gerar_os` e `cadastro_placas` saíram do catálogo (derivado de `TELAS`). As rotas
+do Vínculos que as citavam (`/perfis`, `/servicos/buscar`, `/produtos/buscar`)
+passaram a exigir só `vinculos`. Ninguém tinha essas permissões, então nenhuma
+conta precisou migrar.
+
+### Testes
+
+- **A Operação intacta:** f1 (57), f2 (96), f4 (116), f5b (38), f6 (41),
+  ponta_a_ponta (35), tela_clonada (18), acabamento (28), tela_operacoes (62) —
+  todos verdes, **sem edição** (a X1 não tocou nenhum teste da Operação).
+- Ajustados (não são da Operação): `teste_roteadores_painel` (67), `teste_perfis`
+  (9 telas / 5 abas), `teste_barra_status` (11 páginas), `teste_contrato_sidebar`
+  (exceção temporária para os 2 HTML que ficaram), `teste_registro_telas` (39).
+- **Suíte inteira: 51 arquivos OK.** Os 2 fora: `teste_disjuntor_harmonit`
+  (passou — formato "0 FALHA" maiúsculo), e `teste_extrair_termo`
+  (`KeyError: 'termo'`, **pré-existente**, idêntico ao HEAD, não importa nada do
+  expurgo).
+
+### X2 — o que falta (toca os testes da Operação, só com o OK dele sobre a lista)
+
+Partir `os_router.py` (fica a metade do Vínculos); apagar `gerar_os.html`,
+`cadastro_placas.html`, `equipamentos.py`, `weso_lookup.py`, a tabela
+`cadastro_placas_log`; e editar 4 testes da Operação + o `teste_higiene_placas_weso`,
+`teste_aviso_weso`, `teste_tela_gerar_os`, `teste_cadastro_log`, `teste_cache_frio`.
+Mapa linha a linha levantado em 02/10.

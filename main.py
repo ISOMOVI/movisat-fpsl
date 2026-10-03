@@ -12,11 +12,10 @@ from fpsl_weso.datascope_client import start_datascope_client, stop_datascope_cl
 from fpsl_weso.routers import clientes, simcards, rastreadores, veiculos, admin
 from fpsl_weso.painel.routers import login_router, os_router as painel_os_router
 from fpsl_weso.painel.routers import harmonit_hist_router as painel_harmonit_hist_router
-from fpsl_weso.painel.routers import clientes_router as painel_clientes_router
 from fpsl_weso.painel.routers import usuarios_router as painel_usuarios_router
 from fpsl_weso.painel.routers import os_scan_router as painel_os_scan_router
 from fpsl_weso.painel import operacoes_rotina as painel_operacoes_rotina
-from fpsl_weso.painel.routers import placas_router as painel_placas_router
+# painel_clientes_router e painel_placas_router saíram no expurgo F7 (02/10).
 # Aba Operações (OPR_1.1) — router próprio, sem depender dos dois que
 # vão ser desmontados. Ver docs/fpsl/28_Operacoes.md.
 from fpsl_weso.painel.routers import operacoes_router as painel_operacoes_router
@@ -168,10 +167,8 @@ app.include_router(admin.router)
 app.include_router(login_router.router)
 app.include_router(painel_os_router.router)
 app.include_router(painel_harmonit_hist_router.router)
-app.include_router(painel_clientes_router.router)
 app.include_router(painel_usuarios_router.router)
 app.include_router(painel_os_scan_router.router)
-app.include_router(painel_placas_router.router)
 app.include_router(painel_operacoes_router.router)
 app.include_router(demandas_router.router)
 app.include_router(painel_conferencia_fechamento_router.router)
@@ -207,17 +204,12 @@ async def painel_operacoes_page():
     return FileResponse("frontend/operacoes.html")
 
 
+# ⚠️ As páginas de Gerar OS e Cadastro de Placas ficam no ar (sem menu, sem
+# permissão) só enquanto os testes-espelho da Operações leem o HTML delas --
+# expurgo F7, fase seguinte as apaga. O Histórico de Placas já saiu inteiro.
 @app.get("/painel/cadastro-placas")
 async def painel_cadastro_placas_page():
     return FileResponse("frontend/cadastro_placas.html")
-
-
-# ⚠️ MESMA ABA da tela principal, de propósito. Não é aba nova: quem cadastra
-# placa precisa ver o que cadastrou, e uma permissão separada para "ver o que eu
-# mesmo fiz" seria burocracia sem dono. Fica fora da sidebar, alcançada por link.
-@app.get("/painel/cadastro-placas/historico")
-async def painel_cadastro_placas_historico_page():
-    return FileResponse("frontend/cadastro_placas_historico.html")
 
 
 @app.get("/painel/harmonit-historico")

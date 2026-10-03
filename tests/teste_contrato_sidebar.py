@@ -66,7 +66,9 @@ for campo in sorted(usados):
     checar(f"`{campo}` nunca vem vazio", not vazios, f"vazio em {vazios}")
 
 print("\n[3] do_usuario entrega TODOS eles, para um operador comum")
-operador = abas_painel.do_usuario({"owner": False, "abas": ["gerar_os", "vinculos"]})
+# Cobaia trocada no expurgo F7: `gerar_os` foi aposentada; `os_historico` e
+# `vinculos` são duas abas concedíveis vivas, cada uma com uma tela no menu.
+operador = abas_painel.do_usuario({"owner": False, "abas": ["os_historico", "vinculos"]})
 checar("operador ve exatamente as 2 abas dele", len(operador) == 2,
        str([a.get("codigo") for a in operador]))
 for campo in sorted(usados):
@@ -96,8 +98,16 @@ checar("achou as paginas que montam sidebar", len(declarados) >= 8, str(len(decl
 # Medir pela lista do MENU aqui reprovaria uma pagina que funciona -- e, pior,
 # esconderia o caso inverso: pagina que declara permissao que ninguem tem.
 # `permissoes_do_usuario` responde exatamente "o que esta pessoa pode abrir".
+# ⚠️ EXPURGO F7 (02/10): gerar_os.html e cadastro_placas.html ficaram no disco
+# de propósito -- os testes-espelho da Operação (clonada, acabamento,
+# aba_ponta_a_ponta) leem o HTML deles. As telas foram aposentadas, então
+# declaram permissão que já não existe. A fase seguinte apaga os dois arquivos e
+# esta exceção sai junto. Até lá, o contrato não se aplica a eles.
+APOSENTADAS_NO_DISCO = {"gerar_os.html", "cadastro_placas.html"}
 vistas_do_owner = set(abas_painel.permissoes_do_usuario({"owner": True, "abas": []}))
 for arquivo, declarado in sorted(declarados.items()):
+    if arquivo in APOSENTADAS_NO_DISCO:
+        continue
     checar(f"{arquivo} declara `{declarado}`, que o owner recebe",
            declarado in vistas_do_owner,
            f"nao veio em /me: {sorted(vistas_do_owner)}")

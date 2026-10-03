@@ -58,25 +58,12 @@ TELAS = [
     # ⚠️ Desde 20/08 a primeira é `OPR_1.1` (Operações), que saiu de `no_menu`.
     # Ela vem antes porque FAZ as duas coisas abaixo numa tela só -- e é para
     # ela que a pessoa com a permissão nova cai ao entrar.
-    {
-        "codigo": "CAD_1.1",
-        "titulo": "Cadastro de Placas",
-        "rota": "/painel/cadastro-placas",
-        "icone": "bi-card-list",
-        "descricao": "Cria na WESO e no Harmonit as placas do termo e os recipientes.",
-        "permissao": "cadastro_placas",
-        "fase": 1,
-    },
-    # ---- OSG: geração de OS ----
-    {
-        "codigo": "OSG_1.1",
-        "titulo": "Gerar OS",
-        "rota": "/painel/gerar-os",
-        "icone": "bi-file-earmark-plus",
-        "descricao": "Sobe o termo, extrai os dados e cria as OS no Harmonit.",
-        "permissao": "gerar_os",
-        "fase": 1,
-    },
+    # CAD_1.1 (Cadastro de Placas) e OSG_1.1 (Gerar OS) saíram do registro em
+    # 02/10 (expurgo F7): a aba Operações as substituiu, ninguém mais tem as
+    # permissões, e o uso humano era zero. Os códigos foram aposentados -- ver
+    # CODIGOS_APOSENTADOS. As PÁGINAS ainda respondem por URL (os testes-espelho
+    # da Operações leem o HTML delas); só saem da estrutura na fase seguinte.
+    # ---- OSG: Vínculos (submódulo que ficou) ----
     {
         # Vínculos é submódulo do OSG e não módulo próprio: ele existe PARA a
         # geração de OS -- é o de-para entre o texto do contrato e o produto do
@@ -99,25 +86,8 @@ TELAS = [
         "permissao": "os_historico",
         "fase": 1,
     },
-    {
-        # ⚠️ MESMA PERMISSÃO da CAD_1.1, de propósito. Quem cadastra precisa ver
-        # o que cadastrou; uma permissão separada para "ver o que eu mesmo fiz"
-        # seria burocracia sem dono -- e separar agora exigiria migrar a coluna
-        # `abas` de todas as contas para não tirar de ninguém o que já tem.
-        #
-        # 🚨 ESTA ENTRADA ESTÁ FORA DA ORDEM DOS CÓDIGOS DE PROPÓSITO. A ordem
-        # desta lista É a ordem do menu, e em 18/08 você pediu o Histórico de
-        # Placas logo abaixo do Histórico de OS, junto dos outros históricos.
-        # O CÓDIGO CONTINUA `CAD_1.2`: título, rota e posição mudam, código não
-        # -- é a regra do registro, e é ela que mantém o log antigo honesto.
-        "codigo": "CAD_1.2",
-        "titulo": "Histórico de Placas",
-        "rota": "/painel/cadastro-placas/historico",
-        "icone": "bi-clock-history",
-        "descricao": "O que cada rodada cadastrou, em qual sistema, e o que falhou.",
-        "permissao": "cadastro_placas",
-        "fase": 1,
-    },
+    # CAD_1.2 (Histórico de Placas) saiu do registro em 02/10 (expurgo F7),
+    # junto com a tabela `cadastro_placas_log` que ela lia. Código aposentado.
     {
         "codigo": "HST_2.1",
         "titulo": "Serviços Harmonit",
@@ -270,7 +240,13 @@ FASE_ATUAL = 1
 #            com o fluxo inteiro: a tabela tinha ZERO linhas em toda a vida do
 #            sistema e o endpoint nunca foi chamado. A documentação dela fica,
 #            porque serve para rescisão.
-CODIGOS_APOSENTADOS = {"PLC_1.1", "OFC_1.1"}
+#   CAD_1.1  Cadastro de Placas. OSG_1.1  Gerar OS. CAD_1.2  Histórico de
+#   Placas. Os três saíram em 02/10 (expurgo F7): a aba Operações (OPR_1.1) faz
+#   o que as duas primeiras faziam, o uso humano era zero e ninguém tinha as
+#   permissões `gerar_os`/`cadastro_placas`. As páginas de Gerar OS e Cadastro
+#   de Placas seguem respondendo por URL enquanto os testes-espelho da Operações
+#   lerem o HTML delas; o Histórico de Placas foi removido inteiro.
+CODIGOS_APOSENTADOS = {"PLC_1.1", "OFC_1.1", "CAD_1.1", "OSG_1.1", "CAD_1.2"}
 
 CODIGOS_VALIDOS = {t["codigo"] for t in TELAS}
 # `None` (as públicas) não é permissão e não entra.

@@ -64,8 +64,9 @@ async def main():
         # usuário. O número fica explícito de propósito -- tela nova no menu
         # tem de passar por aqui e ser deliberada.
         # 12 desde 29/09: FIN_1.1 (Conferência de Fechamento) nasceu no menu.
-        checar("owner enxerga as 12 telas do menu",
-               len(me.get("abas", [])) == 12, str(len(me.get("abas", []))))
+        # 9 desde 02/10: o expurgo F7 tirou CAD_1.1, OSG_1.1 e CAD_1.2 do menu.
+        checar("owner enxerga as 9 telas do menu",
+               len(me.get("abas", [])) == 9, str(len(me.get("abas", []))))
         checar("e Operações é uma delas",
                any(a.get("id") == "operacoes" for a in me.get("abas", [])),
                str([a.get("id") for a in me.get("abas", [])]))
@@ -75,9 +76,12 @@ async def main():
         ids = [a["id"] for a in catalogo]
         # 6 desde a F1 (19/08), quando a permissao `operacoes` nasceu.
         # 7 desde 29/09: `financeiro` (FIN_1.1, Conferência de Fechamento).
-        checar("catalogo tem 7 abas concediveis", len(catalogo) == 7, str(ids))
+        # 5 desde 02/10: o expurgo F7 tirou `gerar_os` e `cadastro_placas`.
+        checar("catalogo tem 5 abas concediveis", len(catalogo) == 5, str(ids))
         checar("operacoes e concedivel", "operacoes" in ids, str(ids))
-        checar("cadastro_placas e concedivel", "cadastro_placas" in ids, str(ids))
+        checar("gerar_os NAO e mais concedivel (expurgo F7)", "gerar_os" not in ids, str(ids))
+        checar("cadastro_placas NAO e mais concedivel (expurgo F7)",
+               "cadastro_placas" not in ids, str(ids))
         # a aba `placas` saiu do catalogo em 14/08 -- ver abas.py
         checar("placas NAO e mais concedivel", "placas" not in ids, str(ids))
         # e `oficinas` em 17/08, com o fluxo inteiro
@@ -109,14 +113,12 @@ async def main():
         r = await c.get("/painel/api/vinculos", headers=h_op)
         checar("aba concedida responde 200", r.status_code == 200, str(r.status_code))
 
-        # 🚨 NENHUMA DESTAS PODE ACEITAR `vinculos`. `/painel/api/perfis` parece
-        # candidata e NAO SERVE: ela e `requer_aba("gerar_os", "vinculos")` --
-        # basta UMA das duas, entao responderia 200 e o teste passaria a provar
-        # o contrario do que diz. As quatro abaixo exigem aba unica e diferente:
-        # prioridades e problemas -> gerar_os, checkpoint -> os_historico,
-        # harmonit/resumo -> harmonit_historico.
-        for rota in ["/painel/api/prioridades", "/painel/api/problemas",
-                     "/painel/api/os-scan/checkpoint", "/painel/api/harmonit/resumo"]:
+        # 🚨 NENHUMA DESTAS PODE ACEITAR `vinculos`. Cada uma exige uma aba única
+        # e diferente: checkpoint -> os_historico, harmonit/resumo ->
+        # harmonit_historico, conferencia-fechamento -> financeiro.
+        # (prioridades/problemas saíram no expurgo F7 -- eram de `gerar_os`.)
+        for rota in ["/painel/api/os-scan/checkpoint", "/painel/api/harmonit/resumo",
+                     "/painel/api/conferencia-fechamento"]:
             r = await c.get(rota, headers=h_op)
             checar(f"403 em {rota}", r.status_code == 403, str(r.status_code))
 
@@ -128,14 +130,13 @@ async def main():
 
         print("\n[4] owner mexe no perfil do operador")
         # ⚠️ O perfil novo TEM DE TIRAR `vinculos`, senao o 403 seguinte nao
-        # prova nada -- era o que aconteceria trocando por ["gerar_os",
-        # "vinculos"], que foi o que este teste fazia enquanto a cobaia era
-        # outra aba.
+        # prova nada. A cobaia era `gerar_os`, aposentada no expurgo F7 -- trocada
+        # por `os_historico`, que é concedível e diferente de `vinculos`.
         r = await c.patch(f"/painel/api/usuarios/{op['id']}", headers=h_owner,
-                          json={"abas": ["gerar_os"]})
+                          json={"abas": ["os_historico"]})
         checar("owner troca o perfil", r.status_code == 200, r.text[:120])
         op2 = await storage.buscar_usuario_painel(LOGIN_TESTE)
-        checar("perfil novo gravado", op2["abas"] == ["gerar_os"], str(op2["abas"]))
+        checar("perfil novo gravado", op2["abas"] == ["os_historico"], str(op2["abas"]))
         r = await c.get("/painel/api/vinculos", headers=h_op)
         checar("aba removida virou 403", r.status_code == 403, str(r.status_code))
 
