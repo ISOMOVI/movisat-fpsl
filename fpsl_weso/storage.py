@@ -231,6 +231,14 @@ def init_db():
         if "tecnicos_json" not in _cols:
             conn.execute("ALTER TABLE os_historico ADD COLUMN tecnicos_json TEXT")
 
+        # migracao (07/10): email do tecnico. O ObterTecnicos do Harmonit ja
+        # devolve o e-mail (o sync ja o lia para a exclusao), mas a tabela nao
+        # guardava -- agora guarda para a busca por nome OU e-mail no painel.
+        # Anulavel: tecnico sem e-mail no Harmonit e estado valido.
+        _cols_tec = [r[1] for r in conn.execute("PRAGMA table_info(tecnicos)").fetchall()]
+        if "email" not in _cols_tec:
+            conn.execute("ALTER TABLE tecnicos ADD COLUMN email TEXT")
+
 
         # migração (2026-08-14): `nas_duas` -- o item aparece TAMBÉM na OS
         # operacional, além da financeira. Nasceu do termo 8839: "Central 24
@@ -1371,14 +1379,16 @@ def novo_lote() -> str:
 
 # ── tecnicos ─────────────────────────────────────────────────────────────────
 
-async def salvar_tecnico(tecnico_id: int, nome: str, excluido: bool) -> None:
+async def salvar_tecnico(tecnico_id: int, nome: str, excluido: bool,
+                         email: str | None = None) -> None:
     def _run():
         agora = datetime.now(timezone.utc).isoformat()
         with _connect() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO tecnicos "
-                "(tecnico_id, nome, excluido, atualizado_em) VALUES (?, ?, ?, ?)",
-                (tecnico_id, nome, int(excluido), agora),
+                "(tecnico_id, nome, excluido, email, atualizado_em) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (tecnico_id, nome, int(excluido), email or None, agora),
             )
     await asyncio.get_running_loop().run_in_executor(None, _run)
 
@@ -1386,12 +1396,13 @@ async def salvar_tecnico(tecnico_id: int, nome: str, excluido: bool) -> None:
 async def listar_tecnicos(apenas_reais: bool = True) -> list[dict]:
     def _run():
         with _connect() as conn:
-            sql = "SELECT tecnico_id, nome, excluido, atualizado_em FROM tecnicos"
+            sql = "SELECT tecnico_id, nome, excluido, email, atualizado_em FROM tecnicos"
             if apenas_reais:
                 sql += " WHERE excluido = 0"
             sql += " ORDER BY nome"
             return [{"tecnico_id": r[0], "nome": r[1], "excluido": bool(r[2]),
-                     "atualizado_em": r[3]} for r in conn.execute(sql).fetchall()]
+                     "email": r[3], "atualizado_em": r[4]}
+                    for r in conn.execute(sql).fetchall()]
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
@@ -1399,13 +1410,13 @@ async def buscar_tecnico(tecnico_id: int) -> dict | None:
     def _run():
         with _connect() as conn:
             r = conn.execute(
-                "SELECT tecnico_id, nome, excluido, atualizado_em FROM tecnicos "
+                "SELECT tecnico_id, nome, excluido, email, atualizado_em FROM tecnicos "
                 "WHERE tecnico_id = ?", (tecnico_id,)
             ).fetchone()
             if not r:
                 return None
             return {"tecnico_id": r[0], "nome": r[1], "excluido": bool(r[2]),
-                    "atualizado_em": r[3]}
+                    "email": r[3], "atualizado_em": r[4]}
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 

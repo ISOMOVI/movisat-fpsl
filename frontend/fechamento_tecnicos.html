@@ -41,8 +41,8 @@
   .btn-secondary { background:var(--card); color:var(--text); border-color:var(--border); }
   .btn-secondary:hover { background:var(--bg2); }
   .btn-sm { padding:5px 10px; font-size:.78rem; }
-  .btn:disabled { opacity:.5; cursor:not-allowed; }
-  input[type=date], input[type=number], select {
+  .btn:disabled { opacity:.6; cursor:not-allowed; }
+  input[type=date], input[type=number], input[type=text], select {
     font-family:inherit; font-size:.86rem; padding:8px 12px; border:1.5px solid var(--border);
     border-radius:7px; background:var(--card); color:var(--text); }
   label { font-size:.82rem; font-weight:600; color:var(--text2); }
@@ -57,9 +57,17 @@
   .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
   .empty { text-align:center; color:var(--text2); padding:24px; font-size:.86rem; }
 
+  /* Spinner — padrao da casa (estilo.css). Branco no botao primario (azul),
+     variante escura (.spinner-dark) no botao secundario (claro). */
+  .spinner { display:inline-block; width:13px; height:13px; vertical-align:-1px;
+             border:2px solid rgba(255,255,255,.4); border-top-color:#fff;
+             border-radius:50%; animation:girar .7s linear infinite; }
+  .spinner-dark { border-color:rgba(37,99,235,.25); border-top-color:var(--blue); }
+  @keyframes girar { to { transform:rotate(360deg); } }
+
   /* --- Kanban --- */
   .kanban { display:flex; gap:12px; overflow-x:auto; align-items:flex-start; padding-bottom:8px; }
-  .kanban-col { min-width:280px; flex:1; background:var(--bg); border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; }
+  .kanban-col { min-width:240px; flex:1; background:var(--bg); border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; }
   .kanban-col-header { padding:12px 14px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border);
                        font-weight:700; font-size:.84rem; user-select:none; border-radius:12px 12px 0 0; cursor:pointer; }
   .kanban-col-header .cnt { font-weight:400; font-size:.76rem; color:var(--text2); }
@@ -76,6 +84,7 @@
   .kanban-col-header .toggle-ico { margin-left:auto; font-size:.8rem; transition:transform .2s; }
   .kanban-col.collapsed .toggle-ico { transform:rotate(-90deg); }
 
+  /* Card = miniatura. Clique abre o modal de detalhe. */
   .fcard { background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
   .fcard-head { padding:12px 14px; display:flex; justify-content:space-between; align-items:flex-start; gap:8px;
                 cursor:pointer; user-select:none; }
@@ -84,14 +93,16 @@
   .fcard-periodo { font-size:.74rem; color:var(--text2); margin-top:2px; }
   .fcard-resumo { display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap; }
   .fcard-valor { font-size:.88rem; font-weight:700; color:var(--green); }
-  .fcard-body { display:none; border-top:1px solid var(--border); padding:12px 14px; }
-  .fcard-body.aberto { display:block; }
-  .fcard-acoes { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
 
-  .os-table { width:100%; border-collapse:collapse; font-size:.78rem; margin-top:6px; }
-  .os-table th { text-align:left; color:var(--text2); font-weight:600; font-size:.68rem; text-transform:uppercase;
-                 padding:5px 6px; border-bottom:1.5px solid var(--border); }
-  .os-table td { padding:5px 6px; border-bottom:1px solid var(--border); }
+  /* destaque do card que acabou de mudar de coluna (confirmacao de conclusao) */
+  @keyframes aterrissar { 0% { background:var(--blue-dim); box-shadow:0 0 0 2px var(--blue); }
+                          100% { background:var(--card); box-shadow:none; } }
+  .fcard.just-moved { animation:aterrissar 1.4s ease-out; }
+
+  .os-table { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:6px; }
+  .os-table th { text-align:left; color:var(--text2); font-weight:600; font-size:.7rem; text-transform:uppercase;
+                 padding:6px 8px; border-bottom:1.5px solid var(--border); }
+  .os-table td { padding:6px 8px; border-bottom:1px solid var(--border); }
   .os-table tr:last-child td { border-bottom:none; }
 
   .semaforo { display:inline-block; width:14px; height:14px; border-radius:50%; vertical-align:middle; cursor:pointer; position:relative; }
@@ -105,7 +116,7 @@
   .estado-pagamento { background:#fce7f3; color:#be185d; }
   .estado-pago { background:var(--green-dim); color:var(--green); }
 
-  /* Popover do semaforo */
+  /* Popover do semaforo (peek rapido na miniatura) */
   .sem-popover { position:absolute; z-index:500; background:var(--card); border:1px solid var(--border);
                  border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.12); padding:12px 14px;
                  min-width:260px; max-width:340px; font-size:.8rem; }
@@ -114,12 +125,12 @@
   .sem-popover li { padding:4px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:6px; }
   .sem-popover li:last-child { border-bottom:none; }
   .sem-popover .dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-  .sem-popover .dot-red { background:var(--red); }
-  .sem-popover .dot-yellow { background:var(--amber); }
-  .sem-popover .dot-green { background:var(--green); }
+  .dot-red { background:var(--red); }
+  .dot-yellow { background:var(--amber); }
+  .dot-green { background:var(--green); }
 
   .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:1000;
-              align-items:center; justify-content:center; }
+              align-items:center; justify-content:center; padding:16px; }
   .modal-bg.vis { display:flex; }
   .modal { background:var(--card); border-radius:12px; padding:24px; width:90%; max-width:420px; }
   .modal h3 { font-size:1rem; margin-bottom:16px; }
@@ -128,11 +139,41 @@
   .modal .campo input { width:100%; }
   .aviso-valor { font-size:.78rem; padding:6px 10px; border-radius:6px; margin-top:8px; }
 
+  /* Modal largo de detalhe do card */
+  .modal-wide { max-width:720px; width:94%; max-height:88vh; overflow-y:auto; }
+  .modal-wide h3 { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
+  .det-valores { display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; }
+  .det-valor-box { flex:1; min-width:150px; border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .det-valor-box .rot { font-size:.7rem; color:var(--text2); text-transform:uppercase; font-weight:700; }
+  .det-valor-box .val { font-size:1.15rem; font-weight:800; margin-top:4px; }
+  .det-valor-box.divergente { border-color:var(--red); background:var(--red-dim); }
+  .det-valor-box.divergente .val { color:var(--red); }
+  .det-sec-titulo { font-size:.72rem; font-weight:700; color:var(--text2); text-transform:uppercase; margin:18px 0 6px; }
+  .det-divs { list-style:none; padding:0; margin:0; }
+  .det-divs li { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border); font-size:.82rem; }
+  .det-divs li:last-child { border-bottom:none; }
+  .det-divs .dot { display:inline-block; width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .modal-acoes { display:flex; gap:8px; flex-wrap:wrap; margin-top:18px; padding-top:16px; border-top:1px solid var(--border); }
+
+  /* Combobox de tecnico (busca por nome OU e-mail) */
+  .combo { position:relative; }
+  .combo-list { position:absolute; z-index:600; top:100%; left:0; right:0; margin-top:4px;
+                background:var(--card); border:1px solid var(--border); border-radius:8px;
+                box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:300px; overflow-y:auto; display:none; }
+  .combo-list.vis { display:block; }
+  .combo-item { padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--border); }
+  .combo-item:last-child { border-bottom:none; }
+  .combo-item:hover { background:var(--blue-dim); }
+  .combo-item .nome { font-size:.85rem; font-weight:600; }
+  .combo-item .mail { font-size:.74rem; color:var(--text2); margin-top:1px; }
+  .combo-item.todos .nome { color:var(--blue); }
+
   @media (max-width:768px) {
     .kanban { flex-direction:column; }
     .kanban-col { min-width:100%; }
     .kanban-col-body { max-height:none; }
     .main { padding:16px; }
+    .combo-list { right:auto; min-width:240px; }
   }
 </style>
 </head>
@@ -159,9 +200,10 @@
         <label for="dtFim">Fim</label><br>
         <input type="date" id="dtFim">
       </div>
-      <div>
-        <label for="selTecnico">Tecnico</label><br>
-        <select id="selTecnico"><option value="">Todos</option></select>
+      <div class="combo">
+        <label for="selTecnicoInput">Tecnico</label><br>
+        <input type="text" id="selTecnicoInput" placeholder="Nome ou e-mail… (Todos)" autocomplete="off">
+        <div class="combo-list" id="tecnicoList"></div>
       </div>
       <span style="flex:1"></span>
       <button class="btn btn-primary" id="btnGerar" onclick="gerarCards()"><i class="bi bi-arrow-repeat"></i> Gerar Cards</button>
@@ -196,6 +238,13 @@
   </main>
 </div>
 
+<!-- Modal de detalhe do card (miniatura -> modal grande) -->
+<div class="modal-bg" id="modalDetalhe">
+  <div class="modal modal-wide">
+    <div id="detBody"><div class="empty">Carregando…</div></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modalRecibo">
   <div class="modal">
     <h3>Anexar Recibo / NFS</h3>
@@ -227,6 +276,7 @@ function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;
 function showMsg(t,erro) { const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
 function clearMsg() { document.getElementById('msg').className='msg'; }
 function money(v) { return v!=null ? 'R$ '+Number(v).toFixed(2).replace('.',',') : ''; }
+function nomeEstado(e) { return {aberto:'Aberto',conferencia:'Conferência',preparado:'Preparado',pagamento:'Pagamento',pago:'Pago'}[e] || e; }
 
 function semanaAtual() {
   const h = new Date();
@@ -252,6 +302,9 @@ function badgeSemaforo(s, cardId) {
 
 const ESTADOS = ['aberto','conferencia','preparado','pagamento','pago'];
 let cardsCache = {};
+let tecnicosData = [];
+let tecnicoSelecionadoId = '';
+let modalDetalheId = null;
 
 function toggleCol(headerEl) {
   headerEl.closest('.kanban-col').classList.toggle('collapsed');
@@ -265,30 +318,62 @@ function toggleCol(headerEl) {
   carregar();
 })();
 
+/* ---------------- Combobox de tecnico (nome OU e-mail) ---------------- */
+const normStr = s => (s==null?'':String(s)).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+
 async function carregarTecnicos() {
   try {
     const r = await fetch(API+'/tecnicos', {headers:auth()});
     if (r.status===401) { window.location.href='/painel'; return; }
-    const tecs = await r.json();
-    const sel = document.getElementById('selTecnico');
-    tecs.forEach(t => {
-      const opt = document.createElement('option');
-      opt.value = t.tecnico_id;
-      opt.textContent = t.nome;
-      sel.appendChild(opt);
-    });
+    tecnicosData = await r.json();
   } catch(e) { console.error('tecnicos', e); }
 }
 
-async function carregar() {
+function renderComboList() {
+  const inp = document.getElementById('selTecnicoInput');
+  const box = document.getElementById('tecnicoList');
+  const f = normStr(inp.value);
+  const itens = tecnicosData.filter(t => normStr(t.nome).includes(f) || normStr(t.email).includes(f));
+  let html = '<div class="combo-item todos" data-id=""><div class="nome">Todos os tecnicos</div></div>';
+  html += itens.map(t => `<div class="combo-item" data-id="${t.tecnico_id}">
+      <div class="nome">${esc(t.nome)}</div>
+      ${t.email ? '<div class="mail">'+esc(t.email)+'</div>' : ''}
+    </div>`).join('');
+  if (!itens.length) html += '<div class="combo-item" style="pointer-events:none;color:var(--text2)">Nenhum tecnico</div>';
+  box.innerHTML = html;
+  box.classList.add('vis');
+}
+
+function selecionarTecnico(id, nome) {
+  tecnicoSelecionadoId = id || '';
+  document.getElementById('selTecnicoInput').value = id ? nome : '';
+  document.getElementById('tecnicoList').classList.remove('vis');
+  carregar();
+}
+
+(function comboInit() {
+  const inp = document.getElementById('selTecnicoInput');
+  const box = document.getElementById('tecnicoList');
+  inp.addEventListener('focus', renderComboList);
+  inp.addEventListener('input', () => { renderComboList(); if (!inp.value) tecnicoSelecionadoId = ''; });
+  box.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.combo-item');
+    if (!item || item.style.pointerEvents === 'none') return;
+    e.preventDefault();
+    const nomeEl = item.querySelector('.nome');
+    selecionarTecnico(item.dataset.id, nomeEl ? nomeEl.textContent : '');
+  });
+})();
+
+/* ---------------- Carregar e render ---------------- */
+async function carregar(movedId) {
   clearMsg();
   const params = new URLSearchParams();
   const ti = document.getElementById('dtInicio').value;
   const tf = document.getElementById('dtFim').value;
-  const tec = document.getElementById('selTecnico').value;
   if (ti) params.set('periodo_inicio', ti);
   if (tf) params.set('periodo_fim', tf);
-  if (tec) params.set('tecnico_id', tec);
+  if (tecnicoSelecionadoId) params.set('tecnico_id', tecnicoSelecionadoId);
 
   try {
     const r = await fetch(API+'/cartoes?'+params.toString(), {headers:auth()});
@@ -296,13 +381,13 @@ async function carregar() {
     const cards = await r.json();
     cardsCache = {};
     cards.forEach(c => { cardsCache[c.id] = c; });
-    renderKanban(cards);
+    renderKanban(cards, movedId);
   } catch(e) {
     showMsg('Erro ao carregar: '+e.message, true);
   }
 }
 
-function renderKanban(cards) {
+function renderKanban(cards, movedId) {
   const res = document.getElementById('resumo');
   const grupos = {};
   ESTADOS.forEach(e => { grupos[e] = []; });
@@ -333,12 +418,25 @@ function renderKanban(cards) {
     }
     col.innerHTML = lista.map(c => cardHTML(c)).join('');
   });
+
+  // confirmacao de conclusao: destaca o card que acabou de mudar de coluna
+  if (movedId) {
+    const el = document.getElementById('fcard-'+movedId);
+    if (el) {
+      // garante que a coluna de destino esteja aberta para o card aparecer
+      const colAberta = el.closest('.kanban-col');
+      if (colAberta && colAberta.classList.contains('collapsed')) colAberta.classList.remove('collapsed');
+      el.classList.add('just-moved');
+      el.scrollIntoView({block:'nearest', behavior:'smooth'});
+    }
+  }
 }
 
+// Card = miniatura. Clicar abre o modal de detalhe.
 function cardHTML(c) {
   const id = c.id;
   return `<div class="fcard" id="fcard-${id}">
-    <div class="fcard-head" onclick="toggleCard(${id})">
+    <div class="fcard-head" onclick="abrirModalDetalhe(${id})">
       <div style="flex:1;min-width:0">
         <div class="fcard-nome">${esc(c.tecnico_nome)}</div>
         <div class="fcard-periodo">${quando(c.periodo_inicio)} a ${quando(c.periodo_fim)}</div>
@@ -348,13 +446,7 @@ function cardHTML(c) {
           ${c.valor_recibo!=null ? '<span style="font-size:.74rem;color:var(--text2)">Recibo: '+money(c.valor_recibo)+'</span>' : ''}
         </div>
       </div>
-      <i class="bi bi-chevron-down" style="color:var(--text2);font-size:.8rem"></i>
-    </div>
-    <div class="fcard-body" id="fbody-${id}">
-      <div id="fos-${id}" style="font-size:.8rem;color:var(--text2)">Carregando OS...</div>
-      <div class="fcard-acoes" id="facoes-${id}">
-        ${botoesEstado(c)}
-      </div>
+      <i class="bi bi-arrows-angle-expand" style="color:var(--text2);font-size:.8rem" title="Abrir detalhe"></i>
     </div>
   </div>`;
 }
@@ -364,67 +456,111 @@ function botoesEstado(c) {
   const e = c.estado;
   let h = '';
   if (e === 'aberto') {
-    h += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();avancar(${id},'conferencia')"><i class="bi bi-search"></i> Iniciar Conferencia</button>`;
+    h += `<button class="btn btn-primary btn-sm" onclick="avancar(${id},'conferencia',this)"><i class="bi bi-search"></i> Iniciar Conferencia</button>`;
   } else if (e === 'conferencia') {
-    h += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();avancar(${id},'preparado')"><i class="bi bi-check2-circle"></i> Marcar Preparado</button>`;
+    h += `<button class="btn btn-primary btn-sm" onclick="avancar(${id},'preparado',this)"><i class="bi bi-check2-circle"></i> Marcar Preparado</button>`;
   } else if (e === 'preparado') {
-    h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();abrirModalRecibo(${id})"><i class="bi bi-paperclip"></i> Recibo/NFS</button>`;
-    h += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();avancar(${id},'pagamento')"><i class="bi bi-cash-stack"></i> Pagamento</button>`;
+    h += `<button class="btn btn-secondary btn-sm" onclick="abrirModalRecibo(${id})"><i class="bi bi-paperclip"></i> Recibo/NFS</button>`;
+    h += `<button class="btn btn-primary btn-sm" onclick="avancar(${id},'pagamento',this)"><i class="bi bi-cash-stack"></i> Pagamento</button>`;
   } else if (e === 'pagamento') {
-    h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();baixarPlanilha(${id})"><i class="bi bi-file-earmark-spreadsheet"></i> Planilha</button>`;
+    h += `<button class="btn btn-secondary btn-sm" onclick="baixarPlanilha(${id},this)"><i class="bi bi-file-earmark-spreadsheet"></i> Planilha</button>`;
     if (c.recibo_arquivo) {
-      h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();baixarRecibo(${id})"><i class="bi bi-download"></i> Recibo</button>`;
+      h += `<button class="btn btn-secondary btn-sm" onclick="baixarRecibo(${id},this)"><i class="bi bi-download"></i> Recibo</button>`;
     }
-    h += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();avancar(${id},'pago')"><i class="bi bi-check-lg"></i> Marcar Pago</button>`;
+    h += `<button class="btn btn-primary btn-sm" onclick="avancar(${id},'pago',this)"><i class="bi bi-check-lg"></i> Marcar Pago</button>`;
   } else if (e === 'pago') {
-    h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();baixarPlanilha(${id})"><i class="bi bi-file-earmark-spreadsheet"></i> Planilha</button>`;
+    h += `<button class="btn btn-secondary btn-sm" onclick="baixarPlanilha(${id},this)"><i class="bi bi-file-earmark-spreadsheet"></i> Planilha</button>`;
     if (c.recibo_arquivo) {
-      h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();baixarRecibo(${id})"><i class="bi bi-download"></i> Recibo</button>`;
+      h += `<button class="btn btn-secondary btn-sm" onclick="baixarRecibo(${id},this)"><i class="bi bi-download"></i> Recibo</button>`;
     }
   }
   return h;
 }
 
-async function toggleCard(id) {
-  const body = document.getElementById('fbody-'+id);
-  if (body.classList.contains('aberto')) {
-    body.classList.remove('aberto');
-    return;
-  }
-  body.classList.add('aberto');
+/* ---------------- Modal de detalhe ---------------- */
+function osTableHTML(osList) {
+  if (!osList || !osList.length) return '<div class="empty">Nenhuma OS vinculada.</div>';
+  return `<table class="os-table">
+    <thead><tr><th>OS</th><th>Pagamento</th><th>KM</th><th>Total</th><th>Conf.</th></tr></thead>
+    <tbody>${osList.map(o => `<tr>
+      <td><strong>${o.numero_os}</strong></td>
+      <td>${money(o.valor_pagamento)}</td>
+      <td>${money(o.valor_km)}</td>
+      <td><strong>${money(o.valor_pagamento + o.valor_km)}</strong></td>
+      <td>${o.conferencia_ok ? '<span class="badge badge-green">OK</span>' : '<span class="badge badge-amber">pendente</span>'}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
 
+// lista de pendencias/divergencias — compartilhada entre o popover e o modal
+function issuesDoCard(c) {
+  const issues = [];
+  if (c.valor_recibo != null && c.valor_servicos != null && Math.abs(c.valor_recibo - c.valor_servicos) > 0.01) {
+    issues.push({cor:'red', texto:'Valor recibo '+money(c.valor_recibo)+' diverge do calculado '+money(c.valor_servicos)});
+  }
+  (c.os || []).forEach(o => {
+    if (!o.conferencia_ok) issues.push({cor:'yellow', texto:'OS '+o.numero_os+' — conferencia pendente'});
+  });
+  if (!issues.length) issues.push({cor:'green', texto:'Todas as OS conferidas, valores OK'});
+  return issues;
+}
+
+function renderModalDetalhe(c) {
+  const diverg = c.valor_recibo!=null && c.valor_servicos!=null && Math.abs(c.valor_recibo - c.valor_servicos) > 0.01;
+  const issues = issuesDoCard(c);
+  document.getElementById('detBody').innerHTML = `
+    <h3><i class="bi bi-person-badge"></i> ${esc(c.tecnico_nome)}
+      <span class="badge estado-${c.estado}">${nomeEstado(c.estado)}</span>
+      <span style="flex:1"></span>
+      <button class="btn btn-secondary btn-sm" onclick="fecharModalDetalhe()"><i class="bi bi-x-lg"></i> Fechar</button>
+    </h3>
+    <div style="font-size:.82rem;color:var(--text2)">${quando(c.periodo_inicio)} a ${quando(c.periodo_fim)}</div>
+    <div class="det-valores">
+      <div class="det-valor-box"><div class="rot">Calculado</div><div class="val">${money(c.valor_servicos)}</div></div>
+      <div class="det-valor-box ${diverg?'divergente':''}"><div class="rot">Recibo / NFS</div><div class="val">${c.valor_recibo!=null?money(c.valor_recibo):'—'}</div></div>
+    </div>
+    <div class="det-sec-titulo">Ordens de servico (${(c.os||[]).length})</div>
+    ${osTableHTML(c.os)}
+    <div class="det-sec-titulo">Conferencia e divergencias</div>
+    <ul class="det-divs">${issues.map(i => `<li><span class="dot dot-${i.cor}"></span> ${esc(i.texto)}</li>`).join('')}</ul>
+    <div class="modal-acoes">${botoesEstado(c)}</div>`;
+}
+
+async function recarregarModalDetalhe(id) {
   try {
     const r = await fetch(API+'/cartoes/'+id, {headers:auth()});
+    if (r.status===401) { window.location.href='/painel'; return; }
     const c = await r.json();
     cardsCache[id] = Object.assign(cardsCache[id]||{}, c);
-    const el = document.getElementById('fos-'+id);
-    if (!c.os || !c.os.length) {
-      el.innerHTML = '<span class="empty">Nenhuma OS vinculada.</span>';
-    } else {
-      el.innerHTML = `<table class="os-table">
-        <thead><tr><th>OS</th><th>Pagamento</th><th>KM</th><th>Total</th><th>Conf.</th></tr></thead>
-        <tbody>${c.os.map(o => `<tr>
-          <td><strong>${o.numero_os}</strong></td>
-          <td>${money(o.valor_pagamento)}</td>
-          <td>${money(o.valor_km)}</td>
-          <td><strong>${money(o.valor_pagamento + o.valor_km)}</strong></td>
-          <td>${o.conferencia_ok ? '<span class="badge badge-green">OK</span>' : '<span class="badge badge-amber">pendente</span>'}</td>
-        </tr>`).join('')}</tbody>
-      </table>`;
-    }
-    document.getElementById('facoes-'+id).innerHTML = botoesEstado(c);
+    if (modalDetalheId === id) renderModalDetalhe(c);
   } catch(e) {
-    document.getElementById('fos-'+id).innerHTML = 'Erro: '+esc(e.message);
+    if (modalDetalheId === id) document.getElementById('detBody').innerHTML = '<div class="empty">Erro: '+esc(e.message)+'</div>';
   }
 }
 
-/* --- Popover do semaforo --- */
+async function abrirModalDetalhe(id) {
+  modalDetalheId = id;
+  document.getElementById('detBody').innerHTML = '<div class="empty">Carregando…</div>';
+  document.getElementById('modalDetalhe').classList.add('vis');
+  await recarregarModalDetalhe(id);
+}
+function fecharModalDetalhe() {
+  document.getElementById('modalDetalhe').classList.remove('vis');
+  modalDetalheId = null;
+}
+
+/* ---------------- Popover do semaforo (peek na miniatura) ---------------- */
 let popoverAtivo = null;
 function fecharPopover() {
   if (popoverAtivo) { popoverAtivo.remove(); popoverAtivo = null; }
 }
 
 document.addEventListener('click', function(e) {
+  // fecha o combobox ao clicar fora dele
+  if (!e.target.closest('.combo')) {
+    const box = document.getElementById('tecnicoList');
+    if (box) box.classList.remove('vis');
+  }
   const sem = e.target.closest('.semaforo[data-card-id]');
   if (!sem) { fecharPopover(); return; }
   e.stopPropagation();
@@ -435,35 +571,18 @@ document.addEventListener('click', function(e) {
 
 async function mostrarPopoverSemaforo(el, cardId) {
   fecharPopover();
-  const c = cardsCache[cardId];
+  let c = cardsCache[cardId];
   if (!c) return;
 
-  let osData = c.os;
-  if (!osData) {
+  if (!c.os) {
     try {
       const r = await fetch(API+'/cartoes/'+cardId, {headers:auth()});
       const det = await r.json();
-      cardsCache[cardId] = Object.assign(c, det);
-      osData = det.os;
+      c = cardsCache[cardId] = Object.assign(c, det);
     } catch(e) { return; }
   }
 
-  const issues = [];
-  if (c.valor_recibo != null && c.valor_servicos != null && Math.abs(c.valor_recibo - c.valor_servicos) > 0.01) {
-    issues.push({cor:'red', texto:'Valor recibo '+money(c.valor_recibo)+' diverge do calculado '+money(c.valor_servicos)});
-  }
-  if (osData && osData.length) {
-    osData.forEach(o => {
-      if (!o.conferencia_ok) {
-        issues.push({cor:'yellow', texto:'OS '+o.numero_os+' — conferencia pendente'});
-      }
-    });
-  }
-
-  if (!issues.length) {
-    issues.push({cor:'green', texto:'Todas as OS conferidas, valores OK'});
-  }
-
+  const issues = issuesDoCard(c);
   const tituloTexto = c.semaforo === 'green' ? 'Tudo OK' : c.semaforo === 'red' ? 'Divergencia' : 'Pendencias';
   const dotCor = c.semaforo === 'green' ? 'green' : c.semaforo === 'red' ? 'red' : 'yellow';
 
@@ -484,19 +603,19 @@ async function mostrarPopoverSemaforo(el, cardId) {
   pop.style.left = left + 'px';
 }
 
+/* ---------------- Acoes ---------------- */
 async function gerarCards() {
   const ti = document.getElementById('dtInicio').value;
   const tf = document.getElementById('dtFim').value;
   if (!ti || !tf) { showMsg('Informe inicio e fim do periodo.', true); return; }
 
-  const tec = document.getElementById('selTecnico').value;
   const btn = document.getElementById('btnGerar');
-  btn.disabled = true; btn.textContent = 'Gerando...';
+  btn.disabled = true; btn.innerHTML = 'Gerando… <span class="spinner"></span>';
   clearMsg();
 
   try {
     const body = { periodo_inicio: ti, periodo_fim: tf };
-    if (tec) body.tecnico_id = parseInt(tec);
+    if (tecnicoSelecionadoId) body.tecnico_id = parseInt(tecnicoSelecionadoId);
     const r = await fetch(API+'/cartoes/gerar', {
       method:'POST', headers:{...auth(), 'Content-Type':'application/json'},
       body: JSON.stringify(body),
@@ -513,7 +632,11 @@ async function gerarCards() {
   }
 }
 
-async function avancar(id, estado) {
+async function avancar(id, estado, btn) {
+  const verbo = {conferencia:'Conferindo…', preparado:'Preparando…',
+                 pagamento:'Enviando p/ pagamento…', pago:'Marcando pago…'}[estado] || 'Processando…';
+  let orig;
+  if (btn) { orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = verbo + ' <span class="spinner"></span>'; }
   try {
     const r = await fetch(API+'/cartoes/'+id+'/avancar', {
       method:'POST', headers:{...auth(), 'Content-Type':'application/json'},
@@ -521,10 +644,12 @@ async function avancar(id, estado) {
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'Falha');
-    showMsg('Card atualizado para: '+estado, false);
-    await carregar();
+    showMsg('Card de '+nomeEstado(d.estado)+'. Concluido.', false);
+    await carregar(id);
+    if (modalDetalheId === id) await recarregarModalDetalhe(id);
   } catch(e) {
     showMsg('Erro: '+e.message, true);
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
 }
 
@@ -547,14 +672,15 @@ async function enviarRecibo() {
   if (!arquivo) { showMsg('Selecione o arquivo.', true); return; }
   if (!valor) { showMsg('Informe o valor do documento.', true); return; }
 
+  const cid = reciboCardId;
   const btn = document.getElementById('btnEnviarRecibo');
-  btn.disabled = true; btn.textContent = 'Enviando...';
+  btn.disabled = true; btn.innerHTML = 'Enviando… <span class="spinner"></span>';
 
   try {
     const fd = new FormData();
     fd.append('arquivo', arquivo);
     fd.append('valor_recibo', valor);
-    const r = await fetch(API+'/cartoes/'+reciboCardId+'/recibo', {
+    const r = await fetch(API+'/cartoes/'+cid+'/recibo', {
       method:'POST', headers:auth(), body:fd,
     });
     const d = await r.json();
@@ -562,6 +688,7 @@ async function enviarRecibo() {
     showMsg('Recibo anexado.', false);
     fecharModalRecibo();
     await carregar();
+    if (modalDetalheId === cid) await recarregarModalDetalhe(cid);
   } catch(e) {
     showMsg('Erro: '+e.message, true);
   } finally {
@@ -569,7 +696,9 @@ async function enviarRecibo() {
   }
 }
 
-async function baixarArquivo(url, fallbackName) {
+async function baixarArquivo(url, fallbackName, btn) {
+  let orig;
+  if (btn) { orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = 'Baixando… <span class="spinner spinner-dark"></span>'; }
   try {
     const r = await fetch(url, {headers:auth()});
     if (!r.ok) { showMsg('Erro no download.', true); return; }
@@ -582,10 +711,15 @@ async function baixarArquivo(url, fallbackName) {
     a.download = nome;
     a.click();
     URL.revokeObjectURL(a.href);
-  } catch(e) { showMsg('Erro: '+e.message, true); }
+    showMsg('Download concluido.', false);
+  } catch(e) {
+    showMsg('Erro: '+e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
 }
-function baixarPlanilha(id) { baixarArquivo(API+'/cartoes/'+id+'/planilha', 'fechamento.csv'); }
-function baixarRecibo(id) { baixarArquivo(API+'/cartoes/'+id+'/recibo', 'recibo'); }
+function baixarPlanilha(id, btn) { baixarArquivo(API+'/cartoes/'+id+'/planilha', 'fechamento.csv', btn); }
+function baixarRecibo(id, btn) { baixarArquivo(API+'/cartoes/'+id+'/recibo', 'recibo', btn); }
 </script>
 </body>
 </html>

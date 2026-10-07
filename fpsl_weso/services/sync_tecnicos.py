@@ -43,7 +43,8 @@ async def sync_tecnicos() -> dict:
             continue
         email_tec = (t.get("email") or "").strip().lower()
         eh_usuario = tid in ids_usuarios or email_tec in emails_painel
-        await storage.salvar_tecnico(tid, nome, excluido=eh_usuario)
+        await storage.salvar_tecnico(tid, nome, excluido=eh_usuario,
+                                     email=email_tec or None)
         total += 1
         if eh_usuario:
             excluidos += 1

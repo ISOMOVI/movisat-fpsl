@@ -100,7 +100,11 @@ async def api_avancar_estado(cartao_id: int, body: AvancarBody):
             f"Transicao invalida: {cartao['estado']} -> {body.estado}",
         )
     await storage.atualizar_estado_cartao(cartao_id, novo)
-    if novo == "preparado":
+    # "Iniciar Conferencia" (aberto->conferencia) e "Marcar Preparado"
+    # (conferencia->preparado) releem a conferencia de cada OS e recalculam o
+    # semaforo. Sao as unicas transicoes com efeito real; as demais so andam
+    # o card de coluna.
+    if novo in ("conferencia", "preparado"):
         await atualizar_semaforo(cartao_id)
     return {"ok": True, "estado": novo}
 
