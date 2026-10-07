@@ -87,11 +87,21 @@ async def api_gerar_cartoes(body: GerarBody):
     )
 
 
+def _quem(usuario: dict) -> str | None:
+    """Identificador de quem agiu, para a trilha de pago/cancelado."""
+    if not usuario:
+        return None
+    return usuario.get("login") or usuario.get("email")
+
+
 @router.post("/cartoes/{cartao_id}/avancar")
-async def api_avancar_estado(cartao_id: int, body: AvancarBody):
+async def api_avancar_estado(cartao_id: int, body: AvancarBody,
+                             usuario: dict = Depends(requer_aba("financeiro"))):
     cartao = await storage.buscar_cartao_fechamento(cartao_id)
     if not cartao:
         raise HTTPException(404, "Card nao encontrado")
+    if cartao["estado"] == "cancelado":
+        raise HTTPException(400, "Card cancelado nao avanca")
 
     novo = avancar_estado(cartao["estado"], body.estado)
     if novo is None:
@@ -99,7 +109,7 @@ async def api_avancar_estado(cartao_id: int, body: AvancarBody):
             400,
             f"Transicao invalida: {cartao['estado']} -> {body.estado}",
         )
-    await storage.atualizar_estado_cartao(cartao_id, novo)
+    await storage.atualizar_estado_cartao(cartao_id, novo, usuario=_quem(usuario))
     # "Iniciar Conferencia" (aberto->conferencia) e "Marcar Preparado"
     # (conferencia->preparado) releem a conferencia de cada OS e recalculam o
     # semaforo. Sao as unicas transicoes com efeito real; as demais so andam
@@ -107,6 +117,20 @@ async def api_avancar_estado(cartao_id: int, body: AvancarBody):
     if novo in ("conferencia", "preparado"):
         await atualizar_semaforo(cartao_id)
     return {"ok": True, "estado": novo}
+
+
+@router.post("/cartoes/{cartao_id}/cancelar")
+async def api_cancelar_cartao(cartao_id: int,
+                              usuario: dict = Depends(requer_aba("financeiro"))):
+    """Cancela o pagamento: card vai para 'cancelado' (fica no historico) e as
+    OS dele voltam a ficar livres para outro card."""
+    cartao = await storage.buscar_cartao_fechamento(cartao_id)
+    if not cartao:
+        raise HTTPException(404, "Card nao encontrado")
+    if cartao["estado"] == "cancelado":
+        return {"ok": True, "estado": "cancelado"}
+    await storage.cancelar_cartao(cartao_id, usuario=_quem(usuario))
+    return {"ok": True, "estado": "cancelado"}
 
 
 # ── Recibo ───────────────────────────────────────────────────────────────────
@@ -184,4 +208,68 @@ async def download_planilha(cartao_id: int):
         io.BytesIO(conteudo),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )
+
+
+# ── Relatorio ────────────────────────────────────────────────────────────────
+
+@router.get("/relatorio")
+async def relatorio(periodo_de: str | None = None,
+                    periodo_ate: str | None = None,
+                    tecnico_id: int | None = None,
+                    numero_os: int | None = None,
+                    estado: str | None = None):
+    """Consulta historica dos fechamentos por periodo, tecnico, OS e estado.
+    Cada card ja traz suas OS para a tabela expandir sem outra chamada."""
+    cards = await storage.listar_cartoes_relatorio(
+        periodo_de=periodo_de, periodo_ate=periodo_ate,
+        tecnico_id=tecnico_id, numero_os=numero_os, estado=estado,
+    )
+    for c in cards:
+        c["os"] = await storage.listar_fechamento_os(c["id"])
+    return cards
+
+
+@router.get("/relatorio/planilha")
+async def relatorio_planilha(periodo_de: str | None = None,
+                             periodo_ate: str | None = None,
+                             tecnico_id: int | None = None,
+                             numero_os: int | None = None,
+                             estado: str | None = None):
+    cards = await storage.listar_cartoes_relatorio(
+        periodo_de=periodo_de, periodo_ate=periodo_ate,
+        tecnico_id=tecnico_id, numero_os=numero_os, estado=estado,
+    )
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow([
+        "Tecnico", "Periodo", "Estado", "Nro OS",
+        "Pagamento Tecnico (R$)", "KM Deslocamento (R$)", "Total (R$)",
+        "Conferencia OK", "Valor Recibo/NFS (R$)", "Pago em", "Cancelado em",
+    ])
+    tot_pag = tot_km = 0.0
+    for c in cards:
+        os_list = await storage.listar_fechamento_os(c["id"])
+        periodo = f"{c['periodo_inicio']} a {c['periodo_fim']}"
+        recibo = "" if c.get("valor_recibo") is None else f"{c['valor_recibo']:.2f}"
+        for o in os_list:
+            tot_pag += o["valor_pagamento"]
+            tot_km += o["valor_km"]
+            writer.writerow([
+                c["tecnico_nome"], periodo, c["estado"], o["numero_os"],
+                f"{o['valor_pagamento']:.2f}", f"{o['valor_km']:.2f}",
+                f"{o['valor_pagamento'] + o['valor_km']:.2f}",
+                "Sim" if o["conferencia_ok"] else "Nao",
+                recibo, c.get("pago_em") or "", c.get("cancelado_em") or "",
+            ])
+    writer.writerow([])
+    writer.writerow(["", "", "", "TOTAL", f"{tot_pag:.2f}", f"{tot_km:.2f}",
+                     f"{tot_pag + tot_km:.2f}", "", "", "", ""])
+
+    conteudo = buf.getvalue().encode("utf-8-sig")
+    return StreamingResponse(
+        io.BytesIO(conteudo),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="relatorio_fechamento.csv"'},
     )

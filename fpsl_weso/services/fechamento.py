@@ -63,10 +63,13 @@ def _tecnico_real_da_os(tecnicos_json: str | None, ids_excluidos: set) -> int | 
 
 async def gerar_cartoes(periodo_inicio: str, periodo_fim: str,
                         tecnico_id: int | None = None) -> dict:
-    """Gera (ou regenera) cards de fechamento para o periodo.
+    """Gera cards de fechamento para o periodo -- SEM apagar nada.
 
-    Se `tecnico_id` e informado, gera so para aquele tecnico.
-    Regerar substitui o card anterior do mesmo tecnico+periodo.
+    Pega as OS em "Servico Realizado" conferidas do periodo que ainda NAO estao
+    em nenhum card ativo (trava de OS: uma OS so vive em um card por vez) e as
+    coloca num card 'aberto' do tecnico -- criando o card ou completando o
+    'aberto' que ja exista. Cards ja avancados (conferencia..pago) e cancelados
+    nunca sao tocados. Reclicar e idempotente: OS ja consumidas nao voltam.
     """
     ids_excluidos = set(await storage.listar_ids_tecnicos_excluidos())
 
@@ -86,8 +89,15 @@ async def gerar_cartoes(periodo_inicio: str, periodo_fim: str,
         situacao_id=SITUACAO_SERVICO_REALIZADO,
     )
 
+    # trava de OS: ignora as que ja estao presas a um card ativo
+    os_consumidas = await storage.listar_numeros_os_consumidas()
+
     os_por_tecnico: dict[int, list] = {}
+    os_ja_consumidas = 0
     for os_row in os_do_periodo:
+        if os_row["numero_os"] in os_consumidas:
+            os_ja_consumidas += 1
+            continue
         tid = _tecnico_real_da_os(os_row.get("tecnicos_json"), ids_excluidos)
         if tid is None:
             continue
@@ -108,24 +118,30 @@ async def gerar_cartoes(periodo_inicio: str, periodo_fim: str,
         })
 
     cards_criados = 0
-    for tec in tecnicos:
-        tid = tec["tecnico_id"]
-        os_list = os_por_tecnico.get(tid, [])
-        if not os_list:
+    cards_completados = 0
+    os_novas = 0
+    tecnicos_por_id = {t["tecnico_id"]: t for t in tecnicos}
+    for tid, os_list in os_por_tecnico.items():
+        tec = tecnicos_por_id.get(tid)
+        if not tec or not os_list:
             continue
 
-        await storage.deletar_cartao_fechamento_por_periodo(
+        aberto = await storage.buscar_cartao_aberto_por_periodo(
             tid, periodo_inicio, periodo_fim)
+        if aberto:
+            cartao_id = aberto["id"]
+            cards_completados += 1
+        else:
+            cartao_id = await storage.salvar_cartao_fechamento(
+                tecnico_id=tid,
+                tecnico_nome=tec["nome"],
+                periodo_inicio=periodo_inicio,
+                periodo_fim=periodo_fim,
+                estado="aberto",
+                valor_servicos=0,
+            )
+            cards_criados += 1
 
-        valor_total = sum(o["valor_pagamento"] + o["valor_km"] for o in os_list)
-        cartao_id = await storage.salvar_cartao_fechamento(
-            tecnico_id=tid,
-            tecnico_nome=tec["nome"],
-            periodo_inicio=periodo_inicio,
-            periodo_fim=periodo_fim,
-            estado="aberto",
-            valor_servicos=valor_total,
-        )
         for o in os_list:
             await storage.salvar_fechamento_os(
                 cartao_id=cartao_id,
@@ -134,18 +150,25 @@ async def gerar_cartoes(periodo_inicio: str, periodo_fim: str,
                 valor_km=o["valor_km"],
                 conferencia_ok=o["conferencia_ok"],
             )
-        cards_criados += 1
+            os_novas += 1
 
-    log.info("gerar_cartoes: %d cards criados (periodo %s a %s)",
-             cards_criados, periodo_inicio, periodo_fim)
-    os_total = sum(len(v) for v in os_por_tecnico.values())
-    return {"ok": True, "cards_criados": cards_criados, "os_vinculadas": os_total}
+        # recalcula o total a partir de TODAS as OS do card (existentes + novas)
+        todas = await storage.listar_fechamento_os(cartao_id)
+        valor_total = sum(o["valor_pagamento"] + o["valor_km"] for o in todas)
+        await storage.atualizar_valor_servicos_cartao(cartao_id, valor_total)
+
+    log.info("gerar_cartoes: %d criados, %d completados, %d OS novas, %d ja "
+             "consumidas (periodo %s a %s)", cards_criados, cards_completados,
+             os_novas, os_ja_consumidas, periodo_inicio, periodo_fim)
+    return {"ok": True, "cards_criados": cards_criados,
+            "cards_completados": cards_completados, "os_novas": os_novas,
+            "os_ja_consumidas": os_ja_consumidas, "os_vinculadas": os_novas}
 
 
 async def atualizar_semaforo(cartao_id: int) -> str | None:
     """Rele conferencia e calcula semaforo do card."""
     cartao = await storage.buscar_cartao_fechamento(cartao_id)
-    if not cartao or cartao["estado"] == "pago":
+    if not cartao or cartao["estado"] in ("pago", "cancelado"):
         return None
 
     os_list = await storage.listar_fechamento_os(cartao_id)

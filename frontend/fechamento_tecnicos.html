@@ -168,6 +168,32 @@
   .combo-item .mail { font-size:.74rem; color:var(--text2); margin-top:1px; }
   .combo-item.todos .nome { color:var(--blue); }
 
+  /* Alternador de visao Fechamentos / Relatorios */
+  .view-switch { display:inline-flex; gap:2px; background:var(--bg2); border:1px solid var(--border);
+                 border-radius:9px; padding:3px; margin-bottom:16px; }
+  .view-switch button { font-family:inherit; font-size:.84rem; font-weight:600; padding:7px 16px;
+                        border:none; background:transparent; color:var(--text2); border-radius:7px; cursor:pointer; }
+  .view-switch button.active { background:var(--card); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+
+  /* botao cancelar (perigo, discreto) */
+  .btn-cancelar { background:var(--card); color:var(--red); border-color:#fecaca; }
+  .btn-cancelar:hover { background:var(--red-dim); }
+
+  /* Relatorio */
+  .rel-tabela { width:100%; border-collapse:collapse; font-size:.82rem; background:var(--card);
+                border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .rel-tabela th { text-align:left; color:var(--text2); font-weight:600; font-size:.7rem; text-transform:uppercase;
+                   padding:10px 12px; border-bottom:1.5px solid var(--border); background:var(--bg); }
+  .rel-tabela td { padding:10px 12px; border-bottom:1px solid var(--border); }
+  .rel-tabela tr:last-child td { border-bottom:none; }
+  .rel-tabela tr.rel-linha { cursor:pointer; }
+  .rel-tabela tr.rel-linha:hover { background:var(--bg); }
+  .rel-os { background:var(--bg); }
+  .rel-os td { padding:0; }
+  .rel-os .wrap { padding:8px 12px 12px 24px; }
+  .rel-totais { display:flex; gap:18px; flex-wrap:wrap; margin:12px 2px; font-size:.86rem; }
+  .rel-totais strong { color:var(--text); }
+
   @media (max-width:768px) {
     .kanban { flex-direction:column; }
     .kanban-col { min-width:100%; }
@@ -191,6 +217,12 @@
        conferidas pela rotina E1-E3. Gere os cards para o periodo desejado, confira o semaforo,
        anexe o recibo/NFS e exporte a planilha para pagamento.</p>
 
+    <div class="view-switch">
+      <button id="tabFechamentos" class="active" onclick="trocarView('fechamentos')"><i class="bi bi-kanban"></i> Fechamentos</button>
+      <button id="tabRelatorios" onclick="trocarView('relatorios')"><i class="bi bi-table"></i> Relatórios</button>
+    </div>
+
+    <div id="viewFechamentos">
     <div class="painel-ctrl">
       <div>
         <label for="dtInicio">Inicio</label><br>
@@ -235,6 +267,46 @@
         <div class="kanban-col-body" id="col-pago"></div>
       </div>
     </div>
+    </div><!-- /viewFechamentos -->
+
+    <div id="viewRelatorios" hidden>
+      <div class="painel-ctrl">
+        <div>
+          <label for="relDe">De</label><br>
+          <input type="date" id="relDe">
+        </div>
+        <div>
+          <label for="relAte">Ate</label><br>
+          <input type="date" id="relAte">
+        </div>
+        <div class="combo">
+          <label for="relTecnicoInput">Tecnico</label><br>
+          <input type="text" id="relTecnicoInput" placeholder="Nome ou e-mail… (Todos)" autocomplete="off">
+          <div class="combo-list" id="relTecnicoList"></div>
+        </div>
+        <div>
+          <label for="relOS">Nro OS</label><br>
+          <input type="number" id="relOS" placeholder="ex: 16991" style="width:120px">
+        </div>
+        <div>
+          <label for="relEstado">Estado</label><br>
+          <select id="relEstado">
+            <option value="">Todos</option>
+            <option value="aberto">Aberto</option>
+            <option value="conferencia">Conferencia</option>
+            <option value="preparado">Preparado</option>
+            <option value="pagamento">Pagamento</option>
+            <option value="pago">Pago</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
+        <span style="flex:1"></span>
+        <button class="btn btn-primary" onclick="carregarRelatorio()"><i class="bi bi-search"></i> Consultar</button>
+        <button class="btn btn-secondary" onclick="exportarRelatorio(this)"><i class="bi bi-file-earmark-spreadsheet"></i> Exportar CSV</button>
+      </div>
+      <div id="relResumo" class="rel-totais" style="display:none"></div>
+      <div id="relBody"><div class="empty">Use os filtros e clique em Consultar.</div></div>
+    </div>
   </main>
 </div>
 
@@ -276,7 +348,7 @@ function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;
 function showMsg(t,erro) { const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
 function clearMsg() { document.getElementById('msg').className='msg'; }
 function money(v) { return v!=null ? 'R$ '+Number(v).toFixed(2).replace('.',',') : ''; }
-function nomeEstado(e) { return {aberto:'Aberto',conferencia:'Conferência',preparado:'Preparado',pagamento:'Pagamento',pago:'Pago'}[e] || e; }
+function nomeEstado(e) { return {aberto:'Aberto',conferencia:'Conferência',preparado:'Preparado',pagamento:'Pagamento',pago:'Pago',cancelado:'Cancelado'}[e] || e; }
 
 function semanaAtual() {
   const h = new Date();
@@ -304,6 +376,7 @@ const ESTADOS = ['aberto','conferencia','preparado','pagamento','pago'];
 let cardsCache = {};
 let tecnicosData = [];
 let tecnicoSelecionadoId = '';
+let relTecnicoSelecionadoId = '';
 let modalDetalheId = null;
 
 function toggleCol(headerEl) {
@@ -329,9 +402,7 @@ async function carregarTecnicos() {
   } catch(e) { console.error('tecnicos', e); }
 }
 
-function renderComboList() {
-  const inp = document.getElementById('selTecnicoInput');
-  const box = document.getElementById('tecnicoList');
+function montarComboList(box, inp) {
   const f = normStr(inp.value);
   const itens = tecnicosData.filter(t => normStr(t.nome).includes(f) || normStr(t.email).includes(f));
   let html = '<div class="combo-item todos" data-id=""><div class="nome">Todos os tecnicos</div></div>';
@@ -344,25 +415,28 @@ function renderComboList() {
   box.classList.add('vis');
 }
 
-function selecionarTecnico(id, nome) {
-  tecnicoSelecionadoId = id || '';
-  document.getElementById('selTecnicoInput').value = id ? nome : '';
-  document.getElementById('tecnicoList').classList.remove('vis');
-  carregar();
-}
-
-(function comboInit() {
-  const inp = document.getElementById('selTecnicoInput');
-  const box = document.getElementById('tecnicoList');
-  inp.addEventListener('focus', renderComboList);
-  inp.addEventListener('input', () => { renderComboList(); if (!inp.value) tecnicoSelecionadoId = ''; });
+// Liga um combobox de tecnico (nome OU e-mail). onEscolha(id, nome) recebe a selecao.
+function criarCombo(inputId, listId, onEscolha) {
+  const inp = document.getElementById(inputId);
+  const box = document.getElementById(listId);
+  if (!inp || !box) return;
+  inp.addEventListener('focus', () => montarComboList(box, inp));
+  inp.addEventListener('input', () => { montarComboList(box, inp); if (!inp.value) onEscolha('', ''); });
   box.addEventListener('mousedown', (e) => {
     const item = e.target.closest('.combo-item');
     if (!item || item.style.pointerEvents === 'none') return;
     e.preventDefault();
     const nomeEl = item.querySelector('.nome');
-    selecionarTecnico(item.dataset.id, nomeEl ? nomeEl.textContent : '');
+    const id = item.dataset.id || '';
+    inp.value = id ? (nomeEl ? nomeEl.textContent : '') : '';
+    box.classList.remove('vis');
+    onEscolha(id, inp.value);
   });
+}
+
+(function comboInit() {
+  criarCombo('selTecnicoInput', 'tecnicoList', (id) => { tecnicoSelecionadoId = id; carregar(); });
+  criarCombo('relTecnicoInput', 'relTecnicoList', (id) => { relTecnicoSelecionadoId = id; });
 })();
 
 /* ---------------- Carregar e render ---------------- */
@@ -378,7 +452,9 @@ async function carregar(movedId) {
   try {
     const r = await fetch(API+'/cartoes?'+params.toString(), {headers:auth()});
     if (r.status===401) { window.location.href='/painel'; return; }
-    const cards = await r.json();
+    const todos = await r.json();
+    // cancelados nao aparecem no kanban -- vivem no Relatorio
+    const cards = todos.filter(c => c.estado !== 'cancelado');
     cardsCache = {};
     cards.forEach(c => { cardsCache[c.id] = c; });
     renderKanban(cards, movedId);
@@ -474,6 +550,11 @@ function botoesEstado(c) {
       h += `<button class="btn btn-secondary btn-sm" onclick="baixarRecibo(${id},this)"><i class="bi bi-download"></i> Recibo</button>`;
     }
   }
+  // Cancelar o pagamento: disponivel em qualquer estado ativo (inclusive pago).
+  // Manda para 'Cancelado' (fica no historico) e libera as OS do card.
+  if (e !== 'cancelado') {
+    h += `<button class="btn btn-cancelar btn-sm" style="margin-left:auto" onclick="cancelar(${id},this)"><i class="bi bi-x-circle"></i> Cancelar pagamento</button>`;
+  }
   return h;
 }
 
@@ -556,10 +637,9 @@ function fecharPopover() {
 }
 
 document.addEventListener('click', function(e) {
-  // fecha o combobox ao clicar fora dele
+  // fecha qualquer combobox ao clicar fora dele
   if (!e.target.closest('.combo')) {
-    const box = document.getElementById('tecnicoList');
-    if (box) box.classList.remove('vis');
+    document.querySelectorAll('.combo-list.vis').forEach(b => b.classList.remove('vis'));
   }
   const sem = e.target.closest('.semaforo[data-card-id]');
   if (!sem) { fecharPopover(); return; }
@@ -622,7 +702,14 @@ async function gerarCards() {
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'Falha ao gerar');
-    showMsg('Cards gerados: '+d.cards_criados+' cards, '+d.os_vinculadas+' OS vinculadas.', false);
+    const partes = [];
+    if (d.cards_criados) partes.push(d.cards_criados+' card(s) novo(s)');
+    if (d.cards_completados) partes.push(d.cards_completados+' card(s) completado(s)');
+    partes.push((d.os_novas||0)+' OS novas');
+    if (d.os_ja_consumidas) partes.push(d.os_ja_consumidas+' OS ja estavam em cards (ignoradas)');
+    showMsg(((d.os_novas||0)===0 && !d.cards_criados && !d.cards_completados
+             ? 'Nada novo: todas as OS do periodo ja estao em cards. '
+             : 'Pronto: ')+partes.join(' · '), false);
     await carregar();
   } catch(e) {
     showMsg('Erro: '+e.message, true);
@@ -647,6 +734,23 @@ async function avancar(id, estado, btn) {
     showMsg('Card de '+nomeEstado(d.estado)+'. Concluido.', false);
     await carregar(id);
     if (modalDetalheId === id) await recarregarModalDetalhe(id);
+  } catch(e) {
+    showMsg('Erro: '+e.message, true);
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+async function cancelar(id, btn) {
+  if (!confirm('Cancelar o pagamento deste card? Ele vai para o historico como "Cancelado" e as OS dele voltam a ficar livres para outro card.')) return;
+  let orig;
+  if (btn) { orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = 'Cancelando… <span class="spinner spinner-dark"></span>'; }
+  try {
+    const r = await fetch(API+'/cartoes/'+id+'/cancelar', {method:'POST', headers:auth()});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Falha');
+    showMsg('Pagamento cancelado. As OS voltaram a ficar livres.', false);
+    fecharModalDetalhe();
+    await carregar();
   } catch(e) {
     showMsg('Erro: '+e.message, true);
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
@@ -720,6 +824,85 @@ async function baixarArquivo(url, fallbackName, btn) {
 }
 function baixarPlanilha(id, btn) { baixarArquivo(API+'/cartoes/'+id+'/planilha', 'fechamento.csv', btn); }
 function baixarRecibo(id, btn) { baixarArquivo(API+'/cartoes/'+id+'/recibo', 'recibo', btn); }
+
+/* ---------------- Visao e Relatorios ---------------- */
+function trocarView(view) {
+  const ehRel = view === 'relatorios';
+  document.getElementById('viewFechamentos').hidden = ehRel;
+  document.getElementById('viewRelatorios').hidden = !ehRel;
+  document.getElementById('tabFechamentos').classList.toggle('active', !ehRel);
+  document.getElementById('tabRelatorios').classList.toggle('active', ehRel);
+}
+
+function relParams() {
+  const p = new URLSearchParams();
+  const de = document.getElementById('relDe').value;
+  const ate = document.getElementById('relAte').value;
+  const os = document.getElementById('relOS').value;
+  const est = document.getElementById('relEstado').value;
+  if (de) p.set('periodo_de', de);
+  if (ate) p.set('periodo_ate', ate);
+  if (relTecnicoSelecionadoId) p.set('tecnico_id', relTecnicoSelecionadoId);
+  if (os) p.set('numero_os', os);
+  if (est) p.set('estado', est);
+  return p;
+}
+
+function dotSemaforo(s) {
+  if (!s) return '<span style="color:var(--text2)">—</span>';
+  const cor = s === 'green' ? 'dot-green' : s === 'red' ? 'dot-red' : 'dot-yellow';
+  return '<span class="dot '+cor+'" style="display:inline-block;width:10px;height:10px;border-radius:50%"></span>';
+}
+
+async function carregarRelatorio() {
+  const body = document.getElementById('relBody');
+  const resumo = document.getElementById('relResumo');
+  body.innerHTML = '<div class="empty">Consultando…</div>';
+  resumo.style.display = 'none';
+  try {
+    const r = await fetch(API+'/relatorio?'+relParams().toString(), {headers:auth()});
+    if (r.status===401) { window.location.href='/painel'; return; }
+    const cards = await r.json();
+    if (!cards.length) { body.innerHTML = '<div class="empty">Nenhum fechamento encontrado para os filtros.</div>'; return; }
+
+    const totalServ = cards.reduce((s,c)=>s+(c.valor_servicos||0),0);
+    const nOs = cards.reduce((s,c)=>s+((c.os||[]).length),0);
+    resumo.innerHTML = '<span>'+cards.length+' fechamento(s)</span><span>'+nOs+' OS</span><span><strong>'+money(totalServ)+'</strong> em servicos</span>';
+    resumo.style.display = 'flex';
+
+    let html = `<table class="rel-tabela"><thead><tr>
+      <th>Tecnico</th><th>Periodo</th><th>Estado</th><th>Servicos</th><th>Recibo</th>
+      <th>Semaforo</th><th>Pago/Cancelado em</th><th>OS</th></tr></thead><tbody>`;
+    cards.forEach(c => {
+      const quandoFinal = c.estado==='pago' ? quando(c.pago_em)
+                        : c.estado==='cancelado' ? quando(c.cancelado_em) : '';
+      html += `<tr class="rel-linha" onclick="toggleRelOS(${c.id})">
+        <td><strong>${esc(c.tecnico_nome)}</strong></td>
+        <td>${quando(c.periodo_inicio)} a ${quando(c.periodo_fim)}</td>
+        <td><span class="badge estado-${c.estado}">${nomeEstado(c.estado)}</span></td>
+        <td>${money(c.valor_servicos)}</td>
+        <td>${c.valor_recibo!=null?money(c.valor_recibo):'—'}</td>
+        <td>${dotSemaforo(c.semaforo)}</td>
+        <td>${quandoFinal||'—'}</td>
+        <td>${(c.os||[]).length}</td>
+      </tr>
+      <tr class="rel-os" id="relos-${c.id}" hidden><td colspan="8"><div class="wrap">${osTableHTML(c.os)}</div></td></tr>`;
+    });
+    html += '</tbody></table>';
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = '<div class="empty">Erro: '+esc(e.message)+'</div>';
+  }
+}
+
+function toggleRelOS(id) {
+  const row = document.getElementById('relos-'+id);
+  if (row) row.hidden = !row.hidden;
+}
+
+function exportarRelatorio(btn) {
+  baixarArquivo(API+'/relatorio/planilha?'+relParams().toString(), 'relatorio_fechamento.csv', btn);
+}
 </script>
 </body>
 </html>

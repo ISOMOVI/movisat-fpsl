@@ -239,6 +239,14 @@ def init_db():
         if "email" not in _cols_tec:
             conn.execute("ALTER TABLE tecnicos ADD COLUMN email TEXT")
 
+        # migracao (07/10): auditoria do card de fechamento. O card virou o
+        # registro duravel (nunca mais apagado no gerar); guarda quem/quando
+        # pagou e quem/quando cancelou. "cancelado" e um estado novo, guardado.
+        _cols_cart = [r[1] for r in conn.execute("PRAGMA table_info(fechamento_cartoes)").fetchall()]
+        for _col in ("pago_em", "pago_por", "cancelado_em", "cancelado_por"):
+            if _col not in _cols_cart:
+                conn.execute(f"ALTER TABLE fechamento_cartoes ADD COLUMN {_col} TEXT")
+
 
         # migração (2026-08-14): `nas_duas` -- o item aparece TAMBÉM na OS
         # operacional, além da financeira. Nasceu do termo 8839: "Central 24
@@ -1455,7 +1463,8 @@ async def buscar_cartao_fechamento(cartao_id: int) -> dict | None:
             r = conn.execute(
                 "SELECT id, tecnico_id, tecnico_nome, periodo_inicio, periodo_fim, "
                 "estado, semaforo, valor_servicos, valor_recibo, recibo_arquivo, "
-                "criado_em, atualizado_em FROM fechamento_cartoes WHERE id = ?",
+                "criado_em, atualizado_em, pago_em, pago_por, cancelado_em, "
+                "cancelado_por FROM fechamento_cartoes WHERE id = ?",
                 (cartao_id,),
             ).fetchone()
             if not r:
@@ -1463,7 +1472,9 @@ async def buscar_cartao_fechamento(cartao_id: int) -> dict | None:
             return {"id": r[0], "tecnico_id": r[1], "tecnico_nome": r[2],
                     "periodo_inicio": r[3], "periodo_fim": r[4], "estado": r[5],
                     "semaforo": r[6], "valor_servicos": r[7], "valor_recibo": r[8],
-                    "recibo_arquivo": r[9], "criado_em": r[10], "atualizado_em": r[11]}
+                    "recibo_arquivo": r[9], "criado_em": r[10], "atualizado_em": r[11],
+                    "pago_em": r[12], "pago_por": r[13], "cancelado_em": r[14],
+                    "cancelado_por": r[15]}
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
@@ -1474,7 +1485,8 @@ async def listar_cartoes_fechamento(tecnico_id: int | None = None,
     def _run():
         sql = ("SELECT id, tecnico_id, tecnico_nome, periodo_inicio, periodo_fim, "
                "estado, semaforo, valor_servicos, valor_recibo, recibo_arquivo, "
-               "criado_em, atualizado_em FROM fechamento_cartoes WHERE 1=1")
+               "criado_em, atualizado_em, pago_em, pago_por, cancelado_em, "
+               "cancelado_por FROM fechamento_cartoes WHERE 1=1")
         args = []
         if tecnico_id is not None:
             sql += " AND tecnico_id = ?"
@@ -1490,24 +1502,78 @@ async def listar_cartoes_fechamento(tecnico_id: int | None = None,
             args.append(periodo_fim)
         sql += " ORDER BY periodo_inicio DESC, tecnico_nome"
         with _connect() as conn:
-            return [{"id": r[0], "tecnico_id": r[1], "tecnico_nome": r[2],
-                     "periodo_inicio": r[3], "periodo_fim": r[4], "estado": r[5],
-                     "semaforo": r[6], "valor_servicos": r[7], "valor_recibo": r[8],
-                     "recibo_arquivo": r[9], "criado_em": r[10], "atualizado_em": r[11]}
-                    for r in conn.execute(sql, args).fetchall()]
+            return [_row_cartao(r) for r in conn.execute(sql, args).fetchall()]
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
+def _row_cartao(r) -> dict:
+    """Mapeia uma linha de fechamento_cartoes (16 colunas) para dict."""
+    return {"id": r[0], "tecnico_id": r[1], "tecnico_nome": r[2],
+            "periodo_inicio": r[3], "periodo_fim": r[4], "estado": r[5],
+            "semaforo": r[6], "valor_servicos": r[7], "valor_recibo": r[8],
+            "recibo_arquivo": r[9], "criado_em": r[10], "atualizado_em": r[11],
+            "pago_em": r[12], "pago_por": r[13], "cancelado_em": r[14],
+            "cancelado_por": r[15]}
+
+
 async def listar_cartoes_fechamento_ativos() -> list[dict]:
-    """Cards que nao estao pagos -- candidatos a atualizacao de semaforo."""
+    """Cards vivos -- candidatos a atualizacao de semaforo (nem pago nem cancelado)."""
     def _run():
         with _connect() as conn:
             return [{"id": r[0], "tecnico_id": r[1], "estado": r[2],
                      "valor_servicos": r[3], "valor_recibo": r[4]}
                     for r in conn.execute(
                         "SELECT id, tecnico_id, estado, valor_servicos, valor_recibo "
-                        "FROM fechamento_cartoes WHERE estado <> 'pago'"
+                        "FROM fechamento_cartoes WHERE estado NOT IN ('pago','cancelado')"
                     ).fetchall()]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_numeros_os_consumidas() -> set[int]:
+    """OS ja presas a algum card ativo (estado != cancelado). Trava: uma OS so
+    pode estar em um card por vez; cancelar um card libera as OS dele."""
+    def _run():
+        with _connect() as conn:
+            return {r[0] for r in conn.execute(
+                "SELECT DISTINCT fo.numero_os FROM fechamento_os fo "
+                "JOIN fechamento_cartoes c ON c.id = fo.cartao_id "
+                "WHERE c.estado != 'cancelado'"
+            ).fetchall()}
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_cartoes_relatorio(periodo_de: str | None = None,
+                                   periodo_ate: str | None = None,
+                                   tecnico_id: int | None = None,
+                                   numero_os: int | None = None,
+                                   estado: str | None = None) -> list[dict]:
+    """Consulta de relatorio: faixa de datas por sobreposicao, tecnico, OS, estado."""
+    def _run():
+        sql = ("SELECT DISTINCT c.id, c.tecnico_id, c.tecnico_nome, c.periodo_inicio, "
+               "c.periodo_fim, c.estado, c.semaforo, c.valor_servicos, c.valor_recibo, "
+               "c.recibo_arquivo, c.criado_em, c.atualizado_em, c.pago_em, c.pago_por, "
+               "c.cancelado_em, c.cancelado_por FROM fechamento_cartoes c")
+        args = []
+        if numero_os is not None:
+            sql += " JOIN fechamento_os fo ON fo.cartao_id = c.id AND fo.numero_os = ?"
+            args.append(numero_os)
+        sql += " WHERE 1=1"
+        # sobreposicao de faixas [periodo_inicio, periodo_fim] x [de, ate]
+        if periodo_ate:
+            sql += " AND c.periodo_inicio <= ?"
+            args.append(periodo_ate)
+        if periodo_de:
+            sql += " AND c.periodo_fim >= ?"
+            args.append(periodo_de)
+        if tecnico_id is not None:
+            sql += " AND c.tecnico_id = ?"
+            args.append(tecnico_id)
+        if estado:
+            sql += " AND c.estado = ?"
+            args.append(estado)
+        sql += " ORDER BY c.periodo_inicio DESC, c.tecnico_nome"
+        with _connect() as conn:
+            return [_row_cartao(r) for r in conn.execute(sql, args).fetchall()]
     return await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
@@ -1527,13 +1593,63 @@ async def deletar_cartao_fechamento_por_periodo(tecnico_id: int,
     await asyncio.get_running_loop().run_in_executor(None, _run)
 
 
-async def atualizar_estado_cartao(cartao_id: int, estado: str) -> None:
+async def atualizar_estado_cartao(cartao_id: int, estado: str,
+                                  usuario: str | None = None) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            if estado == "pago":
+                conn.execute(
+                    "UPDATE fechamento_cartoes SET estado = ?, atualizado_em = ?, "
+                    "pago_em = ?, pago_por = ? WHERE id = ?",
+                    (estado, agora, agora, usuario, cartao_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE fechamento_cartoes SET estado = ?, atualizado_em = ? WHERE id = ?",
+                    (estado, agora, cartao_id),
+                )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def cancelar_cartao(cartao_id: int, usuario: str | None = None) -> None:
+    """Manda o card para 'cancelado' (fica no historico) e libera as OS dele --
+    a liberacao e automatica: listar_numeros_os_consumidas ignora cancelados.
+    Os vinculos em fechamento_os ficam para o relatorio."""
     def _run():
         agora = datetime.now(timezone.utc).isoformat()
         with _connect() as conn:
             conn.execute(
-                "UPDATE fechamento_cartoes SET estado = ?, atualizado_em = ? WHERE id = ?",
-                (estado, agora, cartao_id),
+                "UPDATE fechamento_cartoes SET estado = 'cancelado', atualizado_em = ?, "
+                "cancelado_em = ?, cancelado_por = ? WHERE id = ?",
+                (agora, agora, usuario, cartao_id),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def buscar_cartao_aberto_por_periodo(tecnico_id: int, periodo_inicio: str,
+                                           periodo_fim: str) -> dict | None:
+    """O card 'aberto' do tecnico no periodo exato, se houver (para completar)."""
+    def _run():
+        with _connect() as conn:
+            r = conn.execute(
+                "SELECT id FROM fechamento_cartoes WHERE tecnico_id = ? AND "
+                "periodo_inicio = ? AND periodo_fim = ? AND estado = 'aberto' "
+                "ORDER BY id LIMIT 1",
+                (tecnico_id, periodo_inicio, periodo_fim),
+            ).fetchone()
+            return {"id": r[0]} if r else None
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def atualizar_valor_servicos_cartao(cartao_id: int, valor: float) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE fechamento_cartoes SET valor_servicos = ?, atualizado_em = ? "
+                "WHERE id = ?",
+                (valor, agora, cartao_id),
             )
     await asyncio.get_running_loop().run_in_executor(None, _run)
 
