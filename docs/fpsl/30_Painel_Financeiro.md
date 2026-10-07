@@ -12,14 +12,19 @@
 
 | Peça | Estado |
 |---|---|
-| `FIN_1.1` Conferência de Fechamento | ✅ no ar desde 29/09, validada com 76 OS reais. Rotina de 1h **desligada** (`conferencia_fechamento_ativa = false`) |
-| **E1** `os_historico` guarda `materiais_json` e `situacao_id` | ✅ no ar desde 01/10 13:35 — ver `16_Historico_OS_Scan.md` |
-| E1b interruptor na tela | 📋 especificado, não implementado |
-| Ordenar `FIN_1.1` pela data real de finalização | 📋 `ObterTimeLine` provado ao vivo; não implementado |
-| E2 ID × modelo no Histórico de OS | 📋 especificado |
-| E3 quatro validações na `FIN_1.1` | 📋 especificado |
-| E4 Ação manual no DataScope | 📋 especificado; depende de decisões dele |
+| `FIN_1.1` Conferência de Fechamento | ✅ no ar desde 29/09. Rotina de 1h **LIGADA** desde ~19:00 de 01/10 (`conferencia_fechamento_ativa = true`) |
+| **E1** `os_historico` guarda `materiais_json` e `situacao_id` | ✅ no ar 01/10 — ver `16_Historico_OS_Scan.md` |
+| E1b interruptor na tela | ✅ no ar 01/10 15:20 |
+| Ordenar `FIN_1.1` pela data real de finalização | ✅ no ar 01/10 15:52 (`ObterTimeLine`) |
+| E2 ID × modelo no Histórico de OS | ✅ no ar 01/10 ~18:00 |
+| E3 quatro validações + porta 15694 + rotina | ✅ no ar 01/10 ~19:00 |
+| **`FIN_2.1` Fechamento de Contas dos Técnicos** | ✅ no ar 06/10 (kanban, recibo, planilha) |
+| `FIN_2.1` pass de UX/UI | ✅ no ar 07/10 (commit `e11f8b7`) — spinner/confirmação, miniatura+modal, Iniciar Conferência real, busca por e-mail |
+| `FIN_2.1` trava de OS, cancelamento, registro, relatórios | ✅ no ar 07/10 (commit `4277f60`) |
+| E4 Ação manual no DataScope / baixa da OS no Harmonit | 📋 especificado; depende de decisões dele |
 | E5 corrigir modelo na OS | 📋 só depois de a E2 medir o volume |
+
+⚠️ **Falta ele validar no navegador** o `FIN_2.1` e as duas rodadas de 07/10.
 
 ---
 
@@ -617,3 +622,117 @@ Harmonit, WESO nem DataScope até a E4.
 
 ⚠️ **Navegador: falta ele** (`M9`). As duas telas responderam 200 e o JS passou
 no `node --check`.
+
+---
+
+## ✅ 06/10 — FIN_2.1: Fechamento de Contas dos Técnicos (NO AR)
+
+Tela nova (`/painel/fechamento-tecnicos`, aba `financeiro`, `telas.py` FIN_2.1)
+que apura quanto pagar a cada técnico por período, a partir das OS em **15694
+"Serviço Realizado"** conferidas pela E1-E3. Arquivos:
+`services/sync_tecnicos.py` (sync diário de técnicos), `services/fechamento.py`
+(geração de cards, semáforo, máquina de estados), `painel/routers/fechamento_router.py`,
+`frontend/fechamento_tecnicos.html` (kanban de 5 colunas).
+
+**Tabelas:** `tecnicos`, `fechamento_cartoes`, `fechamento_os`, coluna
+`tecnicos_json` em `os_historico`. **IDs medidos ao vivo (OS 16991):**
+`PAGAMENTO_TECNICO_ID = 653939`, `KM_DESLOCAMENTO_ID = 6971`. **Exclusão de
+técnicos:** 2 camadas (ID × `ObterUsuarios` + e-mail × `painel_usuarios`) → 170
+reais, 9 excluídos.
+
+## ✅ 07/10 (manhã) — Pass de UX/UI (commit `e11f8b7`)
+
+Pedido dele depois de usar a tela. Backend em `fechamento_router.py` /
+`sync_tecnicos.py` / `storage.py`; frontend no `fechamento_tecnicos.html`.
+
+- **"Iniciar Conferência" deixou de mentir (`M12`).** A transição
+  `aberto → conferencia` passou a chamar `atualizar_semaforo` (relê a conferência
+  de cada OS e recalcula o semáforo), como o "Marcar Preparado". Antes só trocava
+  o card de coluna. 1 linha no router: `if novo in ("conferencia","preparado")`.
+  As transições `pagamento`/`pago` seguem só andando o card — é o andamento
+  humano, não ação em Harmonit/DataScope/WESO.
+- **Feedback de ação.** Botão clicado desabilita e vira "Conferindo…/Preparando…"
+  com `.spinner` (do `estilo.css`); ao concluir, o card ganha destaque
+  `.just-moved` (1,4 s) e a coluna de destino abre sozinha. Downloads com spinner.
+  Descartado o overlay bloqueante com ampulheta (padrão da casa evita piscar
+  spinner em ação rápida).
+- **Miniatura + modal.** O card no kanban é miniatura; clique abre
+  `#modalDetalhe` (largo) com Calculado × Recibo lado a lado (divergência em
+  vermelho), tabela de OS inteira e lista de divergências; ações da etapa no
+  rodapé.
+- **Busca de técnico por nome OU e-mail.** Coluna `email` em `tecnicos` (migração
+  guardada no `init_db`), gravada pelo sync (o `ObterTecnicos` já a devolvia);
+  `salvar_tecnico(email=...)`, `listar/buscar` devolvem. Combobox type-ahead no
+  lugar do `<select>`. Sync populou **170/170 reais com e-mail**.
+
+Suítes vivas: roteadores 67, ponta-a-ponta 35, `operacoes_f*` 406 — 0 falhas.
+
+## ✅ 07/10 (tarde) — Trava de OS, cancelamento, registro permanente e relatórios (commit `4277f60`)
+
+🚨 **Bug achado nos logs (causa-raiz).** Ele levou o card 11 até **pago** (gravou
+certo às 15:31:31) e às **15:31:39 clicou "Gerar Cards" de novo** → o
+`gerar_cartoes` chamava `deletar_cartao_fechamento_por_periodo` e **apagou o card
+pago**, recriando em "aberto" (card 12). Era o "zerou e voltou ao início". O
+`atualizar_estado_cartao` sempre esteve correto; o vilão era o delete+recria.
+
+### `gerar_cartoes` não apaga mais nada
+
+Regra nova: "pegue as OS em 15694 conferidas do período que **ainda não estão em
+nenhum card ativo** e coloque num card **'aberto'** do técnico — criando o card ou
+**completando** o 'aberto' existente". Reclicar é idempotente. O total é
+recalculado a partir de **todas** as OS do card. `deletar_cartao_fechamento_por_periodo`
+ficou sem uso.
+
+### Trava de OS (decisão dele: trava dura, não "avisar")
+
+`storage.listar_numeros_os_consumidas()` = toda OS presa a um card com estado
+**≠ `cancelado`**. `gerar_cartoes` exclui as consumidas, então **gerar a mesma
+semana de novo traz 0 OS** — "uma OS não vive em dois cards". A liberação é
+automática ao cancelar (não há flag manual nem baixa no Harmonit).
+
+### Cancelamento
+
+Estado novo **`cancelado`** (fica no histórico, com `cancelado_em`/`cancelado_por`).
+`POST /cartoes/{id}/cancelar` (`storage.cancelar_cartao`), botão no modal
+disponível em qualquer estado ativo **inclusive pago** (é o caso que o travou).
+O card cancelado sai do kanban e aparece só no Relatório; seus `fechamento_os`
+ficam para o histórico. `listar_cartoes_fechamento_ativos` e `atualizar_semaforo`
+passam a ignorar `cancelado` além de `pago`.
+
+### Registro permanente
+
+O **card é o registro durável** — nunca mais apagado. Colunas novas em
+`fechamento_cartoes` (migração guardada): `pago_em`, `pago_por`, `cancelado_em`,
+`cancelado_por`. O `api_avancar_estado` injeta `usuario = Depends(requer_aba(
+"financeiro"))` e grava quem pagou (`_quem` = login ou e-mail). Sem tabela-ledger
+separada.
+
+### Relatórios
+
+Aba **"Relatórios"** dentro da própria tela (alternador no topo; decisão dele, não
+página nova). `storage.listar_cartoes_relatorio(periodo_de, periodo_ate,
+tecnico_id, numero_os, estado)` — faixa de datas por **sobreposição**, OS via
+`JOIN fechamento_os`. `GET /relatorio` (cada card já traz suas OS) e
+`GET /relatorio/planilha` (CSV `;` / `utf-8-sig`, uma linha por OS + totais).
+Combobox de técnico generalizado (`criarCombo`), reusado no filtro.
+
+### ⚠️ Fora de escopo — decisão dele pendente
+
+A "baixa" da OS é **local** (consumo no domínio do Fechamento). **Não** escreve o
+estado da OS no Harmonit/DataScope — isso é a frente **E4 "Ação"** (gated à
+sandbox) e pode colidir com o controle de duplicidade da rotina de Operações
+(`operacoes_rotina.py:200`). Se ele quiser a baixa real no Harmonit ao pagar, é
+outra frente, a planejar à parte.
+
+### Testado
+
+Isolado (cópia do pacote + banco temp): colunas de auditoria criadas; trava
+consome enquanto ativo e **libera ao cancelar**; auditoria pago/cancelado gravada;
+card cancelado fica no histórico com suas OS; relatório por técnico/OS/estado e
+por **faixa de datas** (sobreposição pega, fora não); endpoints `cancelar` e
+`relatorio[/planilha]` registrados. `node --check` do JS OK. Suítes vivas após o
+deploy: roteadores **67**, ponta-a-ponta **35**, `operacoes_f*` **406** — **0
+falhas**, Operação intacta.
+
+⚠️ **Navegador: falta ele.** O card 12 (aberto, OS 16991) ficou em produção como
+estava — serve de ponto de partida para o teste de ponta a ponta.
