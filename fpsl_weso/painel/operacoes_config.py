@@ -181,6 +181,148 @@ def conferir_taxa_de_migracao(servicos_vivos) -> str | None:
             "serviço que não existe — confira antes de gerar.")
 
 
+# ── Checklists da Solução Técnica (OS operacional) ───────────────────────────
+# Cada texto é colado ABAIXO do separador `-------------` no campo
+# `solucaoTecnica` da OS. O técnico preenche os subcampos.
+
+CHECKLIST_CONTRATO_NOVO = (
+    "Configurar equipamento / Sistema ->\n"
+    "Registro dos testes:\n"
+    "\n"
+    "Preparação para entrega ->\n"
+    "Registro dos itens:\n"
+    "\n"
+    "Entrega ou Envio por correio/transportadora ->\n"
+    "Entrega:\n"
+    "Código de Rastreio:\n"
+    "\n"
+    "Agendar serviço ->\n"
+    "Datas:\n"
+    "Dados e valores:\n"
+    "Acesso técnico:\n"
+    "\n"
+    "Serviço Agendado ->\n"
+    "Validações:\n"
+    "\n"
+    "Serviço Realizado ->"
+)
+
+CHECKLIST_RETIRADA = (
+    "Agendar serviço ->\n"
+    "Datas:\n"
+    "Dados e valores:\n"
+    "Acesso técnico:\n"
+    "\n"
+    "Serviço Agendado ->\n"
+    "Validações:\n"
+    "\n"
+    "Serviço realizado ->\n"
+    "\n"
+    "Aguardando devolução de equipamento ->\n"
+    "Código de rastreio:\n"
+    "\n"
+    "Equipamento recebido->"
+)
+
+CHECKLIST_TRANSFERENCIA = (
+    "Agendar serviço ->\n"
+    "Datas:\n"
+    "Dados e valores:\n"
+    "Acesso técnico:\n"
+    "\n"
+    "Serviço Agendado ->\n"
+    "Validações:\n"
+    "\n"
+    "Serviço Realizado ->"
+)
+
+CHECKLIST_MANUTENCAO_LOCAL = (
+    "Pendente de ação da Movisat ->\n"
+    "Diagnóstico:\n"
+    "Solução ou Direcionamento:\n"
+    "\n"
+    "Configurar equipamento / Sistema ->\n"
+    "Registro dos testes:\n"
+    "\n"
+    "Preparação para entrega ->\n"
+    "Registro dos itens:\n"
+    "\n"
+    "Agendar serviço ->\n"
+    "Datas:\n"
+    "Dados e valores:\n"
+    "Acesso técnico:\n"
+    "\n"
+    "Serviço Agendado ->\n"
+    "Validações:\n"
+    "\n"
+    "Serviço Realizado ->"
+)
+
+CHECKLIST_MANUTENCAO_TROCA = (
+    "Pendente de ação da Movisat ->\n"
+    "Diagnóstico:\n"
+    "Solução ou Direcionamento:\n"
+    "\n"
+    "Configurar equipamento / Sistema ->\n"
+    "Registro dos testes:\n"
+    "\n"
+    "Preparação para entrega ->\n"
+    "Registro dos itens:\n"
+    "\n"
+    "Entrega ou Envio por correio/transportadora ->\n"
+    "Entrega:\n"
+    "Código de Rastreio:\n"
+    "\n"
+    "Agendar serviço ->\n"
+    "Datas:\n"
+    "Dados e valores:\n"
+    "Acesso técnico:\n"
+    "\n"
+    "Serviço Agendado ->\n"
+    "Validações:\n"
+    "\n"
+    "Serviço Realizado ->"
+)
+
+CHECKLIST_SUBSTITUICAO_INSTALACAO = (
+    "Agendar serviço ->\n"
+    "Datas:\n"
+    "Dados e valores:\n"
+    "Acesso técnico:\n"
+    "\n"
+    "Serviço Agendado ->\n"
+    "Validações:\n"
+    "\n"
+    "Serviço Realizado ->"
+)
+
+CHECKLIST_SUBSTITUICAO_RETIRADA = (
+    "Agendar serviço ->\n"
+    "Datas:\n"
+    "Dados e valores:\n"
+    "Acesso técnico:\n"
+    "\n"
+    "Serviço Agendado ->\n"
+    "Validações:\n"
+    "\n"
+    "Serviço realizado ->"
+)
+
+CHECKLIST_RESSARCIMENTO = (
+    "Cancelamento de items ->\n"
+    "Linha móvel:\n"
+    "ID Weso:\n"
+    "Central 24hrs:\n"
+    "\n"
+    "Serviço realizado ->\n"
+    "\n"
+    "Aguardando devolução de equipamento ->\n"
+    "Código de rastreio:\n"
+    "\n"
+    "Equipamento recebido->"
+)
+
+
 PERFIS = {
     # ── 1 ─────────────────────────────────────────────────────────────────────
     # ⚠️ RENOMEADO (usuário, 19/08). Era "Cliente novo".
@@ -195,6 +337,7 @@ PERFIS = {
     # itens aparecendo e o `cobrar` desmarcado, o mesmo perfil serve contrato
     # pago e teste gratuito -- quem separa é o VALOR, não uma flag.
     "contrato_novo": {
+        "checklist": CHECKLIST_CONTRATO_NOVO,
         "label": "Contrato novo ou teste de tecnologia",
         "tipo_id": 76,
         "problema_id": 7457,   # "CONTRATO NOVO" -- nome bate exato
@@ -207,6 +350,7 @@ PERFIS = {
     # ── 2 ─────────────────────────────────────────────────────────────────────
     # ⚠️ RENOMEADO (usuário, 19/08). Era "Aditivo". Mesma razão do perfil 1.
     "aditivo": {
+        "checklist": CHECKLIST_CONTRATO_NOVO,
         "label": "Aditivo ou teste upgrade",
         "tipo_id": 76,
         "problema_id": 7372,   # "ADITIVO" -- nome bate exato
@@ -234,6 +378,7 @@ PERFIS = {
     # Reavaliar se: aparecer financeira de rescisão fechada sem que as
     # operacionais do mesmo termo tenham sido conferidas.
     "rescisao": {
+        "checklist": CHECKLIST_RETIRADA,
         "label": "Rescisão",
         "tipo_id": 57,
         "problema_id": 7502,   # "RESCISÃO" -- nome bate exato
@@ -263,6 +408,8 @@ PERFIS = {
     # pra agregada), e é intencional: perfis diferentes, decisão dele nos dois
     # casos. Ver `financeira_embutida` em `operacoes_os.py`.
     "substituicao": {
+        "checklist_retirada": CHECKLIST_SUBSTITUICAO_RETIRADA,
+        "checklist_instalacao": CHECKLIST_SUBSTITUICAO_INSTALACAO,
         "label": "Substituição (troca de equipamento)",
         "tipo_id_retirada": 73,
         "tipo_id_instalacao": 72,
@@ -293,6 +440,7 @@ PERFIS = {
     # OS de comodato, então a híbrida não pode continuar existindo. Passa a ser
     # 1 operacional de comodato + 1 financeira com o cabeçalho padrão.
     "transferencia_novo_titular": {
+        "checklist": CHECKLIST_TRANSFERENCIA,
         "label": "Transferência — Novo titular",
         "problema_id": 7474,   # TRANSFERÊNCIA DE TITULARIDADE
         "os_por_placa": 1,     # informativo; a geração é agregada
@@ -310,6 +458,7 @@ PERFIS = {
     # SEM flegar financeiro nem comodato -- só insere. O contrato antigo está
     # encerrando; quem assume comodato e cobrança é o novo titular, na OS dele.
     "transferencia_antigo_titular": {
+        "checklist": CHECKLIST_TRANSFERENCIA,
         "label": "Transferência — Antigo titular",
         "problema_id": 7474,
         "os_por_placa": 1,
@@ -344,6 +493,8 @@ PERFIS = {
     # ⚠️ O "Contrato ATUAL" de cada placa é lido e NÃO vai para a OS: é
     # informação interna, não do painel (usuário, 23/09).
     "transferencia_termo_novo": {
+        "checklist_transfere": CHECKLIST_TRANSFERENCIA,
+        "checklist_rescinde": CHECKLIST_RETIRADA,
         "label": "NOVO - Termo de transf. de tit.: Rescisão",
         "tipo_id": TIPO_CONTRATO_ID,
         "problema_id": 7474,   # TRANSFERÊNCIA DE TITULARIDADE, o mesmo do 5 e do 6
@@ -365,6 +516,7 @@ PERFIS = {
     # 🚨 RECIPIENTE SÓ NA WESO. Ele é bancada do setor de configuração, não
     # veículo do cliente -- no Harmonit não entra.
     "upgrade": {
+        "checklist": CHECKLIST_CONTRATO_NOVO,
         "label": "Upgrade de tecnologia",
         "tipo_id": 77,
         "problema_id": 7484,   # "UPGRADE" -- nome bate exato
@@ -396,6 +548,7 @@ PERFIS = {
     # financeira. O equipamento aparece como material para o técnico saber com
     # o que vai lidar -- não é patrimônio saindo nem cobrança entrando.
     "manutencao_local": {
+        "checklist": CHECKLIST_MANUTENCAO_LOCAL,
         "label": "Manutenção no local",
         "tipo_nome": "Solicitação de Cliente",
         "tipo_id": 1783,
@@ -413,6 +566,7 @@ PERFIS = {
         "descricao_template": "MANUTENÇÃO NO LOCAL: {placa} | {veiculo} | {serie} ({modelo})",
     },
     "manutencao_troca": {
+        "checklist": CHECKLIST_MANUTENCAO_TROCA,
         "label": "Manutenção com troca",
         "tipo_nome": "Solicitação de Cliente",
         "tipo_id": 1783,
@@ -454,6 +608,7 @@ PERFIS = {
     # ⚠️ EQUIPAMENTO E CHIP NA WESO ESTÃO FORA DO ESCOPO DA TELA. Aqui se
     # cuida de placa, cliente e OS. Quem encosta em equipamento é a rotina.
     "ressarcimento_sem_termo": {
+        "checklist": CHECKLIST_RESSARCIMENTO,
         "label": "Ressarcimento sem termo",
         "problema_id": RESSARCIMENTO_PROBLEMA_ID,
         "produto_servico_id": RESSARCIMENTO_SERVICO_ID,
@@ -477,6 +632,7 @@ PERFIS = {
         "descricao_prefixo": "RESSARCIMENTO",
     },
     "ressarcimento_com_termo": {
+        "checklist": CHECKLIST_RESSARCIMENTO,
         "label": "Ressarcimento com termo",
         "problema_id": RESSARCIMENTO_PROBLEMA_ID,
         "produto_servico_id": RESSARCIMENTO_SERVICO_ID,

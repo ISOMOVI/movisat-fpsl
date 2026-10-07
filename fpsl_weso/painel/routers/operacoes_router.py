@@ -1220,7 +1220,7 @@ async def previa_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
         # receberia outra -- prévia que diverge da gravação é pior que não ter.
         "solucao_tecnica_preview": oos.formatar_solucao_tecnica(
             oos.contexto_da_os(body.solucao_tecnica, pre["resolvidos"]),
-            body.observacao),
+            body.observacao, pre["perfil"].get("checklist", "")),
         "pode_gerar": not pre["pendentes"],
         # 🆕 23/09 (N1): o que este termo já gerou noutro lote. Com `trava`,
         # a tela exige a confirmação e o `/os/gerar` recusa sem ela.
@@ -1352,9 +1352,8 @@ async def gerar_os(body: oos.MontarInput, _=Depends(requer_aba("operacoes"))):
 async def _gravar_as_os(body: "oos.MontarInput", pre: dict) -> dict:
     """A gravação de fato. Só é chamada por `gerar_os`, depois das travas."""
     operacoes = _montar_tudo(body, pre)
-    solucao = oos.formatar_solucao_tecnica(
-        oos.contexto_da_os(body.solucao_tecnica, pre["resolvidos"]),
-        body.observacao)
+    contexto_base = oos.contexto_da_os(body.solucao_tecnica, pre["resolvidos"])
+    obs_base = body.observacao
     numero_na_desc = bool(pre["perfil"].get("numero_na_descricao"))
 
     # 🚨 FASE DUPLA. Operacionais primeiro, colhendo os números; a financeira
@@ -1366,6 +1365,8 @@ async def _gravar_as_os(body: "oos.MontarInput", pre: dict) -> dict:
 
     criadas, numeros = [], []
     for op in operacionais:
+        solucao = oos.formatar_solucao_tecnica(
+            contexto_base, obs_base, op.get("checklist", ""))
         resultado, numero = await _criar_uma_os(op, solucao, numero_na_desc)
         criadas.append(resultado)
         if numero:

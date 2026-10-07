@@ -134,7 +134,7 @@ def parse_qtd(txt) -> int:
         return 0
 
 
-def formatar_solucao_tecnica(contexto: str | None, observacao: str = "") -> str:
+def formatar_solucao_tecnica(contexto: str | None, observacao: str = "", checklist: str = "") -> str:
     """`solucaoTecnica` é o campo que o técnico preenche DEPOIS do serviço --
     não sobrescrevemos, só deixamos um cabeçalho com data e um separador,
     orientando a preencher dali para baixo. Combinado com o usuário em 15/07.
@@ -147,7 +147,10 @@ def formatar_solucao_tecnica(contexto: str | None, observacao: str = "") -> str:
         linhas.append(contexto.strip())
     if (observacao or "").strip():
         linhas.append(f"OBS: {observacao.strip()}")
-    return "\n".join(linhas) + "\n-------------\n"
+    texto = "\n".join(linhas) + "\n-------------\n"
+    if checklist:
+        texto += checklist + "\n"
+    return texto
 
 
 # ── O aviso prévio, e a redação que muda a cada termo ────────────────────────
@@ -937,6 +940,7 @@ def montar_novo_titular(body: MontarInput, perfil: dict, resolvidos: list[dict],
         "produto_servico_id": body.produto_servico_id,
         "prioridade_id": body.prioridade_id,
         "rotulo": "Novo titular (comodato)",
+        "checklist": perfil.get("checklist", ""),
         "descricao": descricao,
         "materiais": materiais_operacional(comodato, body.produto_servico_id),
     }
@@ -970,6 +974,7 @@ def montar_antigo_titular(body: MontarInput, perfil: dict,
         "produto_servico_id": body.produto_servico_id,
         "prioridade_id": body.prioridade_id,
         "rotulo": "Antigo titular",
+        "checklist": perfil.get("checklist", ""),
         "descricao": descricao_titularidade(perfil, body, dados),
         "materiais": materiais_operacional(sem_flag, body.produto_servico_id),
     }]
@@ -1025,6 +1030,7 @@ def montar_ressarcimento(body: MontarInput, perfil: dict,
         "prioridade_id": cfg.PRIORIDADE_NORMAL_ID,
         "tecnico_id": perfil.get("tecnico_id"),
         "rotulo": "Ressarcimento (híbrida: cobrança + oficina)",
+        "checklist": perfil.get("checklist", ""),
         "descricao": descricao,
         "materiais": [dict(i) for i in corpo] + [
             material_fixo(cfg.ENTREGA_OS_ID, "ENTREGA OS")],
@@ -1064,6 +1070,7 @@ def _op_por_placa(body: MontarInput, perfil: dict, p: PlacaOS,
             modelo_saida=eqp.modelo_efetivo(saida_bruto,
                                             eqp.tem_leitor_rfid(materiais))),
         "rotulo": perfil["label"],
+        "checklist": perfil.get("checklist", ""),
         "materiais": materiais_operacional(materiais, body.produto_servico_id),
     }
 
@@ -1114,6 +1121,7 @@ def montar_transf_novo(body: MontarInput, perfil: dict, resolvidos: list[dict],
             op = _op_por_placa(body, perfil, p, materiais,
                                seriais, recipientes, dados)
             op["descricao"] += f" | NOVO CONTRATO {p.novo_contrato}"
+            op["checklist"] = perfil.get("checklist_transfere", "")
             op["rotulo"] = f"Transfere para o contrato {p.novo_contrato}"
         else:
             rescindem.append(p)
@@ -1123,6 +1131,7 @@ def montar_transf_novo(body: MontarInput, perfil: dict, resolvidos: list[dict],
             materiais = substituir_rastreador(materiais, equip)
             op = _op_por_placa(body, rescisao, p, materiais,
                                seriais, recipientes, dados)
+            op["checklist"] = perfil.get("checklist_rescinde", "")
             op["rotulo"] = "Rescisão"
             # 🚨 A ROTINA LÊ ISTO, NÃO O PERFIL. O perfil 12 não tem
             # `desativa_apos_oficina` -- só a placa que rescinde devolve o
@@ -1201,6 +1210,7 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
                     serie=eqp.serie_de(seriais, p.placa),
                     modelo=modelo or eqp.MARCADOR_MODELO),
                 "rotulo": "Retirada",
+                "checklist": perfil.get("checklist_retirada", ""),
                 "materiais": materiais_retirada,
             })
             # 🚨 SÉRIE E MODELO VÊM DA PLACA QUE SAI -- decisão do usuário
@@ -1230,6 +1240,7 @@ def montar(body: MontarInput, perfil: dict, alocacao: list[list[dict]],
                     serie=eqp.serie_de(seriais, p.placa),
                     modelo=modelo or eqp.MARCADOR_MODELO),
                 "rotulo": "Instalação",
+                "checklist": perfil.get("checklist_instalacao", ""),
                 "materiais": materiais_operacional(
                     materiais, body.produto_servico_id),
             })
