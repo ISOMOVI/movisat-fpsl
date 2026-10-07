@@ -139,6 +139,18 @@ TELAS = [
         "permissao": "financeiro",
         "fase": 1,
     },
+    # 🆕 FIN_2.1 (06/10). Fechamento de Contas dos Tecnicos -- apura valores
+    # a pagar com base nas OS finalizadas e conferidas pela E1-E3 acima.
+    # Mesma permissao `financeiro`: quem confere tambem fecha.
+    {
+        "codigo": "FIN_2.1",
+        "titulo": "Fechamento Tecnicos",
+        "rota": "/painel/fechamento-tecnicos",
+        "icone": "bi-wallet2",
+        "descricao": "Apuracao de pagamento dos tecnicos por periodo.",
+        "permissao": "financeiro",
+        "fase": 1,
+    },
     # ---- CFG: configuração ----
     {
         "codigo": "CFG_1.1",

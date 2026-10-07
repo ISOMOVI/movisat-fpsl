@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fechamento de Contas — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/painel/static/barra_status.css">
+<style>
+  :root {
+    --blue:#2563EB; --blue-dim:#EFF6FF; --green:#16a34a; --green-dim:#F0FDF4;
+    --red:#DC2626; --red-dim:#FEF2F2; --amber:#D97706; --amber-dim:#FFFBEB;
+    --bg:#F8FAFC; --bg2:#F1F5F9; --text:#0F172A; --text2:#64748B;
+    --border:#E2E8F0; --card:#FFFFFF; --sidebar-bg:#0F172A; --sidebar-tx:#94A3B8; --sidebar-w:230px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .main { flex:1; padding:32px; overflow-x:hidden; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:18px; }
+  .painel-ctrl { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px;
+                 background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+  .btn-primary { background:var(--blue); color:#fff; } .btn-primary:hover { background:#1d4ed8; }
+  .btn-secondary { background:var(--card); color:var(--text); border-color:var(--border); }
+  .btn-secondary:hover { background:var(--bg2); }
+  .btn-sm { padding:5px 10px; font-size:.78rem; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  input[type=date], input[type=number], select {
+    font-family:inherit; font-size:.86rem; padding:8px 12px; border:1.5px solid var(--border);
+    border-radius:7px; background:var(--card); color:var(--text); }
+  label { font-size:.82rem; font-weight:600; color:var(--text2); }
+  .badge { font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .badge-blue { background:var(--blue-dim); color:var(--blue); }
+  .badge-green { background:var(--green-dim); color:var(--green); }
+  .badge-red { background:var(--red-dim); color:var(--red); }
+  .badge-amber { background:var(--amber-dim); color:var(--amber); }
+  .badge-gray { background:var(--bg2); color:var(--text2); }
+  .msg { font-size:.82rem; padding:8px 12px; border-radius:6px; display:none; margin-bottom:12px; }
+  .msg-ok { background:var(--green-dim); color:var(--green); display:block; }
+  .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
+  .empty { text-align:center; color:var(--text2); padding:24px; font-size:.86rem; }
+
+  /* --- Kanban --- */
+  .kanban { display:flex; gap:12px; overflow-x:auto; align-items:flex-start; padding-bottom:8px; }
+  .kanban-col { min-width:280px; flex:1; background:var(--bg); border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; }
+  .kanban-col-header { padding:12px 14px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border);
+                       font-weight:700; font-size:.84rem; user-select:none; border-radius:12px 12px 0 0; cursor:pointer; }
+  .kanban-col-header .cnt { font-weight:400; font-size:.76rem; color:var(--text2); }
+  .kanban-col-body { padding:10px; display:flex; flex-direction:column; gap:10px; max-height:calc(100vh - 240px); overflow-y:auto; }
+
+  .kanban-col[data-estado="aberto"] .kanban-col-header { background:#e0e7ff; color:#3730a3; }
+  .kanban-col[data-estado="conferencia"] .kanban-col-header { background:var(--blue-dim); color:var(--blue); }
+  .kanban-col[data-estado="preparado"] .kanban-col-header { background:var(--amber-dim); color:var(--amber); }
+  .kanban-col[data-estado="pagamento"] .kanban-col-header { background:#fce7f3; color:#be185d; }
+  .kanban-col[data-estado="pago"] .kanban-col-header { background:var(--green-dim); color:var(--green); }
+
+  .kanban-col.collapsed .kanban-col-body { display:none; }
+  .kanban-col.collapsed .kanban-col-header { border-bottom:none; border-radius:12px; }
+  .kanban-col-header .toggle-ico { margin-left:auto; font-size:.8rem; transition:transform .2s; }
+  .kanban-col.collapsed .toggle-ico { transform:rotate(-90deg); }
+
+  .fcard { background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .fcard-head { padding:12px 14px; display:flex; justify-content:space-between; align-items:flex-start; gap:8px;
+                cursor:pointer; user-select:none; }
+  .fcard-head:hover { background:var(--bg); }
+  .fcard-nome { font-weight:700; font-size:.88rem; }
+  .fcard-periodo { font-size:.74rem; color:var(--text2); margin-top:2px; }
+  .fcard-resumo { display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap; }
+  .fcard-valor { font-size:.88rem; font-weight:700; color:var(--green); }
+  .fcard-body { display:none; border-top:1px solid var(--border); padding:12px 14px; }
+  .fcard-body.aberto { display:block; }
+  .fcard-acoes { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+
+  .os-table { width:100%; border-collapse:collapse; font-size:.78rem; margin-top:6px; }
+  .os-table th { text-align:left; color:var(--text2); font-weight:600; font-size:.68rem; text-transform:uppercase;
+                 padding:5px 6px; border-bottom:1.5px solid var(--border); }
+  .os-table td { padding:5px 6px; border-bottom:1px solid var(--border); }
+  .os-table tr:last-child td { border-bottom:none; }
+
+  .semaforo { display:inline-block; width:14px; height:14px; border-radius:50%; vertical-align:middle; cursor:pointer; position:relative; }
+  .semaforo-green { background:var(--green); }
+  .semaforo-red { background:var(--red); }
+  .semaforo-yellow { background:var(--amber); }
+
+  .estado-aberto { background:#e0e7ff; color:#3730a3; }
+  .estado-conferencia { background:var(--blue-dim); color:var(--blue); }
+  .estado-preparado { background:var(--amber-dim); color:var(--amber); }
+  .estado-pagamento { background:#fce7f3; color:#be185d; }
+  .estado-pago { background:var(--green-dim); color:var(--green); }
+
+  /* Popover do semaforo */
+  .sem-popover { position:absolute; z-index:500; background:var(--card); border:1px solid var(--border);
+                 border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.12); padding:12px 14px;
+                 min-width:260px; max-width:340px; font-size:.8rem; }
+  .sem-popover h4 { font-size:.82rem; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+  .sem-popover ul { list-style:none; padding:0; margin:0; }
+  .sem-popover li { padding:4px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:6px; }
+  .sem-popover li:last-child { border-bottom:none; }
+  .sem-popover .dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .sem-popover .dot-red { background:var(--red); }
+  .sem-popover .dot-yellow { background:var(--amber); }
+  .sem-popover .dot-green { background:var(--green); }
+
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:1000;
+              align-items:center; justify-content:center; }
+  .modal-bg.vis { display:flex; }
+  .modal { background:var(--card); border-radius:12px; padding:24px; width:90%; max-width:420px; }
+  .modal h3 { font-size:1rem; margin-bottom:16px; }
+  .modal .campo { margin-bottom:14px; }
+  .modal .campo label { display:block; margin-bottom:4px; }
+  .modal .campo input { width:100%; }
+  .aviso-valor { font-size:.78rem; padding:6px 10px; border-radius:6px; margin-top:8px; }
+
+  @media (max-width:768px) {
+    .kanban { flex-direction:column; }
+    .kanban-col { min-width:100%; }
+    .kanban-col-body { max-height:none; }
+    .main { padding:16px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top"><h1>Fechamento de Contas dos Tecnicos</h1></div>
+    <p class="sub">Apura valores a pagar por tecnico com base nas OS em <strong>Servico Realizado</strong>,
+       conferidas pela rotina E1-E3. Gere os cards para o periodo desejado, confira o semaforo,
+       anexe o recibo/NFS e exporte a planilha para pagamento.</p>
+
+    <div class="painel-ctrl">
+      <div>
+        <label for="dtInicio">Inicio</label><br>
+        <input type="date" id="dtInicio">
+      </div>
+      <div>
+        <label for="dtFim">Fim</label><br>
+        <input type="date" id="dtFim">
+      </div>
+      <div>
+        <label for="selTecnico">Tecnico</label><br>
+        <select id="selTecnico"><option value="">Todos</option></select>
+      </div>
+      <span style="flex:1"></span>
+      <button class="btn btn-primary" id="btnGerar" onclick="gerarCards()"><i class="bi bi-arrow-repeat"></i> Gerar Cards</button>
+      <button class="btn btn-secondary" onclick="carregar()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+    </div>
+
+    <div id="msg" class="msg"></div>
+    <div id="resumo" style="display:none; margin-bottom:16px; font-size:.84rem; color:var(--text2)"></div>
+
+    <div class="kanban" id="kanban">
+      <div class="kanban-col" data-estado="aberto">
+        <div class="kanban-col-header" onclick="toggleCol(this)">Aberto <span class="cnt" id="cnt-aberto"></span><i class="bi bi-chevron-down toggle-ico"></i></div>
+        <div class="kanban-col-body" id="col-aberto"></div>
+      </div>
+      <div class="kanban-col" data-estado="conferencia">
+        <div class="kanban-col-header" onclick="toggleCol(this)">Conferencia <span class="cnt" id="cnt-conferencia"></span><i class="bi bi-chevron-down toggle-ico"></i></div>
+        <div class="kanban-col-body" id="col-conferencia"></div>
+      </div>
+      <div class="kanban-col" data-estado="preparado">
+        <div class="kanban-col-header" onclick="toggleCol(this)">Preparado <span class="cnt" id="cnt-preparado"></span><i class="bi bi-chevron-down toggle-ico"></i></div>
+        <div class="kanban-col-body" id="col-preparado"></div>
+      </div>
+      <div class="kanban-col" data-estado="pagamento">
+        <div class="kanban-col-header" onclick="toggleCol(this)">Pagamento <span class="cnt" id="cnt-pagamento"></span><i class="bi bi-chevron-down toggle-ico"></i></div>
+        <div class="kanban-col-body" id="col-pagamento"></div>
+      </div>
+      <div class="kanban-col collapsed" data-estado="pago">
+        <div class="kanban-col-header" onclick="toggleCol(this)">Pago <span class="cnt" id="cnt-pago"></span><i class="bi bi-chevron-down toggle-ico"></i></div>
+        <div class="kanban-col-body" id="col-pago"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-bg" id="modalRecibo">
+  <div class="modal">
+    <h3>Anexar Recibo / NFS</h3>
+    <div class="campo">
+      <label for="reciboArquivo">Arquivo</label>
+      <input type="file" id="reciboArquivo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+    </div>
+    <div class="campo">
+      <label for="reciboValor">Valor informado no documento (R$)</label>
+      <input type="number" id="reciboValor" step="0.01" min="0" placeholder="0,00">
+    </div>
+    <div id="reciboAviso" class="aviso-valor" style="display:none"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+      <button class="btn btn-secondary" onclick="fecharModalRecibo()">Cancelar</button>
+      <button class="btn btn-primary" id="btnEnviarRecibo" onclick="enviarRecibo()">Enviar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/painel/static/barra_status.js"></script>
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('financeiro');
+const API = '/painel/api/fechamento';
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showMsg(t,erro) { const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
+function clearMsg() { document.getElementById('msg').className='msg'; }
+function money(v) { return v!=null ? 'R$ '+Number(v).toFixed(2).replace('.',',') : ''; }
+
+function semanaAtual() {
+  const h = new Date();
+  const dow = h.getDay();
+  const seg = new Date(h); seg.setDate(h.getDate() - ((dow + 6) % 7));
+  const dom = new Date(seg); dom.setDate(seg.getDate() + 6);
+  return [seg, dom];
+}
+function iso(d) { return d.toISOString().slice(0,10); }
+function quando(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  const z = n => String(n).padStart(2,'0');
+  return z(d.getDate())+'/'+z(d.getMonth()+1)+'/'+d.getFullYear();
+}
+
+function badgeSemaforo(s, cardId) {
+  if (!s) return '';
+  const cor = s === 'green' ? 'semaforo-green' : s === 'red' ? 'semaforo-red' : 'semaforo-yellow';
+  return '<span class="semaforo '+cor+'" data-card-id="'+cardId+'" title="Clique para detalhes"></span>';
+}
+
+const ESTADOS = ['aberto','conferencia','preparado','pagamento','pago'];
+let cardsCache = {};
+
+function toggleCol(headerEl) {
+  headerEl.closest('.kanban-col').classList.toggle('collapsed');
+}
+
+(function init() {
+  const [seg,dom] = semanaAtual();
+  document.getElementById('dtInicio').value = iso(seg);
+  document.getElementById('dtFim').value = iso(dom);
+  carregarTecnicos();
+  carregar();
+})();
+
+async function carregarTecnicos() {
+  try {
+    const r = await fetch(API+'/tecnicos', {headers:auth()});
+    if (r.status===401) { window.location.href='/painel'; return; }
+    const tecs = await r.json();
+    const sel = document.getElementById('selTecnico');
+    tecs.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.tecnico_id;
+      opt.textContent = t.nome;
+      sel.appendChild(opt);
+    });
+  } catch(e) { console.error('tecnicos', e); }
+}
+
+async function carregar() {
+  clearMsg();
+  const params = new URLSearchParams();
+  const ti = document.getElementById('dtInicio').value;
+  const tf = document.getElementById('dtFim').value;
+  const tec = document.getElementById('selTecnico').value;
+  if (ti) params.set('periodo_inicio', ti);
+  if (tf) params.set('periodo_fim', tf);
+  if (tec) params.set('tecnico_id', tec);
+
+  try {
+    const r = await fetch(API+'/cartoes?'+params.toString(), {headers:auth()});
+    if (r.status===401) { window.location.href='/painel'; return; }
+    const cards = await r.json();
+    cardsCache = {};
+    cards.forEach(c => { cardsCache[c.id] = c; });
+    renderKanban(cards);
+  } catch(e) {
+    showMsg('Erro ao carregar: '+e.message, true);
+  }
+}
+
+function renderKanban(cards) {
+  const res = document.getElementById('resumo');
+  const grupos = {};
+  ESTADOS.forEach(e => { grupos[e] = []; });
+  cards.forEach(c => {
+    if (grupos[c.estado]) grupos[c.estado].push(c);
+  });
+
+  if (!cards.length) {
+    res.style.display = 'none';
+    ESTADOS.forEach(e => {
+      document.getElementById('col-'+e).innerHTML = '<div class="empty" style="padding:12px">Nenhum card</div>';
+      document.getElementById('cnt-'+e).textContent = '';
+    });
+    return;
+  }
+
+  const total = cards.reduce((s,c) => s + (c.valor_servicos||0), 0);
+  res.innerHTML = cards.length+' cards &middot; '+money(total)+' em servicos';
+  res.style.display = 'block';
+
+  ESTADOS.forEach(e => {
+    const lista = grupos[e];
+    document.getElementById('cnt-'+e).textContent = lista.length ? '('+lista.length+')' : '';
+    const col = document.getElementById('col-'+e);
+    if (!lista.length) {
+      col.innerHTML = '<div class="empty" style="padding:12px;font-size:.78rem">Nenhum card</div>';
+      return;
+    }
+    col.innerHTML = lista.map(c => cardHTML(c)).join('');
+  });
+}
+
+function cardHTML(c) {
+  const id = c.id;
+  return `<div class="fcard" id="fcard-${id}">
+    <div class="fcard-head" onclick="toggleCard(${id})">
+      <div style="flex:1;min-width:0">
+        <div class="fcard-nome">${esc(c.tecnico_nome)}</div>
+        <div class="fcard-periodo">${quando(c.periodo_inicio)} a ${quando(c.periodo_fim)}</div>
+        <div class="fcard-resumo">
+          ${badgeSemaforo(c.semaforo, id)}
+          <span class="fcard-valor">${money(c.valor_servicos)}</span>
+          ${c.valor_recibo!=null ? '<span style="font-size:.74rem;color:var(--text2)">Recibo: '+money(c.valor_recibo)+'</span>' : ''}
+        </div>
+      </div>
+      <i class="bi bi-chevron-down" style="color:var(--text2);font-size:.8rem"></i>
+    </div>
+    <div class="fcard-body" id="fbody-${id}">
+      <div id="fos-${id}" style="font-size:.8rem;color:var(--text2)">Carregando OS...</div>
+      <div class="fcard-acoes" id="facoes-${id}">
+        ${botoesEstado(c)}
+      </div>
+    </div>
+  </div>`;
+}
+
+function botoesEstado(c) {
+  const id = c.id;
+  const e = c.estado;
+  let h = '';
+  if (e === 'aberto') {
+    h += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();avancar(${id},'conferencia')"><i class="bi bi-search"></i> Iniciar Conferencia</button>`;
+  } else if (e === 'conferencia') {
+    h += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();avancar(${id},'preparado')"><i class="bi bi-check2-circle"></i> Marcar Preparado</button>`;
+  } else if (e === 'preparado') {
+    h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();abrirModalRecibo(${id})"><i class="bi bi-paperclip"></i> Recibo/NFS</button>`;
+    h += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();avancar(${id},'pagamento')"><i class="bi bi-cash-stack"></i> Pagamento</button>`;
+  } else if (e === 'pagamento') {
+    h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();baixarPlanilha(${id})"><i class="bi bi-file-earmark-spreadsheet"></i> Planilha</button>`;
+    if (c.recibo_arquivo) {
+      h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();baixarRecibo(${id})"><i class="bi bi-download"></i> Recibo</button>`;
+    }
+    h += `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();avancar(${id},'pago')"><i class="bi bi-check-lg"></i> Marcar Pago</button>`;
+  } else if (e === 'pago') {
+    h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();baixarPlanilha(${id})"><i class="bi bi-file-earmark-spreadsheet"></i> Planilha</button>`;
+    if (c.recibo_arquivo) {
+      h += `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();baixarRecibo(${id})"><i class="bi bi-download"></i> Recibo</button>`;
+    }
+  }
+  return h;
+}
+
+async function toggleCard(id) {
+  const body = document.getElementById('fbody-'+id);
+  if (body.classList.contains('aberto')) {
+    body.classList.remove('aberto');
+    return;
+  }
+  body.classList.add('aberto');
+
+  try {
+    const r = await fetch(API+'/cartoes/'+id, {headers:auth()});
+    const c = await r.json();
+    cardsCache[id] = Object.assign(cardsCache[id]||{}, c);
+    const el = document.getElementById('fos-'+id);
+    if (!c.os || !c.os.length) {
+      el.innerHTML = '<span class="empty">Nenhuma OS vinculada.</span>';
+    } else {
+      el.innerHTML = `<table class="os-table">
+        <thead><tr><th>OS</th><th>Pagamento</th><th>KM</th><th>Total</th><th>Conf.</th></tr></thead>
+        <tbody>${c.os.map(o => `<tr>
+          <td><strong>${o.numero_os}</strong></td>
+          <td>${money(o.valor_pagamento)}</td>
+          <td>${money(o.valor_km)}</td>
+          <td><strong>${money(o.valor_pagamento + o.valor_km)}</strong></td>
+          <td>${o.conferencia_ok ? '<span class="badge badge-green">OK</span>' : '<span class="badge badge-amber">pendente</span>'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    }
+    document.getElementById('facoes-'+id).innerHTML = botoesEstado(c);
+  } catch(e) {
+    document.getElementById('fos-'+id).innerHTML = 'Erro: '+esc(e.message);
+  }
+}
+
+/* --- Popover do semaforo --- */
+let popoverAtivo = null;
+function fecharPopover() {
+  if (popoverAtivo) { popoverAtivo.remove(); popoverAtivo = null; }
+}
+
+document.addEventListener('click', function(e) {
+  const sem = e.target.closest('.semaforo[data-card-id]');
+  if (!sem) { fecharPopover(); return; }
+  e.stopPropagation();
+  e.preventDefault();
+  const cardId = parseInt(sem.dataset.cardId);
+  mostrarPopoverSemaforo(sem, cardId);
+});
+
+async function mostrarPopoverSemaforo(el, cardId) {
+  fecharPopover();
+  const c = cardsCache[cardId];
+  if (!c) return;
+
+  let osData = c.os;
+  if (!osData) {
+    try {
+      const r = await fetch(API+'/cartoes/'+cardId, {headers:auth()});
+      const det = await r.json();
+      cardsCache[cardId] = Object.assign(c, det);
+      osData = det.os;
+    } catch(e) { return; }
+  }
+
+  const issues = [];
+  if (c.valor_recibo != null && c.valor_servicos != null && Math.abs(c.valor_recibo - c.valor_servicos) > 0.01) {
+    issues.push({cor:'red', texto:'Valor recibo '+money(c.valor_recibo)+' diverge do calculado '+money(c.valor_servicos)});
+  }
+  if (osData && osData.length) {
+    osData.forEach(o => {
+      if (!o.conferencia_ok) {
+        issues.push({cor:'yellow', texto:'OS '+o.numero_os+' — conferencia pendente'});
+      }
+    });
+  }
+
+  if (!issues.length) {
+    issues.push({cor:'green', texto:'Todas as OS conferidas, valores OK'});
+  }
+
+  const tituloTexto = c.semaforo === 'green' ? 'Tudo OK' : c.semaforo === 'red' ? 'Divergencia' : 'Pendencias';
+  const dotCor = c.semaforo === 'green' ? 'green' : c.semaforo === 'red' ? 'red' : 'yellow';
+
+  const pop = document.createElement('div');
+  pop.className = 'sem-popover';
+  pop.innerHTML = `<h4><span class="dot dot-${dotCor}"></span> ${tituloTexto}</h4>
+    <ul>${issues.map(i => `<li><span class="dot dot-${i.cor}"></span> ${esc(i.texto)}</li>`).join('')}</ul>`;
+
+  document.body.appendChild(pop);
+  popoverAtivo = pop;
+
+  const rect = el.getBoundingClientRect();
+  let top = rect.bottom + window.scrollY + 6;
+  let left = rect.left + window.scrollX - 40;
+  if (left + 300 > window.innerWidth) left = window.innerWidth - 310;
+  if (left < 8) left = 8;
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+}
+
+async function gerarCards() {
+  const ti = document.getElementById('dtInicio').value;
+  const tf = document.getElementById('dtFim').value;
+  if (!ti || !tf) { showMsg('Informe inicio e fim do periodo.', true); return; }
+
+  const tec = document.getElementById('selTecnico').value;
+  const btn = document.getElementById('btnGerar');
+  btn.disabled = true; btn.textContent = 'Gerando...';
+  clearMsg();
+
+  try {
+    const body = { periodo_inicio: ti, periodo_fim: tf };
+    if (tec) body.tecnico_id = parseInt(tec);
+    const r = await fetch(API+'/cartoes/gerar', {
+      method:'POST', headers:{...auth(), 'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Falha ao gerar');
+    showMsg('Cards gerados: '+d.cards_criados+' cards, '+d.os_vinculadas+' OS vinculadas.', false);
+    await carregar();
+  } catch(e) {
+    showMsg('Erro: '+e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Gerar Cards';
+  }
+}
+
+async function avancar(id, estado) {
+  try {
+    const r = await fetch(API+'/cartoes/'+id+'/avancar', {
+      method:'POST', headers:{...auth(), 'Content-Type':'application/json'},
+      body: JSON.stringify({estado}),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Falha');
+    showMsg('Card atualizado para: '+estado, false);
+    await carregar();
+  } catch(e) {
+    showMsg('Erro: '+e.message, true);
+  }
+}
+
+let reciboCardId = null;
+function abrirModalRecibo(id) {
+  reciboCardId = id;
+  document.getElementById('reciboArquivo').value = '';
+  document.getElementById('reciboValor').value = '';
+  document.getElementById('reciboAviso').style.display = 'none';
+  document.getElementById('modalRecibo').classList.add('vis');
+}
+function fecharModalRecibo() {
+  document.getElementById('modalRecibo').classList.remove('vis');
+  reciboCardId = null;
+}
+
+async function enviarRecibo() {
+  const arquivo = document.getElementById('reciboArquivo').files[0];
+  const valor = document.getElementById('reciboValor').value;
+  if (!arquivo) { showMsg('Selecione o arquivo.', true); return; }
+  if (!valor) { showMsg('Informe o valor do documento.', true); return; }
+
+  const btn = document.getElementById('btnEnviarRecibo');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', arquivo);
+    fd.append('valor_recibo', valor);
+    const r = await fetch(API+'/cartoes/'+reciboCardId+'/recibo', {
+      method:'POST', headers:auth(), body:fd,
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Falha');
+    showMsg('Recibo anexado.', false);
+    fecharModalRecibo();
+    await carregar();
+  } catch(e) {
+    showMsg('Erro: '+e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Enviar';
+  }
+}
+
+async function baixarArquivo(url, fallbackName) {
+  try {
+    const r = await fetch(url, {headers:auth()});
+    if (!r.ok) { showMsg('Erro no download.', true); return; }
+    const disp = r.headers.get('content-disposition') || '';
+    const m = disp.match(/filename="?([^"]+)"?/);
+    const nome = m ? m[1] : fallbackName;
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nome;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch(e) { showMsg('Erro: '+e.message, true); }
+}
+function baixarPlanilha(id) { baixarArquivo(API+'/cartoes/'+id+'/planilha', 'fechamento.csv'); }
+function baixarRecibo(id) { baixarArquivo(API+'/cartoes/'+id+'/recibo', 'recibo'); }
+</script>
+</body>
+</html>

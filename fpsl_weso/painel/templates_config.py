@@ -41,6 +41,12 @@ FINANCEIRO_PROBLEMA_ID = 11701          # Problema "FINANCEIRO"
 FINANCEIRO_PRODUTO_SERVICO_ID = 606037  # serviço "FINANCEIRO" (cabeçalho da financeira)
 FINANCEIRO_TECNICO_ID = 9617            # técnico Karla Alves (só na financeira)
 
+# Fechamento de contas dos tecnicos -- servicos na OS cujos valores sao apurados
+# Validados ao vivo na OS 16991 em 2026-10-06
+PAGAMENTO_TECNICO_ID = 653939   # "PAGAMENTO DE TECNICO" (codigo 999061026)
+KM_DESLOCAMENTO_ID = 6971       # "KM DESLOCAMENTO" (codigo 100022)
+
+
 # Prioridade da OS (campo `prioridadeId` do SalvarOrdemServico -- validado ao vivo
 # 2026-07-24: 383 gravou "Alta"). Lista: 381 Baixa · 382 Normal · 383 Alta · 384
 # Urgente. A operacional usa a escolhida no painel (default Normal); a FINANCEIRA é

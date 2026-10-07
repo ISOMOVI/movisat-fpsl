@@ -188,6 +188,50 @@ def init_db():
         if "os_id" not in _cols:
             conn.execute("ALTER TABLE os_historico ADD COLUMN os_id INTEGER")
 
+        # migracao (06/10): tabela de tecnicos para o Fechamento de Contas.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tecnicos (
+                tecnico_id    INTEGER PRIMARY KEY,
+                nome          TEXT NOT NULL,
+                excluido      INTEGER NOT NULL DEFAULT 0,
+                atualizado_em TEXT NOT NULL
+            )
+        """)
+        # migracao (06/10): cards de fechamento de contas dos tecnicos.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS fechamento_cartoes (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                tecnico_id      INTEGER NOT NULL,
+                tecnico_nome    TEXT NOT NULL,
+                periodo_inicio  TEXT NOT NULL,
+                periodo_fim     TEXT NOT NULL,
+                estado          TEXT NOT NULL DEFAULT 'aberto',
+                semaforo        TEXT,
+                valor_servicos  REAL NOT NULL DEFAULT 0,
+                valor_recibo    REAL,
+                recibo_arquivo  TEXT,
+                criado_em       TEXT NOT NULL,
+                atualizado_em   TEXT NOT NULL,
+                UNIQUE(tecnico_id, periodo_inicio, periodo_fim)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS fechamento_os (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                cartao_id       INTEGER NOT NULL REFERENCES fechamento_cartoes(id),
+                numero_os       INTEGER NOT NULL,
+                valor_pagamento REAL NOT NULL DEFAULT 0,
+                valor_km        REAL NOT NULL DEFAULT 0,
+                conferencia_ok  INTEGER NOT NULL DEFAULT 0,
+                criado_em       TEXT NOT NULL,
+                UNIQUE(cartao_id, numero_os)
+            )
+        """)
+        # migracao (06/10): tecnicos_json na os_historico
+        if "tecnicos_json" not in _cols:
+            conn.execute("ALTER TABLE os_historico ADD COLUMN tecnicos_json TEXT")
+
+
         # migração (2026-08-14): `nas_duas` -- o item aparece TAMBÉM na OS
         # operacional, além da financeira. Nasceu do termo 8839: "Central 24
         # horas" vem como CONTRATADO com valor, cai em cobrança e some da OS
@@ -412,7 +456,8 @@ async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, client
                               status_str: str | None = None,
                               materiais: list | None = None,
                               situacao_id: int | None = None,
-                              os_id: int | None = None) -> bool:
+                              os_id: int | None = None,
+                              tecnicos: list | None = None) -> bool:
     """Grava/atualiza uma OS no histórico. Retorna True se era NOVA (não existia).
 
     🔵 29/09: `status`/`status_str` são opcionais, de propósito -- os dois
@@ -429,7 +474,7 @@ async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, client
         agora = datetime.now(timezone.utc).isoformat()
         with _connect() as conn:
             anterior = conn.execute(
-                "SELECT visto_em, materiais_json, situacao_id, os_id FROM os_historico "
+                "SELECT visto_em, materiais_json, situacao_id, os_id, tecnicos_json FROM os_historico "
                 "WHERE numero_os = ?", (numero_os,)
             ).fetchone()
             existe = anterior is not None
@@ -438,15 +483,17 @@ async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, client
                         if materiais is not None else (anterior[1] if existe else None))
             sit = situacao_id if situacao_id is not None else (anterior[2] if existe else None)
             oid = os_id if os_id is not None else (anterior[3] if existe else None)
+            tec_json = (json.dumps(tecnicos, ensure_ascii=False)
+                        if tecnicos is not None else (anterior[4] if existe else None))
             conn.execute(
                 "INSERT OR REPLACE INTO os_historico "
                 "(numero_os, tipo, problema, produto_id, cliente_id, data_previsao, "
                 " oficinas_json, n_oficinas, visto_em, atualizado_em, status, status_str, "
-                " materiais_json, situacao_id, os_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " materiais_json, situacao_id, os_id, tecnicos_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (numero_os, tipo, problema, produto_id, cliente_id, data_previsao,
                  json.dumps(oficinas or [], ensure_ascii=False), len(oficinas or []), visto, agora,
-                 status, status_str, mat_json, sit, oid),
+                 status, status_str, mat_json, sit, oid, tec_json),
             )
         return not existe
     return await asyncio.get_running_loop().run_in_executor(None, _run)
@@ -1319,3 +1366,280 @@ async def listar_lotes_cadastro(limite: int = 100,
 def novo_lote() -> str:
     """Identificador da rodada. Curto o bastante para caber na tela."""
     return uuid.uuid4().hex[:12]
+
+
+
+# ── tecnicos ─────────────────────────────────────────────────────────────────
+
+async def salvar_tecnico(tecnico_id: int, nome: str, excluido: bool) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO tecnicos "
+                "(tecnico_id, nome, excluido, atualizado_em) VALUES (?, ?, ?, ?)",
+                (tecnico_id, nome, int(excluido), agora),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_tecnicos(apenas_reais: bool = True) -> list[dict]:
+    def _run():
+        with _connect() as conn:
+            sql = "SELECT tecnico_id, nome, excluido, atualizado_em FROM tecnicos"
+            if apenas_reais:
+                sql += " WHERE excluido = 0"
+            sql += " ORDER BY nome"
+            return [{"tecnico_id": r[0], "nome": r[1], "excluido": bool(r[2]),
+                     "atualizado_em": r[3]} for r in conn.execute(sql).fetchall()]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def buscar_tecnico(tecnico_id: int) -> dict | None:
+    def _run():
+        with _connect() as conn:
+            r = conn.execute(
+                "SELECT tecnico_id, nome, excluido, atualizado_em FROM tecnicos "
+                "WHERE tecnico_id = ?", (tecnico_id,)
+            ).fetchone()
+            if not r:
+                return None
+            return {"tecnico_id": r[0], "nome": r[1], "excluido": bool(r[2]),
+                    "atualizado_em": r[3]}
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_ids_tecnicos_excluidos() -> list[int]:
+    def _run():
+        with _connect() as conn:
+            return [r[0] for r in conn.execute(
+                "SELECT tecnico_id FROM tecnicos WHERE excluido = 1"
+            ).fetchall()]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+# ── fechamento_cartoes ───────────────────────────────────────────────────────
+
+async def salvar_cartao_fechamento(tecnico_id: int, tecnico_nome: str,
+                                   periodo_inicio: str, periodo_fim: str,
+                                   estado: str, valor_servicos: float) -> int:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO fechamento_cartoes "
+                "(tecnico_id, tecnico_nome, periodo_inicio, periodo_fim, "
+                " estado, valor_servicos, criado_em, atualizado_em) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (tecnico_id, tecnico_nome, periodo_inicio, periodo_fim,
+                 estado, valor_servicos, agora, agora),
+            )
+            return cur.lastrowid
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def buscar_cartao_fechamento(cartao_id: int) -> dict | None:
+    def _run():
+        with _connect() as conn:
+            r = conn.execute(
+                "SELECT id, tecnico_id, tecnico_nome, periodo_inicio, periodo_fim, "
+                "estado, semaforo, valor_servicos, valor_recibo, recibo_arquivo, "
+                "criado_em, atualizado_em FROM fechamento_cartoes WHERE id = ?",
+                (cartao_id,),
+            ).fetchone()
+            if not r:
+                return None
+            return {"id": r[0], "tecnico_id": r[1], "tecnico_nome": r[2],
+                    "periodo_inicio": r[3], "periodo_fim": r[4], "estado": r[5],
+                    "semaforo": r[6], "valor_servicos": r[7], "valor_recibo": r[8],
+                    "recibo_arquivo": r[9], "criado_em": r[10], "atualizado_em": r[11]}
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_cartoes_fechamento(tecnico_id: int | None = None,
+                                     estado: str | None = None,
+                                     periodo_inicio: str | None = None,
+                                     periodo_fim: str | None = None) -> list[dict]:
+    def _run():
+        sql = ("SELECT id, tecnico_id, tecnico_nome, periodo_inicio, periodo_fim, "
+               "estado, semaforo, valor_servicos, valor_recibo, recibo_arquivo, "
+               "criado_em, atualizado_em FROM fechamento_cartoes WHERE 1=1")
+        args = []
+        if tecnico_id is not None:
+            sql += " AND tecnico_id = ?"
+            args.append(tecnico_id)
+        if estado:
+            sql += " AND estado = ?"
+            args.append(estado)
+        if periodo_inicio:
+            sql += " AND periodo_inicio >= ?"
+            args.append(periodo_inicio)
+        if periodo_fim:
+            sql += " AND periodo_fim <= ?"
+            args.append(periodo_fim)
+        sql += " ORDER BY periodo_inicio DESC, tecnico_nome"
+        with _connect() as conn:
+            return [{"id": r[0], "tecnico_id": r[1], "tecnico_nome": r[2],
+                     "periodo_inicio": r[3], "periodo_fim": r[4], "estado": r[5],
+                     "semaforo": r[6], "valor_servicos": r[7], "valor_recibo": r[8],
+                     "recibo_arquivo": r[9], "criado_em": r[10], "atualizado_em": r[11]}
+                    for r in conn.execute(sql, args).fetchall()]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_cartoes_fechamento_ativos() -> list[dict]:
+    """Cards que nao estao pagos -- candidatos a atualizacao de semaforo."""
+    def _run():
+        with _connect() as conn:
+            return [{"id": r[0], "tecnico_id": r[1], "estado": r[2],
+                     "valor_servicos": r[3], "valor_recibo": r[4]}
+                    for r in conn.execute(
+                        "SELECT id, tecnico_id, estado, valor_servicos, valor_recibo "
+                        "FROM fechamento_cartoes WHERE estado <> 'pago'"
+                    ).fetchall()]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def deletar_cartao_fechamento_por_periodo(tecnico_id: int,
+                                                 periodo_inicio: str,
+                                                 periodo_fim: str) -> None:
+    def _run():
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM fechamento_cartoes "
+                "WHERE tecnico_id = ? AND periodo_inicio = ? AND periodo_fim = ?",
+                (tecnico_id, periodo_inicio, periodo_fim),
+            ).fetchone()
+            if row:
+                conn.execute("DELETE FROM fechamento_os WHERE cartao_id = ?", (row[0],))
+                conn.execute("DELETE FROM fechamento_cartoes WHERE id = ?", (row[0],))
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def atualizar_estado_cartao(cartao_id: int, estado: str) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE fechamento_cartoes SET estado = ?, atualizado_em = ? WHERE id = ?",
+                (estado, agora, cartao_id),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def atualizar_semaforo_cartao(cartao_id: int, semaforo: str) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE fechamento_cartoes SET semaforo = ?, atualizado_em = ? WHERE id = ?",
+                (semaforo, agora, cartao_id),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def atualizar_recibo_cartao(cartao_id: int, arquivo: str, valor: float) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE fechamento_cartoes SET recibo_arquivo = ?, valor_recibo = ?, "
+                "atualizado_em = ? WHERE id = ?",
+                (arquivo, valor, agora, cartao_id),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+# ── fechamento_os ────────────────────────────────────────────────────────────
+
+async def salvar_fechamento_os(cartao_id: int, numero_os: int,
+                                valor_pagamento: float, valor_km: float,
+                                conferencia_ok: bool) -> None:
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO fechamento_os "
+                "(cartao_id, numero_os, valor_pagamento, valor_km, conferencia_ok, criado_em) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (cartao_id, numero_os, valor_pagamento, valor_km, int(conferencia_ok), agora),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def listar_fechamento_os(cartao_id: int) -> list[dict]:
+    def _run():
+        with _connect() as conn:
+            return [{"id": r[0], "cartao_id": r[1], "numero_os": r[2],
+                     "valor_pagamento": r[3], "valor_km": r[4],
+                     "conferencia_ok": bool(r[5]), "criado_em": r[6]}
+                    for r in conn.execute(
+                        "SELECT id, cartao_id, numero_os, valor_pagamento, valor_km, "
+                        "conferencia_ok, criado_em FROM fechamento_os "
+                        "WHERE cartao_id = ? ORDER BY numero_os", (cartao_id,)
+                    ).fetchall()]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def atualizar_fechamento_os_conferencia(fos_id: int, conferencia_ok: bool) -> None:
+    def _run():
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE fechamento_os SET conferencia_ok = ? WHERE id = ?",
+                (int(conferencia_ok), fos_id),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+# ── os_historico (periodo) ───────────────────────────────────────────────────
+
+async def listar_os_historico_periodo(periodo_inicio: str, periodo_fim: str,
+                                      situacao_id: int | None = None) -> list[dict]:
+    """OS do periodo, filtrando opcionalmente por situacao_id."""
+    def _run():
+        dp_iso = ("substr(data_previsao,7,4)||'-'||"
+                  "substr(data_previsao,4,2)||'-'||"
+                  "substr(data_previsao,1,2)")
+        sql = ("SELECT numero_os, tipo, problema, produto_id, cliente_id, "
+               "data_previsao, materiais_json, situacao_id, tecnicos_json "
+               f"FROM os_historico WHERE {dp_iso} >= ? AND {dp_iso} <= ?")
+        args: list = [periodo_inicio, periodo_fim]
+        if situacao_id is not None:
+            sql += " AND situacao_id = ?"
+            args.append(situacao_id)
+        sql += " ORDER BY numero_os"
+        with _connect() as conn:
+            return [{"numero_os": r[0], "tipo": r[1], "problema": r[2],
+                     "produto_id": r[3], "cliente_id": r[4], "data_previsao": r[5],
+                     "materiais_json": r[6], "situacao_id": r[7],
+                     "tecnicos_json": r[8]}
+                    for r in conn.execute(sql, args).fetchall()]
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+async def buscar_conferencia_fechamento(numero_os: int) -> dict | None:
+    """Le uma linha da conferencia_fechamento."""
+    def _run():
+        with _connect() as conn:
+            r = conn.execute(
+                "SELECT numero_os, harmonit_ok, datascope_ok, datascope_form_state, "
+                "weso_ok, detalhe, conferido_em, acao_ok, modelo_ok "
+                "FROM conferencia_fechamento WHERE numero_os = ?", (numero_os,)
+            ).fetchone()
+            if not r:
+                return None
+            return {"numero_os": r[0], "harmonit_ok": r[1], "datascope_ok": r[2],
+                    "datascope_form_state": r[3], "weso_ok": r[4], "detalhe": r[5],
+                    "conferido_em": r[6], "acao_ok": r[7], "modelo_ok": r[8]}
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+
+async def listar_emails_painel() -> set[str]:
+    """Emails dos usuarios do painel FPSL (segunda camada de exclusao de tecnicos)."""
+    def _run():
+        with _connect() as conn:
+            return {r[0].strip().lower() for r in conn.execute(
+                "SELECT email FROM painel_usuarios WHERE email IS NOT NULL AND email != ''"
+            ).fetchall()}
+    return await asyncio.get_running_loop().run_in_executor(None, _run)
