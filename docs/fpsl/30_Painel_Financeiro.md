@@ -736,3 +736,45 @@ falhas**, Operação intacta.
 
 ⚠️ **Navegador: falta ele.** O card 12 (aberto, OS 16991) ficou em produção como
 estava — serve de ponto de partida para o teste de ponta a ponta.
+
+
+## ✅ 08/10 — Auditoria antes da demo e correções A-D (commit `e966c6d`)
+
+🔵 *"audite ele e sua relação com as demais telas, amanhã vou demonstrá-lo"* → *"proponha então"* → plano aprovado.
+
+### A. O quadro mostra card que cruza o período
+`listar_cartoes_fechamento` filtrava `inicio >= ? AND fim <= ?`, ou seja, só mostrava card que coubesse **inteiro** no período. A tela abre na semana atual, e o card 12 (01–11/10) sumia na semana de 05–11/10. Agora a regra é sobreposição, a mesma que o `listar_cartoes_relatorio` já usava. O único chamador é `GET /cartoes`.
+
+### B. Um card ABERTO por técnico e período
+O `UNIQUE(tecnico_id, periodo_inicio, periodo_fim)` da tabela contava o card cancelado e o já avançado. Dava **500** em dois casos:
+1. Cancelar e depois gerar o mesmo período (provado numa cópia do banco).
+2. OS atrasada de um técnico cujo card daquele período já estava em conferência ou adiante.
+
+O SQLite não remove constraint de tabela. A **migração guardada no `init_db`** reconstrói `fechamento_cartoes` preservando os ids (`fechamento_os` aponta para eles; `foreign_keys` não está ligado) e cria o índice parcial `ux_cartao_aberto ... WHERE estado = 'aberto'`. Ela só roda se o SQL da tabela ainda tiver `UNIQUE(tecnico_id`. Foi ensaiada duas vezes numa cópia: mesmas linhas, mesmos ids, e a segunda rodada não mudou nada.
+
+**Efeito:** cancelar e gerar de novo cria um card novo, e o cancelado fica no relatório. OS atrasada vira um **card complementar** aberto. A trava de OS não mudou: uma OS continua num só card ativo.
+
+### C. A mensagem do "Gerar" diz a verdade (`M12`)
+O `gerar_cartoes` descartava em silêncio OS sem técnico real e OS sem linha de conferência, e a tela dizia "todas as OS do período já estão em cards". Agora o retorno traz `os_no_periodo`, `ignoradas_sem_tecnico`, `ignoradas_sem_conferencia` e `conferencia_ativa`. A tela monta a frase a partir desses números:
+- "Nenhuma OS em Serviço Realizado com previsão neste período";
+- "N OS ficaram de fora: sem conferência (16993)";
+- "a rotina da Conferência está desligada".
+
+### D. Card nasce com semáforo
+`atualizar_semaforo` roda em cada card criado ou completado. Antes o card ficava `null`, sem bolinha, até o "Iniciar Conferência" ou a rodada horária.
+
+### Testado
+- Roteiro de 24 verificações numa cópia isolada (código + banco em `/tmp`, TestClient), sem falha: transições, recibo vermelho, pago, cancelar e regerar, card complementar, índice barrando um segundo aberto, trava de OS, relatório, planilhas, 403.
+- Suítes de produção: roteadores 67 · ponta a ponta 35 · `operacoes_f1..f6` 406, **0 falhas**. Operações intacta.
+- Produção depois do restart: card 12 igual (aberto, amarelo, R$ 137,55, OS 16991). O quadro de 05–11/10 devolve o card 12. Backup em `data/fpsl.db.bak_pre_fin21_2026-10-08`.
+
+### Achados da auditoria que ficam com ele (mudam regra)
+1. **A rotina da FIN_1.1 está DESLIGADA desde 02/10 10:55** (PUT no interruptor pela conta admin). Sem ela, OS nova em Serviço Realizado não ganha linha de conferência e fica de fora do Fechamento. Agora a tela do Gerar diz isso.
+2. DataScope em "Aprovado análise técnica" conta como "ainda não finalizou" (`ESTADO_OK = "Finalizado"`). É o estado para onde a E4 vai mandar a OS, então depois da Ação toda OS ficaria amarela no Fechamento.
+3. O OK do Fechamento (harmonit + datascope + weso) ignora Ação e Modelo, que a FIN_1.1 mostra.
+4. Vermelho não trava o "Marcar Pago".
+5. O recibo pode ser trocado em card Pago ou Cancelado, sem trilha.
+6. O período segue `data_previsao`, não a finalização.
+7. Popover "conferência pendente" sem o motivo (que existe em `conferencia_fechamento.detalhe`).
+
+**Dados (não é código):** só 9 de 546 OS têm PAGAMENTO DE TÉCNICO (653939) lançado e 7 têm KM. Técnico aparece em 188 OS (34%); 85 têm só usuários internos. Só a conta admin tem a aba `financeiro`. A matriz `teste_roteadores_painel.py` não cobre `/painel/api/fechamento`.
