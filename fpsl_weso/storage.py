@@ -211,8 +211,7 @@ def init_db():
                 valor_recibo    REAL,
                 recibo_arquivo  TEXT,
                 criado_em       TEXT NOT NULL,
-                atualizado_em   TEXT NOT NULL,
-                UNIQUE(tecnico_id, periodo_inicio, periodo_fim)
+                atualizado_em   TEXT NOT NULL
             )
         """)
         conn.execute("""
@@ -246,6 +245,48 @@ def init_db():
         for _col in ("pago_em", "pago_por", "cancelado_em", "cancelado_por"):
             if _col not in _cols_cart:
                 conn.execute(f"ALTER TABLE fechamento_cartoes ADD COLUMN {_col} TEXT")
+
+        # migracao (08/10): a unicidade passa a ser "um card ABERTO por tecnico
+        # e periodo". O UNIQUE de tabela contava o card cancelado e o ja
+        # avancado: cancelar e gerar de novo o mesmo periodo dava 500, e OS
+        # atrasada de card em conferencia..pago tambem. SQLite nao remove
+        # constraint de tabela -- reconstroi preservando os ids (fechamento_os
+        # aponta para eles; foreign_keys nao esta ligado no projeto).
+        _sql_cart = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='fechamento_cartoes'"
+        ).fetchone()[0]
+        if "UNIQUE(tecnico_id" in _sql_cart:
+            conn.commit()
+            conn.executescript("""
+                BEGIN;
+                CREATE TABLE fechamento_cartoes_nova (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tecnico_id      INTEGER NOT NULL,
+                    tecnico_nome    TEXT NOT NULL,
+                    periodo_inicio  TEXT NOT NULL,
+                    periodo_fim     TEXT NOT NULL,
+                    estado          TEXT NOT NULL DEFAULT 'aberto',
+                    semaforo        TEXT,
+                    valor_servicos  REAL NOT NULL DEFAULT 0,
+                    valor_recibo    REAL,
+                    recibo_arquivo  TEXT,
+                    criado_em       TEXT NOT NULL,
+                    atualizado_em   TEXT NOT NULL,
+                    pago_em         TEXT,
+                    pago_por        TEXT,
+                    cancelado_em    TEXT,
+                    cancelado_por   TEXT
+                );
+                INSERT INTO fechamento_cartoes_nova (id, tecnico_id, tecnico_nome, periodo_inicio, periodo_fim, estado, semaforo, valor_servicos, valor_recibo, recibo_arquivo, criado_em, atualizado_em, pago_em, pago_por, cancelado_em, cancelado_por)
+                    SELECT id, tecnico_id, tecnico_nome, periodo_inicio, periodo_fim, estado, semaforo, valor_servicos, valor_recibo, recibo_arquivo, criado_em, atualizado_em, pago_em, pago_por, cancelado_em, cancelado_por FROM fechamento_cartoes;
+                DROP TABLE fechamento_cartoes;
+                ALTER TABLE fechamento_cartoes_nova RENAME TO fechamento_cartoes;
+                COMMIT;
+            """)
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_cartao_aberto ON fechamento_cartoes "
+            "(tecnico_id, periodo_inicio, periodo_fim) WHERE estado = 'aberto'"
+        )
 
 
         # migração (2026-08-14): `nas_duas` -- o item aparece TAMBÉM na OS
@@ -1494,12 +1535,15 @@ async def listar_cartoes_fechamento(tecnico_id: int | None = None,
         if estado:
             sql += " AND estado = ?"
             args.append(estado)
-        if periodo_inicio:
-            sql += " AND periodo_inicio >= ?"
-            args.append(periodo_inicio)
+        # sobreposicao (08/10), a mesma regra do relatorio: antes so aparecia
+        # card que coubesse INTEIRO no periodo, e o card de 01-11/10 sumia na
+        # semana de 05-11/10.
         if periodo_fim:
-            sql += " AND periodo_fim <= ?"
+            sql += " AND periodo_inicio <= ?"
             args.append(periodo_fim)
+        if periodo_inicio:
+            sql += " AND periodo_fim >= ?"
+            args.append(periodo_inicio)
         sql += " ORDER BY periodo_inicio DESC, tecnico_nome"
         with _connect() as conn:
             return [_row_cartao(r) for r in conn.execute(sql, args).fetchall()]

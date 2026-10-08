@@ -1,6 +1,7 @@
 """Fechamento de Contas dos Tecnicos — geracao e atualizacao de cards.
 
-Card = 1 tecnico + 1 periodo. Padrao semanal. Regerar substitui.
+Card = 1 tecnico + 1 periodo. Padrao semanal. Regerar so completa o card
+aberto (um aberto por tecnico+periodo; cancelado e avancado ficam no historico).
 5 estados: aberto -> conferencia -> preparado -> pagamento -> pago
 """
 
@@ -94,15 +95,21 @@ async def gerar_cartoes(periodo_inicio: str, periodo_fim: str,
 
     os_por_tecnico: dict[int, list] = {}
     os_ja_consumidas = 0
+    # 08/10: o que fica de fora e DITO, nao descartado em silencio -- a tela
+    # dizia "todas ja estao em cards" quando a OS tinha sido ignorada.
+    sem_tecnico: list[int] = []
+    sem_conferencia: list[int] = []
     for os_row in os_do_periodo:
         if os_row["numero_os"] in os_consumidas:
             os_ja_consumidas += 1
             continue
         tid = _tecnico_real_da_os(os_row.get("tecnicos_json"), ids_excluidos)
         if tid is None:
+            sem_tecnico.append(os_row["numero_os"])
             continue
         conf = await storage.buscar_conferencia_fechamento(os_row["numero_os"])
         if not conf:
+            sem_conferencia.append(os_row["numero_os"])
             continue
         conferencia_ok = bool(
             conf.get("harmonit_ok")
@@ -120,10 +127,12 @@ async def gerar_cartoes(periodo_inicio: str, periodo_fim: str,
     cards_criados = 0
     cards_completados = 0
     os_novas = 0
+    tocados: list[int] = []
     tecnicos_por_id = {t["tecnico_id"]: t for t in tecnicos}
     for tid, os_list in os_por_tecnico.items():
         tec = tecnicos_por_id.get(tid)
         if not tec or not os_list:
+            # fora do filtro de tecnico: nao entra, e tambem nao e "nova"
             continue
 
         aberto = await storage.buscar_cartao_aberto_por_periodo(
@@ -156,13 +165,25 @@ async def gerar_cartoes(periodo_inicio: str, periodo_fim: str,
         todas = await storage.listar_fechamento_os(cartao_id)
         valor_total = sum(o["valor_pagamento"] + o["valor_km"] for o in todas)
         await storage.atualizar_valor_servicos_cartao(cartao_id, valor_total)
+        tocados.append(cartao_id)
+
+    # D (08/10): card nasce com semaforo, nao com null ate a rodada horaria.
+    for cartao_id in tocados:
+        await atualizar_semaforo(cartao_id)
+
+    conferencia_ativa = (await storage.get_config(
+        "conferencia_fechamento_ativa", "false")) == "true"
 
     log.info("gerar_cartoes: %d criados, %d completados, %d OS novas, %d ja "
              "consumidas (periodo %s a %s)", cards_criados, cards_completados,
              os_novas, os_ja_consumidas, periodo_inicio, periodo_fim)
     return {"ok": True, "cards_criados": cards_criados,
             "cards_completados": cards_completados, "os_novas": os_novas,
-            "os_ja_consumidas": os_ja_consumidas, "os_vinculadas": os_novas}
+            "os_ja_consumidas": os_ja_consumidas, "os_vinculadas": os_novas,
+            "os_no_periodo": len(os_do_periodo),
+            "ignoradas_sem_tecnico": sorted(sem_tecnico),
+            "ignoradas_sem_conferencia": sorted(sem_conferencia),
+            "conferencia_ativa": conferencia_ativa}
 
 
 async def atualizar_semaforo(cartao_id: int) -> str | None:

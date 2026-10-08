@@ -702,14 +702,27 @@ async function gerarCards() {
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'Falha ao gerar');
+    /* 08/10: a frase vem dos numeros. Antes dizia "todas as OS do periodo ja
+       estao em cards" tambem quando o periodo nao tinha OS, ou quando a OS
+       tinha ficado de fora por falta de conferencia ou de tecnico. */
+    const semConf = d.ignoradas_sem_conferencia || [];
+    const semTec = d.ignoradas_sem_tecnico || [];
+    const novas = d.os_novas || 0;
     const partes = [];
     if (d.cards_criados) partes.push(d.cards_criados+' card(s) novo(s)');
     if (d.cards_completados) partes.push(d.cards_completados+' card(s) completado(s)');
-    partes.push((d.os_novas||0)+' OS novas');
-    if (d.os_ja_consumidas) partes.push(d.os_ja_consumidas+' OS ja estavam em cards (ignoradas)');
-    showMsg(((d.os_novas||0)===0 && !d.cards_criados && !d.cards_completados
-             ? 'Nada novo: todas as OS do periodo ja estao em cards. '
-             : 'Pronto: ')+partes.join(' · '), false);
+    if (novas) partes.push(novas+' OS novas');
+    if (d.os_ja_consumidas) partes.push(d.os_ja_consumidas+' OS ja estavam em cards');
+    const fora = [];
+    if (semConf.length) fora.push('sem conferencia ('+semConf.join(', ')+')');
+    if (semTec.length) fora.push('sem tecnico ('+semTec.join(', ')+')');
+    if (fora.length) partes.push((semConf.length+semTec.length)+' OS ficaram de fora: '+fora.join(' · '));
+    if (semConf.length && d.conferencia_ativa === false) partes.push('a rotina da Conferencia esta desligada');
+    let frase;
+    if (d.os_no_periodo === 0) frase = 'Nenhuma OS em Servico Realizado com previsao neste periodo.';
+    else if (!novas && !fora.length) frase = 'Nada novo: todas as OS do periodo ja estao em cards. '+partes.join(' · ');
+    else frase = (novas ? 'Pronto: ' : 'Nenhuma OS nova. ')+partes.join(' · ');
+    showMsg(frase, !novas && fora.length > 0);
     await carregar();
   } catch(e) {
     showMsg('Erro: '+e.message, true);
