@@ -778,3 +778,5 @@ O `gerar_cartoes` descartava em silêncio OS sem técnico real e OS sem linha de
 7. Popover "conferência pendente" sem o motivo (que existe em `conferencia_fechamento.detalhe`).
 
 **Dados (não é código):** só 9 de 546 OS têm PAGAMENTO DE TÉCNICO (653939) lançado e 7 têm KM. Técnico aparece em 188 OS (34%); 85 têm só usuários internos. Só a conta admin tem a aba `financeiro`. A matriz `teste_roteadores_painel.py` não cobre `/painel/api/fechamento`.
+
+**08/10 18:20 — rotina da FIN_1.1 RELIGADA** com o OK dele (*"pode ligá-la"*). `conferencia_fechamento_ativa = true`, confirmado relendo o banco. Ficou desligada de 02/10 10:55 a 08/10. Ligar não roda na hora: o laço relê a chave a cada 1h, e o "Rodar agora" da tela adianta.
