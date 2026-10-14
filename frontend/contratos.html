@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gestão de Contratos — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/painel/static/barra_status.css">
+<style>
+  :root {
+    --blue:#2563EB; --blue-dim:#EFF6FF; --green:#16a34a; --green-dim:#F0FDF4;
+    --red:#DC2626; --red-dim:#FEF2F2; --amber:#D97706; --amber-dim:#FFFBEB;
+    --bg:#F8FAFC; --bg2:#F1F5F9; --text:#0F172A; --text2:#64748B;
+    --border:#E2E8F0; --card:#FFFFFF; --sidebar-bg:#0F172A; --sidebar-tx:#94A3B8; --sidebar-w:230px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .main { flex:1; padding:32px; max-width:1180px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  h2 { font-size:1rem; font-weight:700; margin-bottom:10px; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:18px; line-height:1.5; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card.tabela { padding:0; overflow:hidden; }
+  label { display:block; font-size:.78rem; font-weight:600; color:var(--text2); margin-bottom:5px; }
+  select, input[type=file] { font-family:inherit; font-size:16px; padding:8px 10px; border:1px solid var(--border);
+                             border-radius:7px; background:#fff; width:100%; }
+  .linha { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+  .campo { flex:1; min-width:240px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; }
+  .btn-primary { background:var(--blue); color:#fff; } .btn-primary:hover { background:#1d4ed8; }
+  .btn:disabled { opacity:.55; cursor:default; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.03em;
+       padding:11px 12px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
+  td { padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  .tag { display:inline-block; font-size:.72rem; font-weight:700; padding:3px 8px; border-radius:20px; white-space:nowrap; }
+  .t-ativa { background:var(--green-dim); color:var(--green); }
+  .t-aviso { background:var(--amber-dim); color:var(--amber); }
+  .t-fora  { background:var(--red-dim); color:var(--red); }
+  .t-info  { background:var(--blue-dim); color:var(--blue); }
+  .msg { font-size:.84rem; padding:10px 12px; border-radius:7px; margin-top:12px; display:none; }
+  .msg-ok { background:var(--green-dim); color:var(--green); display:block; }
+  .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
+  .nota { font-size:.8rem; color:var(--text2); }
+  .aviso-item { background:var(--amber-dim); color:#92400E; font-size:.83rem; padding:9px 12px;
+                border-radius:7px; margin-bottom:8px; }
+  .decidir { background:var(--blue-dim); border:1.5px solid var(--blue); }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .vazio { padding:26px; text-align:center; color:var(--text2); font-size:.86rem; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top"><h1>Gestão de Contratos</h1></div>
+    <!-- 🚨 `M12`: a tela diz o que ela FAZ hoje, e o que ainda não faz. Esta
+         etapa LÊ e CONFERE; não grava nada e não consulta os outros termos do
+         cliente. Prometer "situação do cliente" aqui seria tela que mente. -->
+    <p class="sub">Sobe o <strong>termo assinado</strong>, mostra o que ele faz com cada placa e, depois que você
+       confere, grava no contrato do cliente. <strong>A conferência não grava nada</strong> — só o passo 4 grava.<br>
+       Se o termo teve <strong>troca de placa pedida pelo cliente</strong>, suba também a versão do
+       <strong>Harmonit</strong> do mesmo termo: é a anotação dela que prova a troca.<br>
+       A conferência olha <strong>só este documento</strong>; a ficha do cliente é que mostra o efeito somado dos
+       termos já gravados. <strong>Comparar com a WESO ainda não acontece aqui.</strong></p>
+
+    <div class="card">
+      <h2>1 · O documento</h2>
+      <div class="linha">
+        <div class="campo">
+          <label for="perfil">Tipo de termo</label>
+          <select id="perfil"></select>
+        </div>
+        <div class="campo">
+          <label for="arquivo">PDF assinado</label>
+          <input type="file" id="arquivo" accept="application/pdf">
+        </div>
+        <div class="campo">
+          <label for="arquivoHarmonit">PDF do Harmonit do mesmo termo <span class="nota">(opcional)</span></label>
+          <input type="file" id="arquivoHarmonit" accept="application/pdf">
+        </div>
+        <div><button class="btn btn-primary" id="btnConferir" onclick="conferir()">
+          <i class="bi bi-search"></i> Conferir</button></div>
+      </div>
+      <p class="nota" id="recusados" style="margin-top:12px"></p>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div id="resultado"></div>
+
+    <div class="card" id="cardGravar" style="display:none">
+      <h2>4 · Gravar no contrato do cliente</h2>
+      <!-- 🚨 O CNPJ VEM DAQUI, NÃO DO PDF. O documento sugere; quem confirma é
+           quem está olhando. A rescisão não traz CNPJ nenhum, e a auditoria
+           achou 33 documentos cujo CNPJ divergia do cliente que o Harmonit
+           aponta — gravar no cliente errado cria ou cancela cobrança no lugar
+           errado. -->
+      <div class="linha">
+        <div class="campo">
+          <label for="cnpj">CNPJ/CPF do cliente <span class="nota">(confirme — o do PDF é sugestão)</span></label>
+          <input type="text" id="cnpj" inputmode="numeric" placeholder="somente números">
+        </div>
+        <div class="campo">
+          <label for="assinadoEm">Assinado em</label>
+          <input type="date" id="assinadoEm">
+        </div>
+        <div class="campo" id="campoSaida" style="display:none">
+          <label for="saida">Qual placa SAI na troca</label>
+          <select id="saida" multiple size="4"></select>
+        </div>
+        <div><button class="btn btn-primary" id="btnGravar" onclick="gravar()">
+          <i class="bi bi-save"></i> Gravar</button></div>
+      </div>
+      <div class="msg" id="msgGravar"></div>
+    </div>
+
+    <div class="card" id="cardAuditoria">
+      <h2>Auditoria: contrato × WESO</h2>
+      <!-- 🚨 O INTERRUPTOR MORA AQUI, na própria tela da rotina (convenção do
+           FPSL, oposta à do MoviZap). A FIN_1.1 provou por quê: ficou
+           desligada de 02/10 a 08/10 e nada na tela dizia. -->
+      <p class="sub" id="subAuditoria">Compara o que os termos sustentam com o que está em uso na WESO.
+         <strong>Nasce desligada.</strong> Ela <strong>aponta, nunca corrige</strong>: não escreve no Harmonit,
+         na WESO nem na Clicksign.</p>
+      <div class="linha">
+        <div><label for="chaveAuditoria">Rotina periódica</label>
+          <select id="chaveAuditoria" onchange="mudarRotina()">
+            <option value="false">Desligada</option>
+            <option value="true">Ligada</option>
+          </select></div>
+        <div><button class="btn btn-primary" id="btnRodar" onclick="rodarAgora()">
+          <i class="bi bi-play-fill"></i> Rodar agora</button></div>
+        <div><button class="btn" style="border-color:var(--border)" onclick="verAchados()">
+          <i class="bi bi-list-ul"></i> Ver achados</button></div>
+      </div>
+      <div class="msg" id="msgAuditoria"></div>
+      <div id="achados"></div>
+    </div>
+
+    <div class="card">
+      <h2>Ficha do cliente</h2>
+      <div class="linha">
+        <div class="campo">
+          <label for="cnpjFicha">CNPJ/CPF</label>
+          <input type="text" id="cnpjFicha" inputmode="numeric" placeholder="somente números">
+        </div>
+        <div><button class="btn btn-primary" onclick="verFicha()">
+          <i class="bi bi-person-lines-fill"></i> Abrir ficha</button></div>
+      </div>
+      <div class="msg" id="msgFicha"></div>
+    </div>
+    <div id="ficha"></div>
+  </main>
+</div>
+
+<script src="/painel/static/barra_status.js"></script>
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+montarSidebar('contratos');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showMsg(t, erro) { const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
+
+const TAG = {
+  'ATIVA':            ['t-ativa', 'Ativa'],
+  'EM_AVISO_PREVIO':  ['t-aviso', 'Em aviso prévio'],
+  'SUBSTITUIDA':      ['t-info',  'Substituída'],
+  'RESCINDIDA':       ['t-fora',  'Rescindida'],
+};
+
+async function carregarPerfis() {
+  try {
+    const r = await fetch('/painel/api/contratos/perfis', { headers: auth() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    document.getElementById('perfil').innerHTML =
+      d.aceitos.map(p => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('');
+    // Os recusados aparecem COM O MOTIVO: sem isso o operador procura o tipo
+    // que não está na lista e não descobre por quê.
+    document.getElementById('recusados').innerHTML = 'Não entram aqui: ' +
+      d.recusados.map(p => `<strong>${esc(p.id)}</strong> (${esc(p.motivo)})`).join(' · ');
+  } catch (e) { showMsg('Não foi possível carregar os tipos de termo: ' + e.message, true); }
+}
+
+async function conferir() {
+  const btn = document.getElementById('btnConferir');
+  const arq = document.getElementById('arquivo').files[0];
+  const arqH = document.getElementById('arquivoHarmonit').files[0];
+  if (!arq) { showMsg('Escolha o PDF assinado.', true); return; }
+
+  const fd = new FormData();
+  fd.append('arquivo', arq);
+  if (arqH) fd.append('arquivo_harmonit', arqH);
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Lendo…';
+  document.getElementById('resultado').innerHTML = '';
+  try {
+    const perfil = encodeURIComponent(document.getElementById('perfil').value);
+    const r = await fetch(`/painel/api/contratos/conferir?perfil=${perfil}`,
+                          { method: 'POST', headers: auth(), body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    pintar(d);
+    prepararGravacao(d);
+    showMsg('Documento lido. Nada foi gravado — confira abaixo e use o passo 4 para gravar.', false);
+  } catch (e) {
+    showMsg('Erro: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-search"></i> Conferir';
+  }
+}
+
+function pintar(d) {
+  const partes = [];
+
+  partes.push(`<div class="card"><h2>2 · O termo</h2>
+    <table><tr><th>Termo</th><th>Tipo</th><th>CNPJ/CPF no documento</th><th>Cliente no documento</th></tr>
+    <tr><td class="mono"><strong>${esc(d.numero || '—')}</strong></td><td>${esc(d.tipo)}</td>
+        <td class="mono">${esc(d.cnpj || '—')}</td><td>${esc(d.cliente_nome_sugerido || '—')}</td></tr></table></div>`);
+
+  if ((d.avisos || []).length) {
+    partes.push(`<div class="card"><h2>Confira antes de seguir</h2>` +
+      d.avisos.map(a => `<div class="aviso-item"><i class="bi bi-exclamation-triangle"></i> ${esc(a)}</div>`).join('') +
+      `</div>`);
+  }
+
+  // 🚨 A troca diz quem ENTRA, nunca quem SAI -- e isto não se adivinha.
+  // A tela pede a confirmação em vez de tirar a placa errada do contrato.
+  if (d.troca_confirmar) {
+    const t = d.troca_confirmar;
+    partes.push(`<div class="card decidir"><h2>Troca de placa — falta dizer quem sai</h2>
+      <p class="sub" style="margin-bottom:10px">Anotação no PDF do Harmonit:<br>
+         <em>“${esc(t.anotacao)}”</em></p>
+      <p class="sub" style="margin-bottom:0"><strong>Entra:</strong>
+         <span class="mono">${t.entram.map(esc).join(', ')}</span>.
+         A anotação não diz qual placa sai, e o sistema não inventa:
+         enquanto você não disser, o termo fica com uma placa a mais.</p></div>`);
+  }
+
+  if ((d.vagas || []).length) {
+    partes.push(`<div class="card"><h2>Vaga aguardando placa</h2>
+      <p class="sub" style="margin-bottom:0">Este termo foi assinado com <strong>“a definir”</strong> em
+      ${d.vagas.length} veículo(s). A vaga não entra no contrato como placa; ela aparece na WESO como
+      <span class="mono">${esc((d.vagas[0] || {}).apelido_sugerido || '')}</span> até a placa real ser preenchida.</p></div>`);
+  }
+
+  const linhas = (d.placas || []).map(p => {
+    const [cls, rotulo] = TAG[p.situacao] || ['t-info', p.situacao];
+    return `<tr><td class="mono"><strong>${esc(p.placa)}</strong></td>
+      <td><span class="tag ${cls}">${esc(rotulo)}</span></td>
+      <td>${esc(p.base || '—')}</td>
+      <td>${esc(p.aviso_ate || '—')}</td>
+      <td class="nota">${esc(p.obs || '')}</td></tr>`;
+  }).join('');
+
+  partes.push(`<div class="card tabela">
+    <div style="padding:16px 16px 0"><h2>3 · O que o termo faz com cada placa</h2>
+      <p class="sub">Base da conferência: <strong>${esc(d.base_de_comparacao)}</strong>.
+         Pelo que está neste documento, ele sustenta <strong>${(d.sustentadas || []).length} placa(s)</strong>.</p></div>
+    ${linhas ? `<table><tr><th>Placa</th><th>Situação</th><th>Base</th><th>Aviso até</th><th>Observação</th></tr>${linhas}</table>`
+             : `<div class="vazio">O documento não trouxe nenhuma placa.</div>`}
+  </div>`);
+
+  if ((d.veiculos_sem_placa || []).length) {
+    partes.push(`<div class="card"><h2>Veículos sem placa no documento</h2>
+      <p class="sub" style="margin-bottom:0">${d.veiculos_sem_placa.length} linha(s) do termo têm veículo e não têm
+      placa. Ficam aqui para alguém olhar, em vez de desaparecer da contagem.</p></div>`);
+  }
+
+  document.getElementById('resultado').innerHTML = partes.join('');
+}
+
+// O que a última conferência leu, para a gravação não reler nada diferente.
+let ultimaConferencia = null;
+
+function prepararGravacao(d) {
+  ultimaConferencia = d;
+  document.getElementById('cnpj').value = d.cnpj || '';
+  const campo = document.getElementById('campoSaida');
+  const sel = document.getElementById('saida');
+  if (d.troca_confirmar) {
+    sel.innerHTML = d.troca_confirmar.candidatas_saida
+      .map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+    campo.style.display = '';
+  } else {
+    sel.innerHTML = '';
+    campo.style.display = 'none';
+  }
+  document.getElementById('cardGravar').style.display = '';
+}
+
+async function gravar() {
+  const btn = document.getElementById('btnGravar');
+  const m = document.getElementById('msgGravar');
+  const arq = document.getElementById('arquivo').files[0];
+  const arqH = document.getElementById('arquivoHarmonit').files[0];
+  const cnpj = (document.getElementById('cnpj').value || '').replace(/\D/g, '');
+  if (!arq) { m.textContent = 'O PDF assinado saiu do formulário — escolha de novo.'; m.className = 'msg msg-erro'; return; }
+  if (cnpj.length !== 14 && cnpj.length !== 11) {
+    m.textContent = 'Informe o CNPJ (14 dígitos) ou CPF (11).'; m.className = 'msg msg-erro'; return;
+  }
+  const saidas = Array.from(document.getElementById('saida').selectedOptions).map(o => o.value);
+
+  const fd = new FormData();
+  fd.append('arquivo', arq);
+  if (arqH) fd.append('arquivo_harmonit', arqH);
+  fd.append('cnpj', cnpj);
+  const quando = document.getElementById('assinadoEm').value;
+  if (quando) fd.append('assinado_em', quando);
+  if (saidas.length) fd.append('saida_confirmada', JSON.stringify(saidas));
+
+  btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gravando…';
+  try {
+    const perfil = encodeURIComponent(document.getElementById('perfil').value);
+    const r = await fetch(`/painel/api/contratos/gravar?perfil=${perfil}`,
+                          { method: 'POST', headers: auth(), body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    m.textContent = d.a_revisar
+      ? `Gravado, e marcado para revisão: ${d.revisar_motivo}`
+      : `Gravado no termo ${d.gravado.termo_id}. O contrato do cliente sustenta ${d.ficha.sustentadas.length} placa(s).`;
+    m.className = 'msg ' + (d.a_revisar ? 'msg-erro' : 'msg-ok');
+    document.getElementById('cnpjFicha').value = cnpj;
+    pintarFicha(d.ficha);
+  } catch (e) {
+    m.textContent = 'Erro: ' + e.message; m.className = 'msg msg-erro';
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-save"></i> Gravar';
+  }
+}
+
+async function verFicha() {
+  const m = document.getElementById('msgFicha');
+  const cnpj = (document.getElementById('cnpjFicha').value || '').replace(/\D/g, '');
+  if (cnpj.length !== 14 && cnpj.length !== 11) {
+    m.textContent = 'Informe o CNPJ (14 dígitos) ou CPF (11).'; m.className = 'msg msg-erro'; return;
+  }
+  m.className = 'msg';
+  try {
+    const r = await fetch(`/painel/api/contratos/cliente/${cnpj}`, { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    pintarFicha(d);
+  } catch (e) { m.textContent = 'Erro: ' + e.message; m.className = 'msg msg-erro'; }
+}
+
+function pintarFicha(d) {
+  const partes = [];
+  const placas = (d.placas || []).map(p => {
+    const [cls, rotulo] = TAG[p.situacao] || ['t-info', p.situacao];
+    return `<tr><td class="mono"><strong>${esc(p.placa)}</strong></td>
+      <td><span class="tag ${cls}">${esc(rotulo)}</span></td>
+      <td class="mono">${esc(p.termo_vigente || '—')}</td>
+      <td>${esc(p.base || '—')}</td>
+      <td>${esc(p.aviso_ate || '—')}</td>
+      <td class="nota">${esc(p.obs || '')}</td></tr>`;
+  }).join('');
+
+  partes.push(`<div class="card tabela">
+    <div style="padding:16px 16px 0"><h2>Placas do cliente ${esc(d.cnpj)}</h2>
+      <p class="sub">Pelos termos gravados, o contrato sustenta hoje
+         <strong>${(d.sustentadas || []).length} placa(s)</strong>.
+         Placa em <strong>aviso prévio</strong> ainda conta: a rescisão assinada dá 90 dias.</p></div>
+    ${placas ? `<table><tr><th>Placa</th><th>Situação</th><th>Termo</th><th>Base</th><th>Aviso até</th><th>Observação</th></tr>${placas}</table>`
+             : `<div class="vazio">Nenhum termo gravado para este cliente.</div>`}</div>`);
+
+  if ((d.a_revisar || []).length) {
+    partes.push(`<div class="card decidir"><h2>Termos a revisar</h2>` +
+      d.a_revisar.map(t => `<div class="aviso-item">Termo <strong>${esc(t.numero)}</strong>: ${esc(t.motivo || '')}</div>`).join('') +
+      `</div>`);
+  }
+
+  const termos = (d.termos || []).map(t => `<tr>
+      <td class="mono"><strong>${esc(t.numero)}</strong></td>
+      <td>${esc(t.tipo || '—')}</td>
+      <td>${esc(t.empresa || '—')}</td>
+      <td>${t.assinado ? `<span class="tag t-ativa">Assinado</span>` : `<span class="tag t-fora">Sem assinatura</span>`}</td>
+      <td>${esc(t.assinado_em || '—')}</td>
+      <td>${(t.eventos || []).length}</td>
+      <td class="nota">${esc(t.troca_registrada || '')}</td></tr>`).join('');
+
+  partes.push(`<div class="card tabela">
+    <div style="padding:16px 16px 0"><h2>Linha do tempo dos termos</h2>
+      <p class="sub">Em ordem de <strong>número do termo</strong>, não de data: a data do Harmonit vem vazia em muitos
+         termos, e há contrato datado depois da própria rescisão.</p></div>
+    ${termos ? `<table><tr><th>Termo</th><th>Tipo</th><th>Empresa</th><th>Assinatura</th><th>Assinado em</th><th>Eventos</th><th>Troca registrada</th></tr>${termos}</table>`
+             : `<div class="vazio">Nenhum termo gravado.</div>`}</div>`);
+
+  document.getElementById('ficha').innerHTML = partes.join('');
+}
+
+// ── Auditoria: contrato × WESO (C6) ────────────────────────────────────────
+function msgAud(t, erro) {
+  const m = document.getElementById('msgAuditoria');
+  m.textContent = t; m.className = 'msg ' + (erro ? 'msg-erro' : 'msg-ok');
+}
+
+async function carregarRotina() {
+  try {
+    const r = await fetch('/painel/api/contratos/auditoria/interruptor', { headers: auth() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    document.getElementById('chaveAuditoria').value = d.ativa ? 'true' : 'false';
+    // ⚠️ A tela DIZ que ligar não roda na hora. Prometer efeito imediato aqui
+    // seria tela que mente — o laço relê a flag a cada volta.
+    document.getElementById('subAuditoria').insertAdjacentHTML('beforeend',
+      ` <br>A rotina roda a cada <strong>${d.intervalo_h}h</strong> e <strong>ligar não a faz rodar na hora</strong>
+        — para isso existe o “Rodar agora”. Ela se recusa a comparar se o cache da WESO passar de
+        <strong>${d.idade_maxima_cache_h}h</strong>: dado velho acusaria problema que não existe.`);
+  } catch (e) { msgAud('Não foi possível ler o estado da rotina: ' + e.message, true); }
+}
+
+async function mudarRotina() {
+  const ativa = document.getElementById('chaveAuditoria').value === 'true';
+  try {
+    const r = await fetch('/painel/api/contratos/auditoria/interruptor',
+      { method: 'PUT', headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativa }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    // A prova é o que o servidor RELEU, não o que mandamos gravar.
+    document.getElementById('chaveAuditoria').value = d.ativa ? 'true' : 'false';
+    msgAud(d.ativa ? `Rotina ligada. A próxima volta é em até ${d.intervalo_h}h — use "Rodar agora" para já.`
+                   : 'Rotina desligada.', false);
+  } catch (e) { msgAud('Erro: ' + e.message, true); }
+}
+
+async function rodarAgora() {
+  const b = document.getElementById('btnRodar');
+  b.disabled = true; b.innerHTML = '<i class="bi bi-hourglass-split"></i> Rodando…';
+  try {
+    const r = await fetch('/painel/api/contratos/auditoria/rodar-agora', { method: 'POST', headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    if (!d.rodou) { msgAud('Não rodou: ' + d.motivo, true); return; }
+    msgAud(`${d.achados} achado(s) sobre ${d.veiculos_weso} veículos da WESO`
+           + (d.idade_h != null ? ` (cache de ${Math.round(d.idade_h)}h).` : '.'), false);
+    await verAchados();
+  } catch (e) { msgAud('Erro: ' + e.message, true); }
+  finally { b.disabled = false; b.innerHTML = '<i class="bi bi-play-fill"></i> Rodar agora'; }
+}
+
+async function verAchados() {
+  try {
+    const r = await fetch('/painel/api/contratos/auditoria/achados', { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    if (!(d.resumo || []).length) {
+      document.getElementById('achados').innerHTML =
+        `<p class="nota" style="margin-top:12px">Nenhum achado gravado. Use “Rodar agora”.</p>`;
+      return;
+    }
+    const resumo = d.resumo.map(x => `<tr><td><strong>${esc(x.tipo)}</strong></td>
+      <td>${esc(x.o_que_e)}</td><td style="text-align:right"><strong>${x.quantos}</strong></td></tr>`).join('');
+    const linhas = (d.achados || []).slice(0, 60).map(x => `<tr>
+      <td class="nota">${esc(x.tipo)}</td><td class="mono">${esc(x.placa || '')}</td>
+      <td class="mono">${esc(x.cnpj || '—')}</td><td class="nota">${esc(x.detalhe || '')}</td></tr>`).join('');
+    document.getElementById('achados').innerHTML = `
+      <p class="nota" style="margin:12px 0 6px">Última rodada: ${esc(d.rodada_em || '—')}.
+         Achado é <strong>retrato do momento</strong>: a lista é refeita a cada rodada.</p>
+      <table><tr><th>Tipo</th><th>O que é</th><th style="text-align:right">Quantos</th></tr>${resumo}</table>
+      <p class="nota" style="margin:14px 0 6px">Primeiros ${Math.min(60, (d.achados || []).length)}:</p>
+      <table><tr><th>Tipo</th><th>Placa</th><th>CNPJ</th><th>Detalhe</th></tr>${linhas}</table>`;
+  } catch (e) { msgAud('Erro: ' + e.message, true); }
+}
+
+carregarPerfis();
+carregarRotina();
+</script>
+</body>
+</html>

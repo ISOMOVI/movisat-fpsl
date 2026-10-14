@@ -323,6 +323,15 @@ def init_db():
                 "WHERE id = (SELECT MIN(id) FROM painel_usuarios)"
             )
 
+        # 🆕 13/10: as 4 tabelas da Gestão de Contratos (`CTR_1.1`). A DDL mora
+        # em `painel/contratos_tabelas.py`, e não aqui, de propósito: a aba nova
+        # precisa de 4 tabelas e de nenhuma alteração nas existentes, então o
+        # diff neste arquivo -- que o painel inteiro lê -- é esta única linha.
+        # Idempotente, no mesmo padrão do resto (`CREATE TABLE IF NOT EXISTS`).
+        from .painel import contratos_tabelas
+        contratos_tabelas.criar(conn)
+        contratos_tabelas.migrar(conn)
+
 
 # ── veiculos ──────────────────────────────────────────────────────────────────
 

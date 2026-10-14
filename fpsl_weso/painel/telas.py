@@ -151,6 +151,28 @@ TELAS = [
         "permissao": "financeiro",
         "fase": 1,
     },
+    # ---- CTR: contratos ----
+    # 🆕 CTR_1.1 (13/10). O termo ASSINADO sobe aqui, vira evento por placa, e
+    # a situação de cada placa passa a ser consulta em vez de reconstrução à
+    # mão. Spec: `docs/fpsl/31_Gestao_Contratos.md`.
+    #
+    # 🚨 NASCE SÓ PARA O OWNER, por decisão dele em 13/10: *"somente eu, como
+    # padrão owner inicial para FPSL"*. Por isso `contratos` entra em
+    # `PERMISSOES_SO_OWNER` lá embaixo, e NÃO em `PERMISSOES_CONCEDIVEIS` --
+    # a trava de abas concedíveis do `teste_perfis` continua em 5.
+    #
+    # ⚠️ NÃO CONFUNDIR COM A ABA OPERAÇÕES: lá o termo gera OS; aqui ele
+    # alimenta o contrato. Mesma leitura de PDF, regras diferentes -- e por
+    # isso a CTR só LÊ o `pdf_extractor`, sem tocar nada de `operacoes_*`.
+    {
+        "codigo": "CTR_1.1",
+        "titulo": "Gestão de Contratos",
+        "rota": "/painel/contratos",
+        "icone": "bi-file-earmark-text",
+        "descricao": "Termo assinado vira a base do cliente: placas, recursos, histórico e situação.",
+        "permissao": "contratos",
+        "fase": 1,
+    },
     # ---- CFG: configuração ----
     {
         "codigo": "CFG_1.1",
@@ -267,7 +289,11 @@ PERMISSOES_VALIDAS = {t["permissao"] for t in TELAS if t["permissao"]}
 # Permissões que o owner concede a outra conta. As de owner ficam de fora --
 # quem tem essas telas liga a escrita real na WESO e cria contas, e isso não
 # se delega (decisão do usuário, 27/07).
-PERMISSOES_SO_OWNER = {"config", "usuarios"}
+# 🆕 `contratos` entrou em 13/10 por decisão dele (*"somente eu, como padrão
+# owner inicial para FPSL"*). Estar aqui é o que torna a aba invisível e
+# inacessível para toda conta que não seja owner -- e é o que mantém
+# `PERMISSOES_CONCEDIVEIS` em 5.
+PERMISSOES_SO_OWNER = {"config", "usuarios", "contratos"}
 PERMISSOES_CONCEDIVEIS = PERMISSOES_VALIDAS - PERMISSOES_SO_OWNER
 
 

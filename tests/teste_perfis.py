@@ -65,8 +65,12 @@ async def main():
         # tem de passar por aqui e ser deliberada.
         # 12 desde 29/09: FIN_1.1 (Conferência de Fechamento) nasceu no menu.
         # 9 desde 02/10: o expurgo F7 tirou CAD_1.1, OSG_1.1 e CAD_1.2 do menu.
-        checar("owner enxerga as 9 telas do menu",
-               len(me.get("abas", [])) == 9, str(len(me.get("abas", []))))
+        # 🚨 10 DESDE 06/10, E A TRAVA PEGOU TARDE: a FIN_2.1 (Fechamento dos
+        # Técnicos) nasceu no menu e este número não foi atualizado -- a suíte
+        # ficou vermelha de 06/10 a 13/10 (exit=1) sem ninguém olhar.
+        # 11 desde 13/10: CTR_1.1 (Gestão de Contratos).
+        checar("owner enxerga as 11 telas do menu",
+               len(me.get("abas", [])) == 11, str(len(me.get("abas", []))))
         checar("e Operações é uma delas",
                any(a.get("id") == "operacoes" for a in me.get("abas", [])),
                str([a.get("id") for a in me.get("abas", [])]))
@@ -77,7 +81,11 @@ async def main():
         # 6 desde a F1 (19/08), quando a permissao `operacoes` nasceu.
         # 7 desde 29/09: `financeiro` (FIN_1.1, Conferência de Fechamento).
         # 5 desde 02/10: o expurgo F7 tirou `gerar_os` e `cadastro_placas`.
+        # ⚠️ CONTINUA 5 COM A CTR_1.1 (13/10), e é de propósito: `contratos`
+        # nasceu em `PERMISSOES_SO_OWNER` por decisão dele ("somente eu, como
+        # padrão owner inicial"), e permissão de owner não é concedível.
         checar("catalogo tem 5 abas concediveis", len(catalogo) == 5, str(ids))
+        checar("contratos NAO e concedivel (nasceu so-owner)", "contratos" not in ids, str(ids))
         checar("operacoes e concedivel", "operacoes" in ids, str(ids))
         checar("gerar_os NAO e mais concedivel (expurgo F7)", "gerar_os" not in ids, str(ids))
         checar("cadastro_placas NAO e mais concedivel (expurgo F7)",

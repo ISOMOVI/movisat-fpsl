@@ -77,7 +77,12 @@ async def main():
     # Fechamento (FIN_1.1, 29/09) fez 12. O expurgo F7 (02/10) removeu o
     # cadastro_placas_historico.html -> 11. (gerar_os.html e cadastro_placas.html
     # ficam no disco enquanto os testes-espelho da Operações os leem.)
-    checar("achou as 11 paginas do painel", paginas == 11, f"achou {paginas}")
+    # 🚨 12 DESDE 06/10, E A TRAVA PEGOU TARDE: a FIN_2.1 (Fechamento dos
+    # Técnicos) trouxe `fechamento_tecnicos.html` e ESTE NÚMERO NÃO FOI
+    # ATUALIZADO -- a suíte ficou vermelha de 06/10 a 13/10, saindo com exit=1,
+    # e ninguém olhou. A trava funcionou; quem falhou foi a leitura dela.
+    # 13 desde 13/10: `contratos.html` (CTR_1.1, Gestão de Contratos).
+    checar("achou as 13 paginas do painel", paginas == 13, f"achou {paginas}")
 
     print("\n[3] o servidor devolve o req id")
     u = await storage.buscar_usuario_painel("admin")
