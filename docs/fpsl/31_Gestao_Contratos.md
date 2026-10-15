@@ -644,3 +644,532 @@ contratos_auditoria_ativa = false   (nasceu desligada e segue desligada)
 ```
 
 ⚠️ `teste_extrair_termo` segue vermelha, e **não é desta frente** (expurgo F7, 02/10).
+
+---
+
+# `CTR_1.2` — a tela vira GRID, o input vira MODAL (14/10/2026)
+
+**Origem:** *"a tela de gestão de contratos deverá ser para isso mesmo, então um grid para consulta interação e
+etc é bem vindo, ações para contratos tbm, o modulo que inputa eles dentro da base pode ficar dentro de um
+modal que abre ... use para colocar os dados dos contratos do cliente 2h"*.
+
+**Por que mudou.** A `CTR_1.1` nasceu com a tela certa para *entrar* termo e errada para *consultar*
+contrato: um assistente de quatro passos, com a consulta num campo de CNPJ no rodapé e **nenhuma rota de
+listagem** — só `GET /cliente/{cnpj}`. Com 731 clientes na base, abrir a aba não respondia a pergunta que ela
+existe para responder.
+
+## Decisões dele, 14/10
+
+| # | Decisão | O que vale |
+|---|---|---|
+| 1 | Escopo | **Grid + modal + piloto 2HM.** As fases futuras ficam escritas, sem código |
+| 2 | Clicksign | **Só leitura.** Assinar segue fora do FPSL; a trava "não escreve na Clicksign" **continua valendo** |
+| 3 | Valor mensal | **Vem do termo**, relendo o PDF — não do Harmonit nem da WESO |
+| 4 | Ações obrigatórias | **confirmar quem SAI** numa troca e **ver os achados** do cliente |
+
+## 🚨 Os quatro achados da construção
+
+### 1. `/gravar` duplicaria o termo no primeiro upload do piloto
+A carga gravou os 4.599 termos **sem hash de PDF** (ela não guarda documento), e a única defesa do endpoint
+contra repetição é o `UNIQUE(hash)`. Subir o PDF assinado do 2649 da 2HM criaria um **segundo** termo 2649,
+com os eventos repetidos, enquanto o primeiro seguiria contado em `sem_assinatura` — **a tela mostraria o
+cliente pior por causa do próprio conserto**. Remédio: o **modo anexar** (`termo_id` no `/gravar`), que faz
+`UPDATE` do termo que existe e insere **só** o evento que falta. O evento da carga que o assinado não
+confirma **não é apagado**: o termo vira `revisar` com o motivo escrito, porque evento é imutável e a carga
+usou a lista de placas do Harmonit.
+
+### 2. O nome do cliente não existia em nenhuma tabela
+`contrato_termo` tem só o CNPJ; a `clientes` do FPSL tem `harmonit_id` e `cnpjcpf`; o cache da WESO cobre
+**304** clientes e **não tem a 2HM**. O nome estava no arquivo da carga e foi jogado fora. Entrou a tabela
+`contrato_cliente` (`nome`, `nome_fonte`, autoria), com backfill idempotente do JSONL. ⚠️ Os nomes da carga
+vêm do índice do Harmonit e chegam **sanitizados** (`M_ D_ G_ COMERCIO...`), por isso existe `nome_fonte`:
+correção à mão é `manual` e **nenhuma carga a desfaz**.
+
+### 3. Cache vazio não era cache velho — e o grid mostraria 0 ativas para todos
+A guarda de recálculo olhava `MIN(calculado_em)`; com `contrato_placa` vazia o `MIN` vem nulo, e isso
+respondia "está em dia". O grid então desenharia **0 placas ativas nos 731 clientes** com a base cheia de
+eventos do lado — tela que mente, e acontece de verdade num banco restaurado. Agora cache vazio **com
+evento na base** também é velho.
+
+### 4. A busca por "2hm" devolvia a base inteira
+O filtro extraía dígitos de qualquer texto: `2hm` virava o dígito `2`, que casa com quase todo CNPJ. Busca
+com letra é busca por **nome**; só texto sem letra procura CNPJ (3 dígitos no mínimo). E quando nada casa, a
+mesma caixa procura **placa** — comparando pela chave e mostrando o texto, porque `BUW8732` normaliza para
+`BUW8H32`, que não existe.
+
+⚠️ **E um texto que já era falso antes de hoje:** a tela dizia *"Comparar com a WESO ainda não acontece
+aqui"* no mesmo arquivo em que o card da auditoria compara contrato × WESO desde 13/10. A frase era
+verdadeira na C2 e a entrega seguinte não voltou para matá-la — é o `M12` em ato. Saiu, e a suíte agora
+**falha se ela voltar**.
+
+## O que entrou
+
+| Arquivo | O que é |
+|---|---|
+| `painel/contratos_grid.py` (**novo**) | a listagem: `estado_cliente()` com enum fechado, `acoes_da_linha()`, 3 agregações, busca, CSV. **Nada se grava aqui** |
+| `painel/contratos_tabelas.py` | `contrato_cliente`, `contrato_revisao`, coluna `harmonit_assinado` |
+| `painel/contratos_carga.py` | `importar_nomes()` e `importar_harmonit_assinado()` |
+| `painel/contratos_registro.py` | `anexar_assinado()`, `candidatos_para_anexar()`, `confirmar_saida()`, `marcar_revisado()`, `definir_nome()`, `recalcular_todos()`, `termos_de_todos()` |
+| `painel/contratos_leitura.py` | `valor_das_placas()` |
+| `painel/routers/contratos_router.py` | 7 rotas novas; `/gravar` ganhou `termo_id` e `cliente_nome` |
+| `frontend/contratos.html` | grid + gaveta da ficha + modal de input |
+| `tests/teste_contratos_grid.py` (**novo**) | 69 verificações |
+
+### A linha é o CLIENTE, e isso tem motivo
+A pergunta da tela é "como está o contrato deste cliente". Termo (4.599) e placa (6.800) são detalhe e viram
+gaveta: termo como linha esconde o cliente, placa como linha repete o mesmo cliente em até 38 linhas.
+**Estado** é enum fechado — `EM_DIA`, `ATIVA_SEM_ASSINATURA`, `A_REVISAR`, `SEM_PLACA_ATIVA` — num lugar só,
+e é por ele que as fases futuras crescem.
+
+### 🚨 A listagem não chama a ficha
+A ficha recalcula o cliente na hora; chamá-la 731 vezes para desenhar a primeira tela era o caminho natural
+e errado. São 3 agregações sobre o cache, e o recálculo em lote roda **no máximo uma vez por dia** — porque
+o aviso prévio vence pelo calendário, sem evento nenhum para disparar a conta.
+
+### O valor: o limite é do documento, não do código
+O `pdf_extractor` entrega os itens de serviço (`valor_unitario`, já tratando valor riscado). **Um termo com
+12 placas e um item "MENSALIDADE" não diz quanto é de cada veículo.** Então entra o que é inequívoco — uma
+placa e um item, ou item que nomeia a placa — e o resto fica dito na tela, com a contagem de placas sem
+valor. **Ratear o total seria inventar número, e a CAR emitiria cobrança em cima dele.**
+
+## Verificação (14/10, local)
+
+```
+eventos 33 · leitura 32 · registro 27 · carga 24 · auditoria 30 · tela 79 · grid 69
+= 294 verificações, 0 falhas
+```
+⚠️ `teste_contratos_router` roda **só na VPS** (`jose` não existe na máquina local) e a contagem de rotas
+sobe de **9 para 16**, de propósito. `teste_extrair_termo` segue vermelha e **não é desta frente**.
+
+## Fases futuras — cabem sem refazer, e por quê
+A linha é o cliente e o termo é filho (o pipeline é por termo, e cada termo expandido ganha uma coluna de
+etapa); `estado` é função única; `acoes` já vem do backend, então "gerar termo" aparece no dia em que a rota
+existir.
+
+🚨 **Uma regra dura, a registrar antes de existir rascunho:** termo em geração tem eventos e `assinado=0` —
+o motor de hoje o trataria como "não assinado" e **ainda assim marcaria a placa ATIVA** na segunda passada.
+`termos_do_cliente()` precisa filtrar por ciclo **antes** da primeira tela de geração; a coluna
+`contrato_termo.ciclo` entra em `migrar()` quando a fase chegar.
+
+Tarefas próprias, cada uma com o OK dele: **gerar termo** (não há gerador no FPSL — sem `reportlab`, `docx`
+ou `jinja` — e numerar/escrever no Harmonit contraria a trava de escrita); **pipeline com cobrança de
+etapas** (`contrato_etapa` só de inserção, no molde do `contrato_evento`, com laço desligado por
+interruptor); **leitura da Clicksign** (decisão 2); **entrega ao financeiro** (idempotente por `termo_id`,
+só para termo assinado e conferido) — e essa **depende de resolver a fonte do valor por placa**, que a G4 só
+resolve no caso fácil.
+
+---
+
+# `C7` — os PDFs assinados entram na base (14/10/2026, piloto 2HM NO AR)
+
+**Origem:** *"siga com o plano aprovado do FPSL"*. O plano: a base tinha **0 termos com PDF guardado** (os
+4.599 vieram dos CSVs da auditoria), `valor_mensal` vazio em **100%** das linhas, e **412** termos marcados
+`revisar` por "placas diferentes entre o PDF do Harmonit e o assinado" — porque a carga usou a lista do
+**Harmonit**, que é editada depois da assinatura.
+
+## O que entrou
+
+| Arquivo | O que é |
+|---|---|
+| `painel/contratos_eventos.py` | ação **`ANULA`** + filtro de eventos anulados nas duas passadas |
+| `painel/contratos_tabelas.py` | `contrato_evento.corrige_evento_id` (índice único parcial) e o livro-razão `contrato_carga_pdf` |
+| `painel/contratos_registro.py` | `anular_evento()`, `correcoes_do_cliente()`, `id`/`corrige` nos **dois** leitores de termo, `correcoes` na ficha |
+| `painel/contratos_assinados.py` (**novo**) | a carga: classifica em *anexado · documento só · fila*, corrige pelo assinado, livro-razão, retomada |
+| `preparar_assinados_c7.py` (**novo**, roda no Windows) | monta o lote: só `assinado`, CNPJ do nome da pasta, manifesto com `sha256` |
+| `tests/teste_contratos_anula.py` (**novo**) | 24 verificações |
+| `tests/teste_contratos_assinados.py` (**novo**) | 68 verificações |
+
+## 🚨 Por que `ANULA` teve de existir
+
+O motor tinha `ACOES` fechado em `ENTRA · SAI · RESCINDE · UPGRADE`, os eventos chegavam **sem `id`** e
+não havia coluna que apontasse um evento para outro. E **não havia atalho honesto**:
+
+| Tentação | Por que mente |
+|---|---|
+| `SAI` | deixaria a placa **SUBSTITUIDA** — inventa uma saída que não houve |
+| `RESCINDE` | deixaria **RESCINDIDA** — inventa uma rescisão que não houve |
+| `UPDATE` no evento | viola a imutabilidade, que é o que faz "por que esta placa está ativa?" ter documento como resposta |
+
+A verdade é outra: a placa **nunca esteve no contrato** — foi a lista do Harmonit que a pôs lá. Então entra
+um evento novo apontando para o errado, e **o errado continua visível**, com autoria e motivo. O filtro roda
+**antes** das duas passadas, porque a anulação pode estar num termo que vem depois na ordem.
+
+## 🚨 O defeito que a primeira passada causou em produção — e a reversão
+
+A primeira passada do piloto **inseriu identificador inventado**. O extrator devolveu a **linha descritiva
+inteira** no lugar da placa:
+
+```
+Cod: 01-06 - Escavadeira Hidraulica- JohnDeere- 210G - Amarela- 1F9210GXKED520143 - 2014
+Escavadeira PC350, Komatsu, PC350 LC-8 B10217
+1BZ310KXJEC000130 (ID: 007842126)
+Cod: 01-05 (ID: 205727026)
+```
+
+...e a carga criou evento com isso **e anulou o identificador correto que estava na base** (nos termos 2652,
+2703 e 3520). **Identificador inventado é pior que identificador faltando** (regra 13, a família do
+`RFD 2447`): a cobrança passa a apontar para um veículo que não existe.
+
+**Revertido pelo livro-razão**, com `antes_json`: 11 eventos apagados, 1 cliente recalculado, 7 PDFs
+removidos — e a base voltou **exatamente** a 4.599 / 12.114 / 6.812 / 0 com arquivo / 795 a revisar.
+
+**A guarda que entrou** (`identificador_suspeito`): recusa texto com mais de 20 caracteres de chave,
+pontuação de frase, 3+ espaços ou palavra escrita. **Um identificador ruim reprova o documento inteiro** —
+metade boa não salva, porque se a leitura errou numa linha não há razão para confiar nas outras. O documento
+vai para a **fila**, e decifrar a linha seria mexer no `pdf_extractor`, que é da aba Operações e é
+**intocável**.
+
+⚠️ **E um segundo defeito, pego pela contagem:** "5 termos com arquivo contra 4 PDFs em disco". O caminho
+"documento só" gravava o nome do arquivo **sem copiá-lo** para a pasta de documentos — a ação "PDF" do grid
+responderia *"está registrado como X, mas não está na pasta"*. Corrigido, e conferido um por um: os 5
+documentos existem em disco e o `sha256` de cada um bate com o `hash` do termo.
+
+## O piloto 2HM — o que de fato aconteceu
+
+**A regra central do casamento, provada em produção:** os dois documentos chamados `2 - aditivo - assinado`
+foram para os termos **2207** e **2224**, pelo número lido **dentro** do PDF. (A instrução anterior, de
+subi-los como termos novos, estava errada e criaria dois termos falsos.)
+
+| Documento | Destino |
+|---|---|
+| 2207, 2224, 2649, 2764 | **anexado** |
+| 3465 (`acordo`) | **documento só** — é renegociação, 0 placas |
+| 2652, 2703, 3520 | **fila** — a leitura devolveu linha descritiva |
+| 3520 `cancelado` | **não foi nem copiado** para a VPS |
+
+**A correção funcionou:** no 2224 entrou `FJW 0B75` e o `00D6NCCCK01011` foi **anulado**, com a chave da
+Clicksign e a autoria no texto. A ficha mostra a correção; o evento anulado continua lá.
+
+### 🚨 E a consequência que precisa de decisão dele: a 2HM foi de 4 para 12 placas ativas
+
+| | Antes | Depois |
+|---|---|---|
+| ATIVA | 4 | **12** |
+| RESCINDIDA | 20 | 12 |
+
+O detalhe: **10 das 12 ativas são do termo 2207, com `base = "assinado"`** — e o documento assinado do 2207
+lista **3** placas, não 16. Ao marcar o termo como assinado, **a lista do Harmonit herdou a assinatura**.
+A correção automática foi recusada de propósito (13 de 16 placas não confirmadas, acima da metade), então as
+13 ficaram, agora como "assinadas".
+
+Some-se o outro lado: a **rescisão 8904** (29/09/2026), que fecharia 10 dessas placas, **não tem
+assinatura** — e, pela regra dele, termo sem assinatura não conta na primeira passada. É exatamente o que a
+aba existe para mostrar, mas o `base = "assinado"` de placa que o documento não lista **é a base mentindo**.
+
+**Três caminhos, e a escolha é dele:**
+1. **Requalificar** (proposto): quando a correção é recusada, anular os eventos não confirmados e reinserir
+   os mesmos com `fonte=harmonit` — a placa continua no contrato, e a base passa a dizer "nao assinado", que
+   é a verdade da origem. Corrige sem apagar, e usa o mecanismo que já existe.
+2. **Fila:** documento com divergência grande não é anexado, e o termo não é marcado assinado.
+3. **Deixar como está:** a lista do Harmonit herda a assinatura do documento.
+
+## Conferido pelo estado
+
+```
+integrity_check ok · hash duplicado 0 · anulação duplicada 0
+estado proibido no livro-razão 0 · identificador suspeito entre os eventos novos 0
+5 PDFs em disco = 5 termos com arquivo, e o sha256 de cada um bate com o hash
+sha256 de operacoes_*.py + pdf_extractor.py: IGUAL ao da manhã
+grid e ficha concordam: 12 e 12
+base: 4.599 termos · 12.117 eventos · 6.812 placas · 5 com arquivo · 796 a revisar
+```
+**Backups:** `backups/fpsl.db.bak_pre_c7_2026-10-14` (`integrity_check` ok antes de começar).
+
+**Placar:** as **10 suítes da CTR somam 452 verificações, 0 falhas**; travas da casa verdes
+(`teste_barra_status` 89, `teste_perfis` 27, `teste_registro_telas` 43) e **Operações intacta**
+(`teste_tela_operacoes` 62, `teste_aba_ponta_a_ponta` 35).
+
+## O que falta na C7
+1. 🔴 **A decisão das três opções acima** — ela vale para os **412** termos com placa divergente, não só para
+   a 2HM. **Nenhum outro cliente entra antes disso.**
+2. 🔴 **A fila na tela** (A7): os casos de leitura descritiva, CNPJ divergente e número ambíguo estão no
+   livro-razão e **ainda não aparecem no grid**.
+3. 🔴 **O valor** (A6): a regra ampliada que ele aprovou (reconhecer `PACOTE`/`FULL MANAGER` e aceitar
+   `Qtd = nº de placas` como preço por veículo) **não foi implementada** — nenhum item ganhou valor no piloto.
+4. ⚠️ **A 2HM tem 3 documentos na fila por leitura descritiva.** São termos de máquina pesada
+   (escavadeira, trator), e o layout deles não é o que o extrator espera. Vale medir quantos dos 2.825 caem
+   nisso antes de prometer cobertura.
+
+## `C7` — A6 (o valor) e A7 (a fila na tela), 14/10 NO AR
+
+As duas frentes que **não** dependiam da decisão dos 412 termos.
+
+### A6 — o valor: a regra ampliada que ele aprovou, e o que ela achou de verdade
+
+Decisão dele: reconhecer `PACOTE`/`FULL MANAGER`/`Mensal` e aceitar **`Qtd` igual ao número de placas** como
+preço por veículo. **Não é rateio** — rateio dividiria um total e o número sairia de nós; aqui ele sai do
+documento.
+
+🚨 **A primeira ampliação ficou LARGA DEMAIS, e isso foi medido no termo 2207 da 2HM.** Ela passou a casar
+**dois** itens:
+
+| Item do documento | Qtd | Valor | O que é |
+|---|---|---|---|
+| `Equipamento rastreador telemetria avançada` | 16 | **999,90** | venda do aparelho |
+| `Adesão` | 16 | 299,90 | uma vez só |
+| `PACOTE FULL MANAGER` | 16 | **75,26** | **a mensalidade** |
+
+Com dois candidatos, nenhuma placa recebia valor — e, pior, sem a exclusão a cobrança poderia sair com o
+preço do equipamento no lugar da mensalidade: **13× o valor certo**. Entrou `_NAO_MENSAL_RE`, que tira
+adesão, taxa, equipamento, instalação, aquisição, retirada, aviso prévio, multa, ressarcimento, frete e
+cadastro.
+
+**Resultado medido nos PDFs já guardados da 2HM:**
+```
+2207  placas=3  itens_mensais=1  com_valor=0   (qtd 16 x 3 placas lidas -> NAO atribui)
+2224  placas=1  itens_mensais=1  com_valor=1   -> FJW 0B75 = 75,26
+2649  itens_mensais=0  (rescisão: só aviso prévio e taxa de retirada)
+2764  itens_mensais=0
+3465  tipo não reconhecido -> não lido
+```
+**É o primeiro `valor_mensal` da base inteira** — eram 0 de 6.462 linhas.
+
+⚠️ **E dois defeitos encadeados, o segundo silencioso:**
+1. `anexar_assinado` inseria o **evento** da placa nova e **não criava o item** — e o valor mora no item
+   (decisão dele, 13/10). Então a placa que entra pelo assinado não tinha onde carregar o valor.
+2. `preencher_valores` ficava **calado** nesse caso: o `UPDATE` casava 0 linhas e os dois contadores
+   voltavam vazios, como se o documento não tivesse valor. Entrou o contador `sem_item` — **contador que
+   esconde "não existe" é número que mente**.
+
+### A7 — a fila da carga aparece na tela
+
+Os documentos que a carga não encaixa viviam só no livro-razão, no banco. **Fila invisível é fila que
+ninguém resolve.** Agora:
+- coluna **"Na fila"** na linha do cliente, e chip com quantos clientes têm documento parado;
+- ação **"Documento na fila"**, que abre a gaveta no bloco novo;
+- o bloco mostra termo, arquivo, estado de origem e **por que parou**, e diz em voz alta que **nada foi
+  gravado por eles** — forçar anexaria o assinado ao contrato errado;
+- rota `GET /painel/api/contratos/carga/fila` (owner, 401 sem token). Rotas: **16 → 17**.
+
+⚠️ O resumo agrupa por **tipo** de problema, e para isso tira o que é do caso: o texto citado e os números.
+A primeira versão cortava no `:` — e o próprio motivo tem dois-pontos (*"a leitura devolveu 'Cod: 01-05...'"*),
+então cada documento virava um grupo de um. Hoje: **3x "a leitura devolveu"**.
+
+### Conferido pelo estado
+```
+/painel/contratos 200, e a tela servida tem a fila
+/carga/fila -> 401 sem token
+fila da 2HM: 3 documentos, todos por leitura descritiva
+item do 2224: FJW 0B75 = 75,26 (lido do documento assinado)
+suíte do FPSL: 63 arquivos, 2.283 verificações
+```
+⚠️ **Dois vermelhos, nenhum desta frente:** `teste_extrair_termo` (expurgo F7, 02/10) e
+`teste_higiene_placas_weso`, que **ficou vermelho hoje** — é teste de integração contra a **WESO ao vivo** e
+acusa 1 placa com espaço à direita. A CTR **não escreve na WESO**, e o próprio teste registra que a WESO
+recebe cadastro por fora do FPSL. **Não investiguei a fundo nem corrigi**: o conserto escreve na WESO, o que
+é fora de escopo e exige a palavra dele (há `corrigir_placas_espaco.py` no projeto, de 27/07).
+
+---
+
+# Frente `D` — a WESO desempata, placa por placa (14/10/2026, coorte aderente NO AR)
+
+**Origem (regras dele):** *"o criterio de desempate será quantas placas ativas ele tem na weso"* ·
+*"termo antes de placas; porem, placas sem assiantura mas placa ativa, placa vence, pois se existe na weos
+foi feita, o erro é não ter assinatura"* · *"primeiro os casos de 100% de aderência com margem de 1+ ou -"*
+· *"usar a linha do tempo como parametro pelas datas ou entrada e saidas das placas, pois pode ser que N
+placas foram recindidas mas nao assinadas, se tiverem fora da Weso, é recisão mesmo"*.
+
+## O que eu validei antes de escrever código
+
+1. 🚨 **A rotina do cache da WESO está SADIA — o buraco não é dela.** Rodou 04:15 (1.933 veículos, 3.803
+   rastreadores, `integrity_check`, troca atômica). Ela **tenta** gravar o cliente
+   (`_sub(v, "cliente", "id")`), mas `/Veiculos/Consultar` devolve 12 campos e **nenhum é de cliente** —
+   medido: **0 de 1.932**. Consertar exigiria uma chamada por cliente (304+), o caminho de 15,6 s a timeout
+   medido em 18/08.
+2. 🚨 **E o desempate dele NÃO precisa da planilha.** O vínculo que falta é veículo→cliente; a regra usa o
+   **inverso** — "esta placa do contrato existe na WESO?" — e isso o cache responde hoje, por placa **e por
+   chassi**. A planilha da auditoria ficou como conferência, não como fonte.
+3. ⚠️ **`valor_mensalidade` vem no payload da WESO e está ZERO nos 1.932.** Não é fonte de valor.
+
+## As regras, como entraram
+
+**Precedência: o termo define o que existe.** A WESO não cria contrato — ela desempata.
+
+| Caso | Regra | Medido |
+|---|---|---|
+| **Placa na WESO** | **vence: fica ativa**, mesmo sem assinatura. A falta de assinatura é **achado** | **1.643** em uso; **150** delas sem assinatura |
+| **Fora da WESO + rescisão na linha do tempo**, mesmo não assinada | **é rescisão mesmo**: fecha | 84 ainda a fechar (ver abaixo) |
+| **Fora da WESO sem rescisão** | nada a fechar: fica como está | 1.244 |
+
+🚨 **A proposta de "requalificar" caiu**, e a regra 2 dele é melhor: requalificação cega puniria exatamente o
+veículo que está rodando. Quem está em uso não perde nada.
+
+### Como a prova entra sem o motor perder a pureza
+Fonte nova **`weso`** em `contratos_eventos.py`. Um `RESCINDE` com `fonte="weso"` **vale mesmo em termo sem
+assinatura** — é a única fonte com esse poder, porque ela não afirma o que foi assinado, afirma o que **está
+instalado**. A base da placa passa a dizer `"rescisao confirmada pelo uso (fora da WESO)"`.
+⚠️ **Quem consulta a WESO é `contratos_aderencia.py`, nunca o motor** (que segue sem I/O, travado por teste),
+e o evento aponta em `corrige_evento_id` a rescisão que ele confirma — **nada de `UPDATE`**. A mesma guarda
+de 48 h da rotina C6 vale aqui: fechar placa por ausência com dado velho é pior que não decidir.
+
+## 🚨 A primeira rodada real mostrou DUAS imprecisões na minha regra
+
+Das 32 primeiras confirmações, só **15** mudaram algo:
+
+| O que aconteceu | Quantas | Por que a regra não devia disparar |
+|---|---|---|
+| Placa **já em aviso prévio** | **12** | a rescisão **já está valendo** e o prazo corre pelo calendário, sozinho |
+| Placa **reativada por termo posterior** | **5** | ali "fora da WESO" não é saída, é **ainda não instalada** (a `SWL1I23`, reativada pelo termo 8708) |
+
+As duas entraram como guarda, com teste, e os **17 eventos inertes foram removidos** (17 clientes
+recalculados). Com a regra apertada, o universo a fechar caiu de 246 para **84**.
+
+⚠️ **E um número meu que estava inflado:** eu havia medido "549 placas com rescisão na linha do tempo". A
+consulta casava placa **entre clientes diferentes**; comparando por `(cliente, placa)`, como o módulo faz,
+são **246** — e **84** depois das duas guardas.
+
+## Estado final (coorte aderente aplicada)
+
+```
+ATIVA 2.778 -> 2.763      RESCINDIDA 2.922 -> 2.937      aviso 208 (inalterado)
+eventos 12.117 -> 12.132  |  fonte=weso: 15, TODAS em placa RESCINDIDA
+termos 4.599 e itens inalterados  |  integrity_check ok
+coortes: 347 aderentes (a de 359 menos os já resolvidos) e 132 contrato maior que o uso
+sha256 de operacoes_*.py + pdf_extractor.py: IGUAL ao da manhã
+```
+**Backup:** `backups/fpsl.db.bak_pre_d_2026-10-14` (96 MB, `integrity_check` ok, contagens conferidas antes
+de qualquer escrita).
+**Placar:** as **11 suítes da CTR somam 513 verificações, 0 falhas**; `teste_barra_status` 89,
+`teste_perfis` 27, `teste_tela_operacoes` 62.
+
+## O que falta na frente D
+1. 🔴 **Os 84 que sobraram**, quase todos na coorte "contrato maior que o uso" (132 clientes) — pela regra
+   dele, cada um pede a linha do tempo lida. **Não rodei**: é a coorte que ele mandou separar.
+2. 🔴 **D4, a tela:** a aderência por cliente (sustentadas × em uso) e o motivo por placa ainda não
+   aparecem no grid nem na ficha.
+3. ⚠️ **150 placas em uso sem assinatura** — pela regra 2 elas ficam ativas, e o que falta é a assinatura.
+   Hoje isso só aparece como achado da C6; merece ser ação na tela.
+
+## `D4` — a aderência com a WESO na tela (14/10 NO AR)
+
+**Origem:** a pergunta dele, olhando o grid: *"como assim 2778 placas ativas? isso seria baseado no que?"*.
+A resposta estava fora da tela — o número é o que os **termos sustentam**, e não o que está em uso.
+
+### O que a tela passou a mostrar
+1. **Coluna "Na WESO"** ao lado de "Ativas", com o selo de aderência: *bate* (margem ±1), *contrato maior*,
+   *uso maior*, *sem placa sustentada*.
+2. **Chips que filtram** por "contrato bate com o uso" (347) e "contrato maior que o uso" (132), e um chip
+   que diz **de quando é o dado**: *"1.643 das sustentadas estão na WESO · cache de 15h"*.
+3. **Na ficha, o motivo por placa** — porque *"ativa" não distingue a placa que está rodando da que nunca
+   foi instalada*: **em uso** · **saiu (rescindida)** · **nunca instalada**, mais a marca *falta assinar*.
+4. **Rota nova** `GET /cliente/{cnpj}/aderencia` (owner, 401 sem token). Rotas: **17 → 18**.
+
+### 🚨 Duas coisas que eu tive de corrigir para a tela não afirmar demais
+
+1. **A coluna NÃO podia se chamar "Em uso".** A checagem é de **presença no cadastro da WESO**, e a presença
+   é **global**: placa cadastrada na WESO de outro cliente conta aqui — é a família dos **84** achados
+   "mesma placa em dois clientes". Medido na 2HM: **6 presentes** contra **2** que a auditoria apurou como
+   em uso. Virou **"Na WESO"**, e o cabeçalho diz *"é presença, não instalação"*.
+2. **"Sem dado da WESO" culpava a fonte errada em 252 clientes.** Eles não têm placa sustentada — não é o
+   cache que falta. Virou rótulo próprio (`SEM_PLACA_SUSTENTADA`), e agora as coortes **fecham**:
+   347 + 132 + 252 = **731**, com *sem dado da WESO* em **zero**.
+
+### Custo, medido
+A listagem lê o cache com uma consulta de **presença** (`chaves_do_cache`), não com a leitura caríssima da
+rotina C6 — que faz uma consulta de rastreador **por veículo** porque precisa da situação de cada um. Com
+isso o grid continua em **0,05–0,09 s** para as 731 linhas, 2.148 chaves da WESO lidas.
+⚠️ Sem cache, `em_uso` fica **nulo** e a tela mostra "—" dizendo por quê: zero seria a afirmação falsa
+"nada em uso". Cache acima do teto de 48 h faz a ficha avisar que a coluna pode estar desatualizada — a
+rotina se recusa a decidir nessa situação, e a tela não pode afirmar onde a rotina recusaria.
+
+### Conferido pelo estado
+```
+/painel/contratos 200, e a tela servida tem a coluna "Na WESO"
+/cliente/{cnpj}/aderencia -> 401 sem token          rotas: 18
+coortes: 347 aderentes + 132 contrato maior + 252 sem placa sustentada = 731
+1.643 das 2.971 sustentadas estao na WESO    |    cache de 15 h
+2HM: 12 ativas, 6 na WESO -> CONTRATO_MAIOR_QUE_USO
+ficha da 2HM, por placa: em uso / fora com rescisao / nunca instalada
+sha256 de operacoes_*.py + pdf_extractor.py: IGUAL ao da manha
+```
+**Placar:** as **11 suítes da CTR somam 533 verificações, 0 falhas** (tela 95, grid 78, router 68);
+travas da casa verdes (89 + 27) e **Operações intacta** (62 + 35).
+
+---
+
+# Fechamento de 14/10/2026 — pendências VERIFICADAS pelo estado
+
+Não é lista de lembrança: cada linha abaixo foi medida no banco, no serviço ou na suíte, hoje.
+
+## O que ficou de pé
+
+```
+suíte do FPSL            64 arquivos, 2.342 verificações
+as 11 suítes da CTR      533 verificações, 0 falhas
+/painel/contratos        200, servindo a tela nova (grid + coluna "Na WESO")
+rotas do router          18, todas sob a tranca de owner
+integrity_check          ok    ·  hash duplicado 0  ·  anulação dupla 0
+placas                   ATIVA 2.763 · aviso 208 · RESCINDIDA 2.937 · SUBSTITUIDA 904
+clientes com nome        731 de 731
+termos com PDF           5      (de 4.599)
+itens com valor mensal   1      (de 6.463)
+eventos ANULA            1      ·  eventos fonte=weso  15
+livro-razão da carga     4 anexado · 1 documento só · 3 fila
+rotina de auditoria      DESLIGADA (sem linha na config), como ele decidiu
+```
+
+## 🚨 Três inconsistências que a própria verificação achou — e que eu causei
+
+1. **O livro-razão tinha perdido a linha do 3465.** Eu a apaguei no ciclo de reparo do "documento só", e
+   ficaram 5 termos com PDF contra 7 linhas no livro. Reposta, com o motivo escrito dentro da própria linha.
+   Agora fecha: 4 anexados + 1 documento só = os 5 termos com PDF.
+2. **Um arquivo órfão que eu criei:** `fpsl_weso/painel/contratos_router.py`, **fora** de `routers/` — erro de
+   destino num `scp` meu. Era uma cópia **velha** (versão de 17 rotas), ninguém a importava
+   (`main.py` importa de `painel.routers`), e foi apagada. Painel conferido depois: 200 e 18 rotas.
+3. **Dois `grep` meus deram falso negativo hoje**, e em nenhum dos dois o código estava errado: o seletor
+   `[data-v-...]` no meio da regra do MoviZap, e um parêntese a mais na busca do `correcoes_do_cliente`.
+   ⚠️ **Conferência que falha por padrão mal escrito é pior que conferência nenhuma** — ela convida a
+   "consertar" o que está certo.
+
+## A auditoria, rodada hoje por "Rodar agora" (a rotina segue desligada)
+
+| Tipo | 13/10 | 14/10 | |
+|---|---|---|---|
+| CONTRATADA_NAO_INSTALADA | 1.362 | **1.349** | −13 |
+| SUBSTITUICAO_PELA_METADE | 364 | 364 | 0 |
+| EM_USO_SEM_CONTRATO | 320 | **322** | +2 |
+| ENCERRADA_EM_USO | 173 | **168** | −5 |
+| EM_USO_FALTA_ASSINAR | 135 | **136** | +1 |
+| PLACA_EM_DOIS_CLIENTES | 84 | **83** | −1 |
+| **total** | **2.438** | **2.422** | **−16** |
+
+⚠️ **A queda é pequena, e eu não prometi mais que isso:** só 15 placas fecharam e 5 termos ganharam PDF. O
+movimento grande espera a carga dos 2.825 assinados.
+⚠️ **E o delta tem DUAS causas, não uma:** além do meu trabalho, o cache da WESO é de **14/10** e a rodada
+anterior comparava com o de **13/10** — um dia de cadastro novo entra na conta. Conferido: **nenhuma** das 15
+placas que a frente D fechou, e nem a placa que a C7 anulou, aparece entre os achados.
+
+## Pendências, verificadas uma a uma
+
+### 🔴 Dele (nada avança sem isso)
+1. **Abrir no navegador:** `/painel/contratos` (grid, chips, modal, gaveta e a coluna "Na WESO" dentro da
+   ficha, que agora tem 7 colunas) e o **botão Ficha do MoviZap** em nome curto, nome longo e conversa sem
+   cadastro. Nenhum teste vê largura, recorte ou elemento cobrindo outro.
+2. **Os 84 que a frente D deixou**, na coorte "contrato maior que o uso" (132 clientes) — é a coorte que ele
+   mandou separar, e cada caso pede a linha do tempo lida.
+3. **A carga dos 2.825 assinados** segue parada por decisão dele. Hoje são **5** termos com PDF.
+4. **`teste_extrair_termo`** (vermelho desde 02/10, expurgo F7): apagar a suíte ou reescrevê-la contra
+   `/painel/api/operacoes/extrair`. Enquanto existir, o placar do FPSL não fecha verde.
+5. **`teste_higiene_placas_weso`** ficou vermelho **hoje**: 1 placa com espaço à direita na **WESO ao vivo**.
+   Não é da CTR, que não escreve na WESO; o conserto escreve, e há `corrigir_placas_espaco.py` no projeto.
+
+### 🟡 Medido e à espera de vez
+6. **As 150 placas em uso sem assinatura** aparecem marcadas na ficha, mas **não têm ação própria** — cobrar
+   assinatura é trabalho, não defeito de cadastro.
+7. **Os 3 documentos na fila da 2HM** (leitura descritiva em termo de máquina pesada). **Falta medir quantos
+   dos 2.825 caem nisso** antes de prometer cobertura.
+8. **O valor:** 1 item com valor mensal, de 6.463. A `CAR_1.1` depende disto, e a WESO **não ajuda** — o
+   campo `valor_mensalidade` dela vem **zero** nos 1.932 veículos.
+9. **O vínculo veículo→cliente no cache da WESO** não existe porque a API não o entrega
+   (0 de 1.932 em `/Veiculos/Consultar`). Consertar custa uma chamada por cliente; só vale se ele quiser.
+
+### ✅ Fechadas hoje, e por isso saem da lista
+- A **fila da carga invisível** → coluna, chip e bloco na ficha, com o motivo (A7).
+- A **regra do valor quase inerte** → ampliada e com o "paga uma vez só" excluído (A6).
+- A **decisão dos 412 termos** → substituída pelas regras dele, e a coorte aderente aplicada (frente D).
+- O **nome do cliente ausente** → 731 de 731.
+- O **`/gravar` que duplicaria termo** → modo anexar, provado em produção.
+
+## Versionamento
+19 arquivos modificados no `fpsl_weso` e 3 no `movizap_painel`, todos esperando o **autocommit das 23:30**.
+⚠️ Árvore limpa não significa sincronizado — é a regra da casa, e vale aqui.

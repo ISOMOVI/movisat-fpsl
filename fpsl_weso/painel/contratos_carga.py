@@ -34,11 +34,117 @@ def _ja_gravados(conn) -> set:
             conn.execute("SELECT cnpj, numero, empresa FROM contrato_termo")}
 
 
-def importar(conn, caminho: str, limite_clientes: int | None = None) -> dict:
-    """Grava o que ainda não existe. Idempotente por (cnpj, numero, empresa)."""
+def _so_digitos(v) -> str:
+    return "".join(ch for ch in str(v or "") if ch.isdigit())
+
+
+def _agora() -> str:
+    return registro._agora()
+
+
+def importar_nomes(conn, caminho: str) -> dict:
+    """Grava o nome do cliente que o arquivo da carga trazia (campo `cliente`).
+
+    🚨 ESTE É O ÚNICO LUGAR ONDE O NOME DOS 731 CLIENTES EXISTE. A `CTR_1.1`
+    gravou só o CNPJ; a tabela `clientes` do FPSL tem apenas `harmonit_id` e
+    `cnpjcpf`, e o cache da WESO cobre 304 clientes -- a 2HM não está nele.
+    Grid de 731 linhas sem nome não se usa.
+
+    ⚠️ `INSERT OR IGNORE`: nome já gravado NÃO é tocado. É o que preserva a
+    correção à mão (`nome_fonte='manual'`), porque o nome da carga vem do
+    índice do Harmonit e chega sanitizado (`M_ D_ G_ COMERCIO...`). Rodar duas
+    vezes não muda nada -- conferido relendo a tabela, não a resposta.
+    """
     contratos_tabelas.criar(conn)
+    r = {"lidos": 0, "gravados": 0, "sem_nome": 0}
+    agora = _agora()
+    with open(caminho, encoding="utf-8") as fh:
+        for linha in fh:
+            try:
+                c = json.loads(linha)
+            except ValueError:
+                continue
+            cnpj = _so_digitos(c.get("cnpj"))
+            nome = (c.get("cliente") or "").strip()
+            if not cnpj:
+                continue
+            r["lidos"] += 1
+            if not nome:
+                r["sem_nome"] += 1
+                continue
+            cur = conn.execute(
+                """INSERT OR IGNORE INTO contrato_cliente
+                   (cnpj, nome, nome_fonte, atualizado_em, atualizado_por)
+                   VALUES (?,?,?,?,?)""",
+                (cnpj, nome, "carga", agora, "carga-auditoria-13-10"))
+            r["gravados"] += cur.rowcount or 0
+    return r
+
+
+def importar_harmonit_assinado(conn, caminho: str) -> dict:
+    """Preenche `contrato_termo.harmonit_assinado` a partir do mesmo arquivo.
+
+    ⚠️ NÃO É PROVA DE ASSINATURA -- é a marca do ÍNDICE do Harmonit, e a regra
+    dele é "vale o assinado". Fica em coluna própria justamente para a tela
+    poder mostrar a diferença: na 2HM, os termos 255, 2207 e 2224 estão "sim"
+    aqui e não têm nada na Clicksign.
+
+    🚨 Só escreve onde está NULO. A chave é `(cnpj, numero, empresa)`, a mesma
+    da carga -- o número do termo repete entre Instituto e Movisat.
+    """
+    contratos_tabelas.criar(conn)
+    contratos_tabelas.migrar(conn)
+    # ⚠️ `ja_tinha` e `sem_termo` são contagens SEPARADAS de propósito: juntas,
+    # a segunda rodada diria "não achei 4.599 termos" quando o certo é "já
+    # estavam preenchidos" -- número que mente é defeito, inclusive em log.
+    r = {"atualizados": 0, "sem_marca": 0, "ja_tinha": 0, "sem_termo": 0}
+    with open(caminho, encoding="utf-8") as fh:
+        for linha in fh:
+            try:
+                c = json.loads(linha)
+            except ValueError:
+                continue
+            cnpj = _so_digitos(c.get("cnpj"))
+            for t in c.get("termos") or []:
+                marca = t.get("harmonit_assinado")
+                if marca in (None, ""):
+                    r["sem_marca"] += 1
+                    continue
+                cur = conn.execute(
+                    """UPDATE contrato_termo SET harmonit_assinado = ?
+                        WHERE cnpj = ? AND numero = ? AND empresa = ?
+                          AND harmonit_assinado IS NULL""",
+                    (str(marca), cnpj, str(t.get("numero") or ""),
+                     t.get("empresa") or "MOVISAT"))
+                if cur.rowcount:
+                    r["atualizados"] += cur.rowcount
+                    continue
+                existe = conn.execute(
+                    """SELECT 1 FROM contrato_termo
+                        WHERE cnpj = ? AND numero = ? AND empresa = ? LIMIT 1""",
+                    (cnpj, str(t.get("numero") or ""), t.get("empresa") or "MOVISAT")).fetchone()
+                r["ja_tinha" if existe else "sem_termo"] += 1
+    return r
+
+
+def importar(conn, caminho: str, limite_clientes: int | None = None) -> dict:
+    """Grava o que ainda não existe. Idempotente por (cnpj, numero, empresa).
+
+    ⚠️ `limite_clientes` limita os TERMOS, não os nomes: nome e marca do
+    Harmonit entram pelo arquivo inteiro, porque o grid precisa dos 731.
+    """
+    contratos_tabelas.criar(conn)
+    contratos_tabelas.migrar(conn)
     existentes = _ja_gravados(conn)
     r = {"clientes": 0, "termos": 0, "pulados": 0, "eventos": 0, "a_revisar": 0, "erros": 0}
+    # O nome entra pelo arquivo inteiro, antes dos termos: rodar a carga de
+    # novo depois da C5 pula todos os termos (idempotência por
+    # `(cnpj, numero, empresa)`) e é justamente assim que os 731 nomes chegam à
+    # base sem reimportar nada. A marca do Harmonit vai no FIM -- ela faz
+    # `UPDATE` em `contrato_termo`, e rodando antes do laço, numa base vazia,
+    # não encontraria termo nenhum e a marca se perderia em silêncio (medido:
+    # `sem_termo` em vez de `atualizados`).
+    r["nomes"] = importar_nomes(conn, caminho)
 
     with open(caminho, encoding="utf-8") as fh:
         for i, linha in enumerate(fh):
@@ -85,6 +191,8 @@ def importar(conn, caminho: str, limite_clientes: int | None = None) -> dict:
                 # resultado com 4.599 passagens em vez de 731.
                 registro.recalcular(conn, cnpj)
             r["clientes"] += 1
+
+    r["harmonit_assinado"] = importar_harmonit_assinado(conn, caminho)
     return r
 
 

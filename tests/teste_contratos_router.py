@@ -92,7 +92,21 @@ print(f"\n[0] import de verdade (modulo auth real: {AUTH_REAL})")
 # deliberada. 5 na C2+C3 (/perfis · /extrair · /conferir · /gravar ·
 # /cliente/{cnpj}); 9 desde a C6, que trouxe /auditoria/interruptor (GET e
 # PUT), /auditoria/rodar-agora e /auditoria/achados.
-checar("o router subiu com as 9 rotas", 9, len(contratos_router.router.routes))
+# 🆕 16 desde a `CTR_1.2` (14/10), que fez a tela virar grid: /clientes,
+# /clientes.csv, /cliente/{cnpj}/candidatos, /cliente/{cnpj}/nome,
+# /termo/{id}/saida, /termo/{id}/revisado e /termo/{id}/pdf.
+# 🆕 17 desde a `C7` (14/10): `/carga/fila`, que traz os documentos assinados
+# que a carga não conseguiu encaixar -- fila invisível é fila que ninguém resolve.
+# 🆕 18 desde a D4 (14/10): `/cliente/{cnpj}/aderencia`, que diz placa por
+# placa o que esta em uso na WESO.
+checar("o router subiu com as 18 rotas", 18, len(contratos_router.router.routes))
+
+# 🚨 TODA ROTA NOVA ENTRA SOB A MESMA TRANCA DE OWNER. Rota solta sem a
+# dependência do router seria a porta aberta que o `aba_de` existe para fechar.
+for rota in contratos_router.router.routes:
+    checar(f"{rota.path} herda a tranca da aba", True,
+           any(getattr(d.dependency, "__qualname__", "").startswith("requer_aba")
+               for d in (rota.dependencies or [])))
 
 print("\n[1] /perfis diz o que aceita E o que recusa, com motivo")
 r = c.get(f"{PREFIXO}/perfis")

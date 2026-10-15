@@ -85,6 +85,89 @@ def _placas_do_campo(campos, lista, chave_placa) -> list:
     return out
 
 
+# 🚨 AMPLIADO EM 14/10, POR DECISÃO DELE, E PORQUE A VERSÃO ESTREITA ERA QUASE
+# INERTE. A primeira regra procurava "mensalidade|monitoramento|locação|plano" e
+# o item real do termo da 2HM é **"PACOTE FULL MANAGER ... Mensal"** -- não
+# casava, e nenhuma placa recebia valor. Medir antes de prometer: o extrator já
+# entrega `valor_unitario` por item (tratando valor riscado), mas o vocabulário
+# do documento não é o que eu supus.
+_MENSALIDADE_RE = re.compile(
+    r"(?i)mensalidade|mensal|monitoramento|locac|loca[çc][aã]o|plano|"
+    r"pacote|full\s*manager|gestor")
+
+# 🚨 O QUE SE PAGA UMA VEZ SÓ NÃO É MENSALIDADE, e isto foi medido no termo
+# 2207 da 2HM: a regra ampliada pegou **dois** itens -- `PACOTE FULL MANAGER`
+# (75,26, que é a mensalidade) e `Equipamento rastreador telemetria avançada`
+# (999,90, que é a VENDA do aparelho). Com dois candidatos, nenhuma placa
+# recebia valor; sem a exclusão, a cobrança poderia sair com o preço do
+# equipamento no lugar da mensalidade -- 13× o valor certo.
+_NAO_MENSAL_RE = re.compile(
+    r"(?i)ades[ãa]o|taxa|equipamento|instalac|instala[çc][ãa]o|aquisic|aquisi[çc][ãa]o|"
+    r"retirada|aviso\s*pr[eé]vio|multa|ressarcimento|frete|cadastro|desinstalac")
+
+
+def valor_das_placas(itens, eventos) -> dict:
+    """Liga o valor do termo às placas — **só quando não há dúvida**.
+
+    🚨 O VALOR DO TERMO NÃO É POR PLACA, E ISSO É LIMITE DO DOCUMENTO, NÃO DO
+    CÓDIGO. O `pdf_extractor` entrega os itens de serviço (`descricao`,
+    `quantidade`, `valor_unitario`, já tratando valor riscado por
+    `_valor_ativo`), e um termo com 12 placas e um item "MENSALIDADE" não diz
+    quanto é de cada veículo. Decisão dele (13/10, repetida em 14/10): **o
+    valor vem do termo** -- então o que é inequívoco entra, e o resto vira
+    pergunta na tela, com o motivo escrito.
+
+    Inequívoco é um destes dois casos:
+      1. o termo tem **uma** placa que entra e **um** item de mensalidade;
+      2. a descrição do item **nomeia** a placa.
+
+    ⚠️ Ratear o total pelas placas seria inventar número, e número inventado em
+    cobrança é pior que número faltando: a CAR emitiria em cima dele.
+    """
+    cobraveis = [e for e in eventos if e.get("acao") in (ENTRA, UPGRADE) and (e.get("placa") or "").strip()]
+    candidatos = [i for i in (itens or [])
+                  if isinstance(i, dict) and (i.get("valor_unitario") or "").strip()
+                  and _MENSALIDADE_RE.search(str(i.get("descricao") or ""))
+                  and not _NAO_MENSAL_RE.search(str(i.get("descricao") or ""))]
+
+    por_placa, aviso = {}, None
+
+    # Caso 2 primeiro: item que nomeia a placa é mais forte que contagem.
+    for i in candidatos:
+        desc = str(i.get("descricao") or "").upper()
+        for e in cobraveis:
+            alvo = (e.get("placa") or "").strip().upper()
+            if alvo and alvo in desc:
+                por_placa[e["placa"]] = i["valor_unitario"]
+
+    if not por_placa and len(cobraveis) == 1 and len(candidatos) == 1:
+        por_placa[cobraveis[0]["placa"]] = candidatos[0]["valor_unitario"]
+
+    # 🚨 CASO 3 (decisão dele, 14/10): **um** item mensal cuja QUANTIDADE é igual
+    # ao número de placas do termo. Aí o `valor_unitario` é o preço POR VEÍCULO
+    # que o documento declara -- medido no termo da 2HM, onde a coluna Qtd traz
+    # 16 para 16 placas e 01 para 1.
+    # ⚠️ ISTO NÃO É RATEIO. Rateio seria dividir um total pelas placas, e aí o
+    # número sairia de nós; aqui ele sai do documento. A diferença importa
+    # porque a futura Contas a Receber emite em cima disto.
+    if not por_placa and len(candidatos) == 1 and cobraveis:
+        qtd = (candidatos[0].get("quantidade") or "").strip()
+        digitos = re.sub(r"\D", "", qtd)
+        if digitos and int(digitos) == len(cobraveis):
+            for e in cobraveis:
+                por_placa[e["placa"]] = candidatos[0]["valor_unitario"]
+
+    faltam = [e["placa"] for e in cobraveis if e["placa"] not in por_placa]
+    if faltam and candidatos:
+        aviso = ("o termo tem valor, mas por item de serviço e não por veículo: "
+                 f"{len(faltam)} placa(s) ficam sem valor ({', '.join(faltam[:5])}"
+                 f"{' ...' if len(faltam) > 5 else ''}). Confirmar antes de cobrar.")
+    elif faltam and not candidatos:
+        aviso = "o documento não trouxe item de mensalidade — nenhuma placa recebeu valor."
+
+    return {"itens": list(candidatos), "por_placa": por_placa, "sem_valor": faltam, "aviso": aviso}
+
+
 def ler(fonte, perfil: str, fonte_evento: str = ASSINADO) -> dict:
     """Lê o termo e devolve os eventos que ele produz, sem gravar nada.
 
@@ -151,6 +234,16 @@ def ler(fonte, perfil: str, fonte_evento: str = ASSINADO) -> dict:
     if not cnpj:
         avisos.append("o documento não traz CNPJ/CPF — confirmar o cliente na tela antes de gravar")
 
+    # 🆕 G4: o valor que o termo diz, ligado à placa só quando não há dúvida.
+    # O evento recebe `valor_mensal`, e é daí que `gravar()` já alimenta o
+    # `contrato_item` -- nenhuma mudança no gravador foi necessária.
+    valores = valor_das_placas(campos.get("itens"), eventos)
+    for e in eventos:
+        if e.get("placa") in valores["por_placa"]:
+            e["valor_mensal"] = valores["por_placa"][e["placa"]]
+    if valores["aviso"]:
+        avisos.append(valores["aviso"])
+
     return {
         "perfil": perfil,
         "tipo": p["label"],
@@ -161,6 +254,7 @@ def ler(fonte, perfil: str, fonte_evento: str = ASSINADO) -> dict:
         "vagas": vagas,
         "eventos": eventos,
         "itens": campos.get("itens") or [],
+        "valores": valores,
         "termo_relacionado": campos.get("termo_relacionado"),
         "alerta_transferencia": campos.get("alerta_transferencia"),
         "avisos": avisos,

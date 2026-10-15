@@ -48,11 +48,45 @@ ENTRA = "ENTRA"
 SAI = "SAI"
 RESCINDE = "RESCINDE"
 UPGRADE = "UPGRADE"
-ACOES = (ENTRA, SAI, RESCINDE, UPGRADE)
+
+# 🆕 C7 (14/10): ANULA desfaz um evento ANTERIOR, apontando para o `id` dele em
+# `corrige`. Nasceu da releitura dos PDFs assinados: a carga de 13/10 gravou a
+# lista de placas do **Harmonit** (o PDF é editado depois de assinado), e onde
+# o documento assinado não traz aquela placa, o evento que a fez entrar está
+# errado.
+#
+# 🚨 POR QUE NÃO DAVA PARA USAR `SAI` NEM `RESCINDE`: os dois MENTIRIAM. A
+# placa ficaria SUBSTITUIDA ou RESCINDIDA, e a verdade é outra -- ela **nunca
+# esteve no contrato**. Dizer "saiu" inventa um fato (uma saída que não houve) e
+# ainda muda o que a futura cobrança entende.
+#
+# 🚨 E NÃO DAVA PARA CORRIGIR O EVENTO VELHO: `contrato_evento` é imutável, e é
+# essa imutabilidade que faz "por que esta placa está ativa?" ter documento como
+# resposta. Corrigir é ACRESCENTAR -- o evento errado continua lá, visível,
+# apontado por quem o anulou, com autoria e motivo.
+ANULA = "ANULA"
+ACOES = (ENTRA, SAI, RESCINDE, UPGRADE, ANULA)
 
 # Fonte do evento: de qual versão do termo ele foi lido.
 ASSINADO = "assinado"
 HARMONIT = "harmonit"
+
+# 🆕 D (14/10): a prova não é um documento, é o USO. Regra dele:
+# *"placas sem assinatura mas placa ativa, placa vence, pois se existe na weso
+# foi feita, o erro é não ter assinatura"* e *"pode ser que N placas foram
+# rescindidas mas nao assinadas, se tiverem fora da Weso, é recisão mesmo"*.
+#
+# 🚨 EVENTO COM `fonte="weso"` VALE MESMO EM TERMO SEM ASSINATURA. É a única
+# fonte com esse poder, e tem motivo: ela não afirma o que o cliente assinou,
+# afirma o que **está instalado**. A rescisão não assinada de uma placa que já
+# saiu da WESO não é dúvida -- é o cadastro atrasado em relação ao fato.
+#
+# ⚠️ QUEM GERA ESTE EVENTO É UMA ROTINA, NUNCA O MOTOR. O motor é sem I/O (é o
+# que permite travar as regras dele em teste, em qualquer máquina); a consulta à
+# WESO mora em `contratos_aderencia.py`, que insere o evento com a data do cache
+# no `obs`. Deixar o motor olhar a WESO transformaria a situação da placa em algo
+# que muda sem evento nenhum -- e ninguém saberia explicar por quê.
+WESO = "weso"
 
 AVISO_PREVIO_DIAS = 90
 
@@ -115,6 +149,12 @@ def _vale_assinado(termo, evento) -> bool:
     COMO ASSINADO, mesmo que o termo tenha assinatura. Era assim que 256 termos
     "ganhavam" placas depois de assinados.
     """
+    # 🚨 `weso` DECIDE INDEPENDENTE DE ASSINATURA, e é a exceção que ele abriu
+    # em 14/10: a prova aqui é o uso, não o documento. Vem antes da checagem de
+    # `assinado` de propósito -- o caso que a produziu é justamente a rescisão
+    # SEM assinatura de placa que já saiu da WESO (549 placas medidas).
+    if evento.get("fonte") == WESO:
+        return True
     if not termo.get("assinado"):
         return False
     if evento.get("fonte", ASSINADO) == ASSINADO:
@@ -124,6 +164,13 @@ def _vale_assinado(termo, evento) -> bool:
 
 def _aplicar(termo, evento, placa, estado, base, hoje):
     acao = evento["acao"]
+    if acao == ANULA:
+        # ⚠️ ANULA não aplica nada: ele só diz que OUTRO evento não vale, e
+        # quem trata isso é `situacao_das_placas`, antes das passadas (o evento
+        # anulado pode estar em termo diferente deste). Chegar aqui significa
+        # que o filtro não rodou -- então é no-op, e não exceção: um evento de
+        # correção não pode derrubar a ficha inteira do cliente.
+        return
     k = placa
     atual = estado.get(k)
     comum = dict(placa=evento.get("placa") or k, base=base,
@@ -205,15 +252,32 @@ def situacao_das_placas(termos, hoje=None) -> dict:
     hoje = hoje or date.today()
     ordenados = sorted(termos, key=_ordem)
 
+    # 🆕 C7: quem foi ANULADO sai das DUAS passadas, e isto é feito ANTES de
+    # qualquer aplicação -- o evento de correção pode estar num termo que vem
+    # depois na ordem, ou até em outro termo do mesmo cliente. Varrer primeiro é
+    # o que torna a anulação independente da ordem de leitura.
+    anulados = {ev["corrige"] for termo in ordenados
+                for ev in (termo.get("eventos") or []) if ev.get("corrige")}
+
+    def _vale(ev) -> bool:
+        if ev.get("acao") == ANULA:
+            return False                      # ele corrige, não aplica
+        return not (ev.get("id") is not None and ev["id"] in anulados)
+
     estado: dict = {}
     for termo in ordenados:
         for ev in termo.get("eventos") or []:
             k = chave(ev.get("placa"))
-            if k in _SEM_PLACA:
+            if k in _SEM_PLACA or not _vale(ev):
                 continue
             if _vale_assinado(termo, ev):
                 base = ASSINADO
-                if ev.get("fonte", ASSINADO) == HARMONIT:
+                if ev.get("fonte") == WESO:
+                    # A base DIZ que o lastro é o uso, não a assinatura: quem
+                    # lê a ficha precisa saber que esta placa fechou porque
+                    # saiu da WESO, e não porque alguém assinou.
+                    base = "rescisao confirmada pelo uso (fora da WESO)"
+                elif ev.get("fonte", ASSINADO) == HARMONIT:
                     base = ("assinado (troca registrada no Harmonit)"
                             if termo.get("troca_registrada")
                             else "assinado com 'a definir'; placa preenchida no Harmonit")
@@ -225,7 +289,7 @@ def situacao_das_placas(termos, hoje=None) -> dict:
     for termo in ordenados:
         for ev in termo.get("eventos") or []:
             k = chave(ev.get("placa"))
-            if k in _SEM_PLACA or k in tocadas_por_assinado:
+            if k in _SEM_PLACA or k in tocadas_por_assinado or not _vale(ev):
                 continue
             _aplicar(termo, ev, k, sem_assinatura, "nao assinado", hoje)
     for k, v in sem_assinatura.items():

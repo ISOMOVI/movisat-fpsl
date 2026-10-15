@@ -56,9 +56,19 @@ print("\n[2] M12 — a tela diz o que faz, e o que NAO faz")
 checar("declara que a CONFERENCIA nao grava", True, "A conferência não grava nada" in html)
 checar("e que quem grava e o passo 4", True, "só o passo 4 grava" in html)
 checar("declara que a conferencia olha so este documento", True, "só este documento" in html)
-checar("diz que a ficha mostra o efeito somado", True, "efeito somado dos" in html)
-checar("e que comparar com a WESO ainda nao acontece", True,
-       "Comparar com a WESO ainda não acontece aqui" in html)
+# 🆕 `CTR_1.2` (14/10): a tela virou GRID, e dois textos do assistente tiveram
+# de mudar junto -- é o mesmo `M12` que matou a frase "Nada é gravado nesta
+# etapa". O que a tela afirma agora:
+checar("o grid declara de onde vem o numero", True, "eventos gravados" in html)
+checar("e que aviso previo ainda conta", True, "ainda conta" in html)
+# 🚨 ESTA FRASE JÁ ERA FALSA ANTES DE HOJE, e ninguém a matou: a tela dizia
+# *"Comparar com a WESO ainda não acontece aqui"* no mesmo arquivo em que o
+# card da auditoria C6 compara contrato × WESO desde 13/10. Entrega seguinte
+# deixou o texto velho vivo -- exatamente o defeito que o `M12` nomeia. Saiu.
+checar("nao nega a comparacao com a WESO, que a auditoria faz", False,
+       "Comparar com a WESO ainda não acontece" in html)
+checar("e diz que nao escreve nos outros sistemas", True,
+       "não escreve no Harmonit, na WESO nem na Clicksign" in html)
 
 print("\n[2b] nenhuma funcao da tela fica orfa")
 # 🚨 `prepararGravacao` FICOU DEFINIDA E NUNCA CHAMADA na primeira versão: o
@@ -105,6 +115,71 @@ checar("campos com 16px", True, "font-size:16px" in html)
 checar("as 4 situacoes da placa tem rotulo em portugues", 4,
        sum(1 for s in ("'ATIVA'", "'EM_AVISO_PREVIO'", "'SUBSTITUIDA'", "'RESCINDIDA'") if s in html))
 checar("o botao diz que esta trabalhando", True, "Lendo…" in html)
+
+print("\n[6] CTR_1.2 — a tela abre em GRID, e o input mora num modal")
+# 🚨 MESMA ARMADILHA DO `prepararGravacao`: função definida e nunca chamada
+# deixa o recurso invisível, e `py_compile` não lê JS. A tela nova dobrou de
+# tamanho, então a contagem vale para cada função dela.
+for fn in ("carregarGrid", "pintarGrid", "pintarChips", "pintarEstados", "filtrarEstado",
+           "filtros", "abrirGaveta", "fecharTudo", "abrirModal", "fecharModal", "msgModal",
+           "acao", "pedirSaida", "revisar", "corrigirNome", "exportar", "verDestino",
+           "dobrarAuditoria", "abrirPdf", "achadosDoCliente"):
+    checar(f"{fn} e definida E usada", True, html.count(fn) >= 2)
+checar("a tela abre carregando a lista, nao um formulario", True,
+       html.rstrip().endswith("</html>") and "carregarGrid();\n</script>" in html)
+checar("o assistente de input esta dentro do modal", True,
+       html.index('id="modal"') < html.index('id="perfil"'))
+checar("e a gaveta da ficha existe", True, 'id="gaveta"' in html and 'id="ficha"' in html)
+# 🚨 A AÇÃO VEM DO BACKEND COM O MOTIVO. Botão cinza e mudo manda o operador
+# procurar; botão que existe e não faz nada é defeito.
+checar("acao desabilitada mostra o motivo", True, 'title="${esc(a.motivo || a.label)}"' in html)
+# ⚠️ As fases futuras não aparecem como botão -- nem desligado.
+for proibido in ("Gerar termo", "Enviar para assinatura", "Cobrar etapa", "Enviar ao financeiro"):
+    checar(f"nao tem botao de '{proibido}'", False, proibido in html)
+# 🚨 O modo anexar precisa estar na tela: sem ele, subir o assinado de um termo
+# da carga cria um SEGUNDO termo com os eventos repetidos.
+checar("a tela oferece anexar ao termo que existe", True, "Anexar assinado" in html)
+checar("e manda o termo_id na gravacao", True, "fd.append('termo_id'" in html)
+checar("dizendo que gravar como novo duplicaria", True, "duplicaria o contrato" in html)
+# ⚠️ A marca do Harmonit aparece COMO MARCA, nunca como assinatura.
+checar("a marca do Harmonit nao se confunde com assinatura", True,
+       "não é assinatura verificável" in html)
+# 🚨 Termo da carga não tem PDF: a tela diz, em vez de oferecer link que daria 404.
+checar("o PDF so aparece quando existe arquivo", True, "if (t.arquivo)" in html)
+checar("e o erro do PDF chega ao operador", True, "Não foi possível abrir o PDF" in html)
+
+print("\n[7] C7 - a fila da carga dos assinados aparece na tela")
+# A fila invisivel e fila que ninguem resolve: os documentos que a carga nao
+# conseguiu encaixar estavam so no livro-razao do banco.
+checar("filaDoCliente e definida E usada", True, html.count("filaDoCliente") >= 2)
+checar("tem coluna 'Na fila' no grid", True, ">Na fila<" in html)
+checar("e o chip conta os clientes com documento parado", True, "com_documento_na_fila" in html)
+checar("a tela diz que nada foi gravado por eles", True, "Nada foi gravado por eles" in html)
+checar("e por que nao se forca", True, "contrato errado" in html)
+checar("mostra o motivo de cada documento", True, "Por que parou" in html)
+
+print("\n[8] D4 - a aderencia com a WESO aparece na tela")
+# 🚨 A PERGUNTA DELE FOI "2778 placas ativas? baseado no que?". A coluna "Em uso"
+# ao lado de "Ativas" existe para responder isso dentro da tela.
+# ⚠️ A COLUNA SE CHAMA "Na WESO", NAO "Em uso": a checagem e de PRESENCA no
+# cadastro, e a presenca e global -- placa cadastrada na WESO de outro cliente
+# tambem conta. Medido na 2HM: 6 presentes contra 2 que a auditoria apurou como
+# em uso. Chamar de "em uso" seria afirmar mais do que o dado diz.
+checar("tem coluna 'Na WESO' no grid", True, ">Na WESO</th>" in html)
+checar("e o cabecalho avisa que e presenca, nao instalacao", True,
+       "presença, não instalação" in html)
+checar("celulaEmUso e definida E usada", True, html.count("celulaEmUso") >= 2)
+checar("filtrarAderencia e definida E usada", True, html.count("filtrarAderencia") >= 2)
+checar("aderenciaDoCliente e definida E usada", True, html.count("aderenciaDoCliente") >= 2)
+checar("a ficha mostra 'Na WESO' por placa", True, ">Na WESO<" in html)
+# ⚠️ `null` nao e zero: sem cache, a tela nao pode afirmar "nada em uso".
+checar("sem cache, a tela diz que nao da para comparar", True,
+       "nao da para comparar" in html or "não dá para comparar" in html)
+checar("e a idade do cache e dita em voz alta", True, "cache de" in html)
+checar("cache velho avisa que a coluna pode estar desatualizada", True,
+       "desatualizada" in html)
+# A placa em uso sem assinatura e trabalho (cobrar assinatura), nao defeito.
+checar("a ficha marca 'falta assinar'", True, "falta assinar" in html)
 
 print("\n" + "=" * 52)
 print(f"{ok} passaram, {len(falhas)} falharam")

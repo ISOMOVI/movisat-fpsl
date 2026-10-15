@@ -21,7 +21,8 @@ a derivada se refaz. Nenhuma regra lê `contrato_placa` para decidir.
 """
 
 TABELAS = ("contrato_termo", "contrato_evento", "contrato_item", "contrato_placa",
-           "contrato_achado")
+           "contrato_achado", "contrato_cliente", "contrato_revisao",
+           "contrato_carga_pdf")
 
 
 def criar(conn) -> None:
@@ -44,6 +45,17 @@ def criar(conn) -> None:
             -- 1 quando o documento ASSINADO traz "a definir" na tabela de
             -- veiculos: a placa real foi preenchida depois, no Harmonit.
             a_definir     INTEGER NOT NULL DEFAULT 0,
+            -- 🆕 G1: a marca de assinatura do ÍNDICE DO HARMONIT ("sim"/"nao").
+            -- ⚠️ NÃO É PROVA: a regra dele é "vale o assinado", e o assinado
+            -- verificável mora na Clicksign. Fica em coluna separada de
+            -- `assinado` porque a diferença entre as duas é a pergunta -- na
+            -- 2HM, os termos 255, 2207 e 2224 estão "sim" aqui e não têm nada
+            -- na Clicksign.
+            -- 🚨 Está no CREATE **e** no `migrar()`: o CREATE serve à base
+            -- nova (teste, cópia), o ALTER à base que já existe. Pôr só no
+            -- ALTER deixou duas suítes em `no such column` -- elas chamam
+            -- `criar()` sem `migrar()`, e é o padrão da casa desde o começo.
+            harmonit_assinado TEXT,
             origem        TEXT    NOT NULL,     -- upload · carga · clicksign
             arquivo       TEXT,
             -- 🚨 hash do PDF: e o que impede o mesmo documento de entrar duas
@@ -72,6 +84,11 @@ def criar(conn) -> None:
             recursos    TEXT,                  -- JSON: bloqueio, RFID, central 24h...
             valor_mensal TEXT,
             obs         TEXT,
+            -- 🆕 C7: o `id` do evento que ESTE anula (ver `migrar()`). Está no
+            -- CREATE **e** no ALTER: o CREATE serve à base nova (teste, cópia),
+            -- o ALTER à que já existe. Pôr só no ALTER deixou duas suítes em
+            -- `no such column` quando a coluna anterior entrou.
+            corrige_evento_id INTEGER,
             criado_em   TEXT    NOT NULL
         )
     """)
@@ -134,6 +151,72 @@ def criar(conn) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_contrato_achado_tipo ON contrato_achado(tipo)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_contrato_achado_cnpj ON contrato_achado(cnpj)")
 
+    # 🆕 G1: o NOME do cliente, que a `CTR_1.1` não guardava em lugar nenhum.
+    # 🚨 ELE NÃO ESTÁ EM NENHUMA OUTRA TABELA DO FPSL. A `clientes` tem só
+    # `harmonit_id` e `cnpjcpf`; o cache da WESO tem 304 clientes e não cobre
+    # os 731 da carga (a 2HM, por exemplo, não está lá). O nome da carga veio
+    # do índice do Harmonit e chega SANITIZADO (`M_ D_ G_ COMERCIO...`), por
+    # isso existe `nome_fonte`: nome corrigido à mão (`manual`) nunca é
+    # sobrescrito por carga nem por leitura de PDF.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS contrato_cliente (
+            cnpj          TEXT PRIMARY KEY,
+            nome          TEXT NOT NULL,
+            nome_fonte    TEXT NOT NULL,     -- carga · pdf · manual
+            atualizado_em TEXT NOT NULL,
+            atualizado_por TEXT
+        )
+    """)
+
+    # 🆕 G1: quem olhou um termo marcado `revisar` e o que disse.
+    # 🚨 SÓ INSERÇÃO, e o `revisar_motivo` do termo NÃO É APAGADO. O motivo
+    # conta por que o termo entrou duvidoso (a carga usou a placa do Harmonit,
+    # o PDF não existe, a troca não disse quem sai); apagá-lo ao revisar
+    # perderia a razão e a tela passaria a dizer que nunca houve dúvida.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS contrato_revisao (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            termo_id  INTEGER NOT NULL REFERENCES contrato_termo(id),
+            por       TEXT    NOT NULL,
+            em        TEXT    NOT NULL,
+            nota      TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_contrato_revisao_termo ON contrato_revisao(termo_id)")
+
+    # 🆕 C7: o livro-razão da carga dos PDFs assinados.
+    # 🚨 É O QUE DÁ RETOMADA E REVERSÃO. A carga são ~2.825 documentos lidos um
+    # por um, num banco em `journal_mode=delete` (cada escrita tranca o
+    # serviço): ela precisa poder parar no meio e continuar sem reprocessar, e
+    # precisa poder ser desfeita por lote. `antes_json` guarda o estado do termo
+    # ANTES do anexo -- sem ele, "desfazer" seria adivinhar.
+    # ⚠️ `sha256` é a chave: o mesmo documento nunca é lido duas vezes, e isso é
+    # independente do nome do arquivo (que, medido, mente: o "nº 2" da 2HM é na
+    # verdade o assinado dos termos 2207 e 2224).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS contrato_carga_pdf (
+            sha256         TEXT PRIMARY KEY,
+            chave_clicksign TEXT,
+            cnpj           TEXT,
+            arquivo        TEXT,
+            -- assinado · cancelado · rascunho · pendente, como veio do CSV da
+            -- auditoria. Fica gravado para a conferência poder provar que
+            -- nenhum estado proibido entrou.
+            estado_origem  TEXT,
+            numero_no_nome TEXT,
+            numero_no_pdf  TEXT,
+            -- anexado · doc_so · fila · rejeitado
+            status         TEXT NOT NULL,
+            motivo         TEXT,
+            termo_id       INTEGER,
+            lote           TEXT,
+            antes_json     TEXT,
+            em             TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_contrato_carga_pdf_status ON contrato_carga_pdf(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_contrato_carga_pdf_cnpj ON contrato_carga_pdf(cnpj)")
+
 
 def _colunas(conn, tabela) -> set:
     return {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})").fetchall()}
@@ -146,5 +229,32 @@ def migrar(conn) -> list:
     por um arquivo que o painel inteiro lê.
     """
     feitas = []
-    # (nenhuma ainda — a primeira versão é esta)
+
+    # 🆕 G1: a marca de assinatura do ÍNDICE DO HARMONIT, que o arquivo da
+    # carga trazia (`harmonit_assinado`) e a tabela jogava fora.
+    # ⚠️ NÃO É PROVA DE ASSINATURA, e por isso é coluna separada de `assinado`:
+    # a regra dele é "vale o assinado", e o assinado verificável mora na
+    # Clicksign. Na 2HM os termos 255, 2207 e 2224 estão "sim" aqui e não têm
+    # nada na Clicksign -- é exatamente a diferença que ele precisa ver na tela
+    # para decidir, e misturar as duas colunas apagaria a pergunta.
+    if "harmonit_assinado" not in _colunas(conn, "contrato_termo"):
+        conn.execute("ALTER TABLE contrato_termo ADD COLUMN harmonit_assinado TEXT")
+        feitas.append("contrato_termo.harmonit_assinado")
+
+    # 🆕 C7 (14/10): qual evento este evento ANULA.
+    # 🚨 É O QUE PERMITE CORRIGIR SEM APAGAR. A carga de 13/10 gravou a lista de
+    # placas do Harmonit (o PDF é editado depois de assinado); quando a
+    # releitura do ASSINADO não traz aquela placa, o evento que a fez entrar
+    # está errado -- e `contrato_evento` é imutável. Então entra um evento
+    # `ANULA` apontando para o `id` do errado, que continua visível na ficha.
+    if "corrige_evento_id" not in _colunas(conn, "contrato_evento"):
+        conn.execute("ALTER TABLE contrato_evento ADD COLUMN corrige_evento_id INTEGER")
+        feitas.append("contrato_evento.corrige_evento_id")
+    # ⚠️ Índice ÚNICO parcial: o mesmo evento não pode ser anulado duas vezes.
+    # Sem ele, rodar a carga de novo empilharia anulação sobre anulação e a
+    # ficha mostraria a mesma correção repetida.
+    conn.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_contrato_evento_corrige
+                      ON contrato_evento(corrige_evento_id)
+                   WHERE corrige_evento_id IS NOT NULL""")
+
     return feitas

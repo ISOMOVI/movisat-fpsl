@@ -29,27 +29,32 @@
   .sidebar-bottom { padding:12px; }
   .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
                             background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
-  .main { flex:1; padding:32px; max-width:1180px; }
-  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .main { flex:1; padding:32px; max-width:1420px; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:8px; flex-wrap:wrap; }
   h1 { font-size:1.3rem; font-weight:700; }
   h2 { font-size:1rem; font-weight:700; margin-bottom:10px; }
   .sub { color:var(--text2); font-size:.84rem; margin-bottom:18px; line-height:1.5; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
   .card.tabela { padding:0; overflow:hidden; }
   label { display:block; font-size:.78rem; font-weight:600; color:var(--text2); margin-bottom:5px; }
-  select, input[type=file] { font-family:inherit; font-size:16px; padding:8px 10px; border:1px solid var(--border);
-                             border-radius:7px; background:#fff; width:100%; }
+  select, input[type=file], input[type=text], input[type=date] {
+    font-family:inherit; font-size:16px; padding:8px 10px; border:1px solid var(--border);
+    border-radius:7px; background:#fff; width:100%; }
   .linha { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
   .campo { flex:1; min-width:240px; }
   .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
-         border:1.5px solid transparent; cursor:pointer; }
+         border:1.5px solid transparent; cursor:pointer; background:#fff; color:var(--text); }
   .btn-primary { background:var(--blue); color:#fff; } .btn-primary:hover { background:#1d4ed8; }
+  .btn-linha { border-color:var(--border); }
   .btn:disabled { opacity:.55; cursor:default; }
+  .btn-mini { font-size:.76rem; padding:5px 9px; border-color:var(--border); }
   table { width:100%; border-collapse:collapse; font-size:.85rem; }
   th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.03em;
        padding:11px 12px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
   td { padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
   tr:last-child td { border-bottom:none; }
+  tbody tr:hover { background:var(--bg); }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
   .tag { display:inline-block; font-size:.72rem; font-weight:700; padding:3px 8px; border-radius:20px; white-space:nowrap; }
   .t-ativa { background:var(--green-dim); color:var(--green); }
   .t-aviso { background:var(--amber-dim); color:var(--amber); }
@@ -64,6 +69,34 @@
   .decidir { background:var(--blue-dim); border:1.5px solid var(--blue); }
   .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
   .vazio { padding:26px; text-align:center; color:var(--text2); font-size:.86rem; }
+  /* Chips de contagem: cada um é também um filtro. */
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .chip { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:7px 13px;
+          font-size:.8rem; cursor:pointer; display:flex; align-items:center; gap:7px; font-family:inherit; color:var(--text); }
+  .chip:hover { border-color:var(--blue); }
+  .chip.on { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .chip b { font-variant-numeric:tabular-nums; }
+  /* Gaveta: a ficha do cliente abre ao lado, sem trocar de página. */
+  .fundo { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; z-index:40; }
+  .fundo.on { display:block; }
+  .gaveta { position:fixed; top:0; right:0; height:100vh; width:min(880px,96vw); background:var(--bg2);
+            border-left:1px solid var(--border); z-index:50; transform:translateX(100%);
+            transition:transform .18s ease; display:flex; flex-direction:column; }
+  .gaveta.on { transform:translateX(0); }
+  .gaveta-topo { padding:16px 20px; background:var(--card); border-bottom:1px solid var(--border);
+                 display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .gaveta-corpo { padding:20px; overflow-y:auto; flex:1; }
+  .fechar { background:none; border:none; font-size:1.3rem; cursor:pointer; color:var(--text2); line-height:1; }
+  /* Modal: é o antigo assistente de 4 passos, inteiro, sem mudar de tela. */
+  .modal { position:fixed; inset:0; z-index:60; display:none; padding:24px; overflow-y:auto; }
+  .modal.on { display:block; }
+  .modal-caixa { background:var(--bg2); border-radius:14px; max-width:1100px; margin:0 auto;
+                 border:1px solid var(--border); }
+  .modal-topo { padding:16px 20px; background:var(--card); border-radius:14px 14px 0 0;
+                border-bottom:1px solid var(--border); display:flex; justify-content:space-between;
+                align-items:center; gap:12px; position:sticky; top:0; z-index:2; }
+  .modal-corpo { padding:20px; }
+  @media (max-width:760px) { .main { padding:18px 16px; } .modal { padding:0; } .modal-caixa { border-radius:0; } }
 </style>
 </head>
 <body>
@@ -75,104 +108,173 @@
   </aside>
 
   <main class="main">
-    <div class="top"><h1>Gestão de Contratos</h1></div>
-    <!-- 🚨 `M12`: a tela diz o que ela FAZ hoje, e o que ainda não faz. Esta
-         etapa LÊ e CONFERE; não grava nada e não consulta os outros termos do
-         cliente. Prometer "situação do cliente" aqui seria tela que mente. -->
-    <p class="sub">Sobe o <strong>termo assinado</strong>, mostra o que ele faz com cada placa e, depois que você
-       confere, grava no contrato do cliente. <strong>A conferência não grava nada</strong> — só o passo 4 grava.<br>
-       Se o termo teve <strong>troca de placa pedida pelo cliente</strong>, suba também a versão do
-       <strong>Harmonit</strong> do mesmo termo: é a anotação dela que prova a troca.<br>
-       A conferência olha <strong>só este documento</strong>; a ficha do cliente é que mostra o efeito somado dos
-       termos já gravados. <strong>Comparar com a WESO ainda não acontece aqui.</strong></p>
+    <div class="top">
+      <h1>Gestão de Contratos</h1>
+      <div style="display:flex; gap:8px">
+        <button class="btn btn-linha" onclick="exportar()"><i class="bi bi-filetype-csv"></i> Exportar</button>
+        <button class="btn btn-primary" onclick="abrirModal({})"><i class="bi bi-upload"></i> Subir termo</button>
+      </div>
+    </div>
+    <!-- 🚨 `M12`: a tela diz o que ela FAZ hoje, e o que ainda não faz. Gerar
+         termo, enviar para assinatura e entregar ao financeiro não existem
+         aqui, e por isso nem aparecem como botão desligado. Promessa de data
+         futura não entra em texto de tela. -->
+    <p class="sub">Um cliente por linha, com o que os termos sustentam hoje. O número sai dos
+       <strong>eventos gravados</strong>, e <strong>placa em aviso prévio ainda conta</strong> — a rescisão assinada
+       dá 90 dias.<br>
+       <strong>Esta tela não escreve no Harmonit, na WESO nem na Clicksign.</strong> Ela recebe o termo, guarda o
+       documento e compara.</p>
+
+    <div class="chips" id="chips"></div>
 
     <div class="card">
-      <h2>1 · O documento</h2>
       <div class="linha">
         <div class="campo">
-          <label for="perfil">Tipo de termo</label>
-          <select id="perfil"></select>
+          <label for="busca">Buscar</label>
+          <input type="text" id="busca" placeholder="nome do cliente, CNPJ ou placa"
+                 onkeydown="if(event.key==='Enter') carregarGrid()">
         </div>
-        <div class="campo">
-          <label for="arquivo">PDF assinado</label>
-          <input type="file" id="arquivo" accept="application/pdf">
+        <div style="min-width:220px">
+          <label for="filtroEstado">Estado</label>
+          <select id="filtroEstado" onchange="carregarGrid()"><option value="">Todos</option></select>
         </div>
-        <div class="campo">
-          <label for="arquivoHarmonit">PDF do Harmonit do mesmo termo <span class="nota">(opcional)</span></label>
-          <input type="file" id="arquivoHarmonit" accept="application/pdf">
+        <div style="min-width:170px">
+          <label for="filtroEmpresa">Empresa</label>
+          <select id="filtroEmpresa" onchange="carregarGrid()">
+            <option value="">Todas</option><option value="MOVISAT">Movisat</option>
+            <option value="INSTITUTO">Instituto</option>
+          </select>
         </div>
-        <div><button class="btn btn-primary" id="btnConferir" onclick="conferir()">
-          <i class="bi bi-search"></i> Conferir</button></div>
+        <div><button class="btn btn-primary" onclick="carregarGrid()"><i class="bi bi-search"></i> Buscar</button></div>
       </div>
-      <p class="nota" id="recusados" style="margin-top:12px"></p>
       <div class="msg" id="msg"></div>
     </div>
 
-    <div id="resultado"></div>
-
-    <div class="card" id="cardGravar" style="display:none">
-      <h2>4 · Gravar no contrato do cliente</h2>
-      <!-- 🚨 O CNPJ VEM DAQUI, NÃO DO PDF. O documento sugere; quem confirma é
-           quem está olhando. A rescisão não traz CNPJ nenhum, e a auditoria
-           achou 33 documentos cujo CNPJ divergia do cliente que o Harmonit
-           aponta — gravar no cliente errado cria ou cancela cobrança no lugar
-           errado. -->
-      <div class="linha">
-        <div class="campo">
-          <label for="cnpj">CNPJ/CPF do cliente <span class="nota">(confirme — o do PDF é sugestão)</span></label>
-          <input type="text" id="cnpj" inputmode="numeric" placeholder="somente números">
-        </div>
-        <div class="campo">
-          <label for="assinadoEm">Assinado em</label>
-          <input type="date" id="assinadoEm">
-        </div>
-        <div class="campo" id="campoSaida" style="display:none">
-          <label for="saida">Qual placa SAI na troca</label>
-          <select id="saida" multiple size="4"></select>
-        </div>
-        <div><button class="btn btn-primary" id="btnGravar" onclick="gravar()">
-          <i class="bi bi-save"></i> Gravar</button></div>
-      </div>
-      <div class="msg" id="msgGravar"></div>
+    <div class="card tabela" id="cardGrid">
+      <div class="vazio">Carregando os clientes…</div>
     </div>
 
     <div class="card" id="cardAuditoria">
-      <h2>Auditoria: contrato × WESO</h2>
+      <h2 style="display:flex; justify-content:space-between; align-items:center">
+        <span>Auditoria: contrato × WESO</span>
+        <button class="btn btn-mini" onclick="dobrarAuditoria()" id="btnDobrar">Mostrar</button>
+      </h2>
       <!-- 🚨 O INTERRUPTOR MORA AQUI, na própria tela da rotina (convenção do
            FPSL, oposta à do MoviZap). A FIN_1.1 provou por quê: ficou
            desligada de 02/10 a 08/10 e nada na tela dizia. -->
-      <p class="sub" id="subAuditoria">Compara o que os termos sustentam com o que está em uso na WESO.
-         <strong>Nasce desligada.</strong> Ela <strong>aponta, nunca corrige</strong>: não escreve no Harmonit,
-         na WESO nem na Clicksign.</p>
-      <div class="linha">
-        <div><label for="chaveAuditoria">Rotina periódica</label>
-          <select id="chaveAuditoria" onchange="mudarRotina()">
-            <option value="false">Desligada</option>
-            <option value="true">Ligada</option>
-          </select></div>
-        <div><button class="btn btn-primary" id="btnRodar" onclick="rodarAgora()">
-          <i class="bi bi-play-fill"></i> Rodar agora</button></div>
-        <div><button class="btn" style="border-color:var(--border)" onclick="verAchados()">
-          <i class="bi bi-list-ul"></i> Ver achados</button></div>
-      </div>
-      <div class="msg" id="msgAuditoria"></div>
-      <div id="achados"></div>
-    </div>
-
-    <div class="card">
-      <h2>Ficha do cliente</h2>
-      <div class="linha">
-        <div class="campo">
-          <label for="cnpjFicha">CNPJ/CPF</label>
-          <input type="text" id="cnpjFicha" inputmode="numeric" placeholder="somente números">
+      <p class="sub" id="subAuditoria" style="margin-bottom:0">Compara o que os termos sustentam com o que está em uso
+         na WESO. <strong>Nasce desligada.</strong> Ela <strong>aponta, nunca corrige</strong>: não escreve no
+         Harmonit, na WESO nem na Clicksign.</p>
+      <div id="corpoAuditoria" style="display:none; margin-top:14px">
+        <div class="linha">
+          <div><label for="chaveAuditoria">Rotina periódica</label>
+            <select id="chaveAuditoria" onchange="mudarRotina()">
+              <option value="false">Desligada</option>
+              <option value="true">Ligada</option>
+            </select></div>
+          <div><button class="btn btn-primary" id="btnRodar" onclick="rodarAgora()">
+            <i class="bi bi-play-fill"></i> Rodar agora</button></div>
+          <div><button class="btn btn-linha" onclick="verAchados()">
+            <i class="bi bi-list-ul"></i> Ver achados</button></div>
         </div>
-        <div><button class="btn btn-primary" onclick="verFicha()">
-          <i class="bi bi-person-lines-fill"></i> Abrir ficha</button></div>
+        <div class="msg" id="msgAuditoria"></div>
+        <div id="achados"></div>
       </div>
-      <div class="msg" id="msgFicha"></div>
     </div>
-    <div id="ficha"></div>
   </main>
+</div>
+
+<!-- ── Gaveta: a ficha do cliente ─────────────────────────────────────────── -->
+<div class="fundo" id="fundo" onclick="fecharTudo()"></div>
+<aside class="gaveta" id="gaveta">
+  <div class="gaveta-topo">
+    <div>
+      <h2 style="margin:0" id="gavetaNome">Cliente</h2>
+      <span class="nota mono" id="gavetaCnpj"></span>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center">
+      <button class="btn btn-mini" onclick="corrigirNome()"><i class="bi bi-pencil"></i> Nome</button>
+      <button class="btn btn-mini" onclick="abrirModal({cnpj:clienteAberto, nome:nomeAberto})">
+        <i class="bi bi-upload"></i> Subir termo</button>
+      <button class="fechar" onclick="fecharTudo()" title="Fechar">&times;</button>
+    </div>
+  </div>
+  <div class="gaveta-corpo">
+    <div class="msg" id="msgFicha"></div>
+    <div id="ficha"></div>
+  </div>
+</aside>
+
+<!-- ── Modal: o assistente de input, inteiro ──────────────────────────────── -->
+<div class="modal" id="modal">
+  <div class="modal-caixa">
+    <div class="modal-topo">
+      <div>
+        <h2 style="margin:0">Subir termo</h2>
+        <span class="nota" id="modalCliente"></span>
+      </div>
+      <button class="fechar" onclick="fecharModal()" title="Fechar">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <!-- 🚨 `M12`: a conferência NÃO grava, e a tela diz isso. Só o passo 4
+           grava, e a conferência olha só este documento. -->
+      <p class="sub">Sobe o <strong>termo assinado</strong>, mostra o que ele faz com cada placa e, depois que você
+         confere, grava no contrato do cliente. <strong>A conferência não grava nada</strong> — só o passo 4 grava.<br>
+         Se o termo teve <strong>troca de placa pedida pelo cliente</strong>, suba também a versão do
+         <strong>Harmonit</strong> do mesmo termo: é a anotação dela que prova a troca.</p>
+
+      <div class="card">
+        <h2>1 · O documento</h2>
+        <div class="linha">
+          <div class="campo">
+            <label for="perfil">Tipo de termo</label>
+            <select id="perfil"></select>
+          </div>
+          <div class="campo">
+            <label for="arquivo">PDF assinado</label>
+            <input type="file" id="arquivo" accept="application/pdf">
+          </div>
+          <div class="campo">
+            <label for="arquivoHarmonit">PDF do Harmonit do mesmo termo <span class="nota">(opcional)</span></label>
+            <input type="file" id="arquivoHarmonit" accept="application/pdf">
+          </div>
+          <div><button class="btn btn-primary" id="btnConferir" onclick="conferir()">
+            <i class="bi bi-search"></i> Conferir</button></div>
+        </div>
+        <p class="nota" id="recusados" style="margin-top:12px"></p>
+        <div class="msg" id="msgModal"></div>
+      </div>
+
+      <div id="resultado"></div>
+
+      <div class="card" id="cardGravar" style="display:none">
+        <h2>4 · Gravar no contrato do cliente</h2>
+        <!-- 🚨 O CNPJ VEM DAQUI, NÃO DO PDF. O documento sugere; quem confirma é
+             quem está olhando. A rescisão não traz CNPJ nenhum, e a auditoria
+             achou 33 documentos cujo CNPJ divergia do cliente que o Harmonit
+             aponta — gravar no cliente errado cria ou cancela cobrança no lugar
+             errado. -->
+        <div class="linha">
+          <div class="campo">
+            <label for="cnpj">CNPJ/CPF do cliente <span class="nota">(confirme — o do PDF é sugestão)</span></label>
+            <input type="text" id="cnpj" inputmode="numeric" placeholder="somente números">
+          </div>
+          <div class="campo">
+            <label for="assinadoEm">Assinado em</label>
+            <input type="date" id="assinadoEm">
+          </div>
+          <div class="campo" id="campoSaida" style="display:none">
+            <label for="saida">Qual placa SAI na troca</label>
+            <select id="saida" multiple size="4"></select>
+          </div>
+          <div><button class="btn btn-primary" id="btnGravar" onclick="gravar()">
+            <i class="bi bi-save"></i> Gravar</button></div>
+        </div>
+        <div id="destino"></div>
+        <div class="msg" id="msgGravar"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="/painel/static/barra_status.js"></script>
@@ -184,6 +286,9 @@ montarSidebar('contratos');
 function auth() { return { 'Authorization': 'Bearer ' + token }; }
 function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function showMsg(t, erro) { const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
+// A mensagem do modal é separada da do grid: a do fluxo de input não pode
+// aparecer atrás, numa tela que o operador não está olhando.
+function msgModal(t, erro) { const m=document.getElementById('msgModal'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
 
 const TAG = {
   'ATIVA':            ['t-ativa', 'Ativa'],
@@ -191,6 +296,516 @@ const TAG = {
   'SUBSTITUIDA':      ['t-info',  'Substituída'],
   'RESCINDIDA':       ['t-fora',  'Rescindida'],
 };
+// 🚨 A ADERENCIA E O DESEMPATE DELE: quantas das placas sustentadas estao em uso
+// na WESO. O "Em uso" ao lado de "Ativas" e o que responde "2.778 ativas,
+// baseado em que?" -- a coluna diz em cima de que o numero esta.
+const ADERENCIA_TAG = {
+  'ADERENTE':               ['t-ativa', 'bate'],
+  'CONTRATO_MAIOR_QUE_USO': ['t-aviso', 'contrato maior'],
+  'USO_MAIOR_QUE_CONTRATO': ['t-fora',  'uso maior'],
+  'SEM_DADO_DA_WESO':       ['t-info',  'sem dado'],
+};
+
+function celulaEmUso(i) {
+  // ⚠️ `null` NAO e zero: sem o cache da WESO nao ha com o que comparar, e
+  // mostrar 0 afirmaria "nada em uso".
+  if (i.em_uso === null || i.em_uso === undefined) return '<span class="nota">—</span>';
+  const [cls, rot] = ADERENCIA_TAG[i.aderencia] || ['t-info', i.aderencia];
+  return `<strong>${i.em_uso}</strong> <span class="tag ${cls}" title="${esc(rot)}">${esc(rot)}</span>`;
+}
+
+const ESTADO_TAG = {
+  'EM_DIA':               ['t-ativa', 'Em dia'],
+  'ATIVA_SEM_ASSINATURA': ['t-fora',  'Ativa sem assinatura'],
+  'A_REVISAR':            ['t-aviso', 'A revisar'],
+  'SEM_PLACA_ATIVA':      ['t-info',  'Sem placa ativa'],
+};
+
+let ultimoGrid = null;
+let aderenciaEscolhida = '';
+let clienteAberto = null, nomeAberto = null;
+
+// ── Grid ───────────────────────────────────────────────────────────────────
+function filtros() {
+  return {
+    q: (document.getElementById('busca').value || '').trim(),
+    estado: document.getElementById('filtroEstado').value,
+    empresa: document.getElementById('filtroEmpresa').value,
+    aderencia: aderenciaEscolhida,
+  };
+}
+
+async function carregarGrid() {
+  const f = filtros();
+  const p = new URLSearchParams();
+  if (f.q) p.set('q', f.q);
+  if (f.estado) p.set('estado', f.estado);
+  if (f.empresa) p.set('empresa', f.empresa);
+  if (f.aderencia) p.set('aderencia', f.aderencia);
+  document.getElementById('cardGrid').innerHTML = `<div class="vazio">Carregando…</div>`;
+  try {
+    const r = await fetch('/painel/api/contratos/clientes?' + p.toString(), { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    ultimoGrid = d;
+    pintarEstados(d);
+    pintarChips(d);
+    pintarGrid(d);
+    showMsg(`${d.total} cliente(s) na lista, de ${d.contagens.clientes} na base.`
+            + (d.achou_por_placa && d.achou_por_placa.length ? ' Achado pela placa.' : '')
+            + (d.recalculado ? ` A situação foi recalculada agora (${d.recalculado.clientes} clientes).` : ''),
+            false);
+  } catch (e) {
+    document.getElementById('cardGrid').innerHTML = `<div class="vazio">Não deu para carregar.</div>`;
+    showMsg('Erro: ' + e.message, true);
+  }
+}
+
+function pintarEstados(d) {
+  const sel = document.getElementById('filtroEstado');
+  if (sel.options.length > 1) return;
+  for (const [id, texto] of Object.entries(d.estados || {})) {
+    const o = document.createElement('option');
+    o.value = id; o.textContent = (ESTADO_TAG[id] || [,id])[1] + ' — ' + texto;
+    sel.appendChild(o);
+  }
+}
+
+// Cada chip mostra a contagem E filtra. O número vem do mesmo payload da
+// lista, para o chip não poder discordar da tabela.
+function pintarChips(d) {
+  const c = d.contagens, f = filtros();
+  // Todo número aqui vem do MESMO payload da tabela: chip que conta por conta
+  // própria pode discordar da lista, e aí nenhum dos dois serve.
+  const defs = [
+    ['', 'Todos', c.clientes],
+    ['EM_DIA', 'Em dia', c.em_dia],
+    ['ATIVA_SEM_ASSINATURA', 'Ativa sem assinatura', c.com_ativa_sem_assinatura],
+    ['A_REVISAR', 'A revisar', c.com_a_revisar],
+    ['SEM_PLACA_ATIVA', 'Sem placa ativa', c.com_sem_placa_ativa],
+  ].filter(x => x[2] != null);
+  let html = defs.map(([id, rot, n]) =>
+    `<button class="chip ${f.estado === id ? 'on' : ''}" onclick="filtrarEstado('${id}')">
+       ${esc(rot)} <b>${n}</b></button>`).join('');
+  html += `<span class="chip" style="cursor:default"><i class="bi bi-car-front"></i>
+             ${c.placas_ativas} placa(s) ativa(s) · ${c.placas_em_aviso} em aviso prévio</span>`;
+  // 🚨 A TELA DIZ DE QUANDO E O NUMERO DA WESO. Comparar com dado velho sem
+  // avisar e mentir por omissao -- e o cache pode estar de ontem.
+  const w = d.weso || {};
+  if (w.tem_cache) {
+    html += `<button class="chip ${aderenciaEscolhida === 'ADERENTE' ? 'on' : ''}"
+               onclick="filtrarAderencia('ADERENTE')" title="${esc(d.aderencias.ADERENTE || '')}">
+               Contrato bate com o uso <b>${c.aderentes}</b></button>`;
+    html += `<button class="chip ${aderenciaEscolhida === 'CONTRATO_MAIOR_QUE_USO' ? 'on' : ''}"
+               onclick="filtrarAderencia('CONTRATO_MAIOR_QUE_USO')"
+               title="${esc(d.aderencias.CONTRATO_MAIOR_QUE_USO || '')}">
+               Contrato maior que o uso <b>${c.contrato_maior_que_uso}</b></button>`;
+    html += `<span class="chip" style="cursor:default" title="cache da WESO lido pela rotina das 04:15">
+               <i class="bi bi-car-front-fill"></i> ${c.placas_em_uso} das sustentadas estão na WESO
+               · cache de ${w.idade_h == null ? '?' : Math.round(w.idade_h)}h</span>`;
+  } else {
+    html += `<span class="chip" style="cursor:default">
+               <i class="bi bi-exclamation-triangle"></i> sem o cache da WESO: nao da para comparar</span>`;
+  }
+  if (c.com_documento_na_fila) html += `<span class="chip" style="cursor:default">
+      <i class="bi bi-inbox"></i> ${c.com_documento_na_fila} cliente(s) com documento na fila</span>`;
+  if (c.com_achados) html += `<span class="chip" style="cursor:default">
+      <i class="bi bi-binoculars"></i> ${c.com_achados} cliente(s) com achado da auditoria</span>`;
+  if (c.sem_nome) html += `<span class="chip" style="cursor:default">
+      <i class="bi bi-question-circle"></i> ${c.sem_nome} sem nome</span>`;
+  document.getElementById('chips').innerHTML = html;
+}
+
+function filtrarAderencia(id) {
+  // Clicar no chip que ja esta ligado desliga o filtro.
+  aderenciaEscolhida = (aderenciaEscolhida === id) ? '' : id;
+  carregarGrid();
+}
+
+function filtrarEstado(id) {
+  document.getElementById('filtroEstado').value = id;
+  carregarGrid();
+}
+
+function pintarGrid(d) {
+  if (!(d.itens || []).length) {
+    document.getElementById('cardGrid').innerHTML =
+      `<div class="vazio">Nenhum cliente com esse filtro.</div>`;
+    return;
+  }
+  const linhas = d.itens.map(i => {
+    const [cls, rot] = ESTADO_TAG[i.estado] || ['t-info', i.estado];
+    // A ação vem do backend com `{ativa, motivo}`: botão que não cabe aparece
+    // desabilitado COM o motivo no title, nunca cinza e mudo.
+    const botoes = (i.acoes || []).filter(a => a.id !== 'ficha').map(a =>
+      `<button class="btn btn-mini" ${a.ativa ? '' : 'disabled'}
+               title="${esc(a.motivo || a.label)}"
+               onclick="acao('${esc(a.id)}','${esc(i.cnpj)}')">${esc(a.label)}</button>`).join(' ');
+    return `<tr>
+      <td><a href="#" onclick="abrirGaveta('${esc(i.cnpj)}');return false"
+             style="color:var(--blue); text-decoration:none; font-weight:600">
+            ${esc(i.nome || '(sem nome)')}</a>
+          <div class="nota mono">${esc(i.cnpj)}</div></td>
+      <td><span class="tag ${cls}">${esc(rot)}</span></td>
+      <td class="num"><strong>${i.ativas}</strong></td>
+      <td class="num">${i.aviso || '—'}</td>
+      <td class="num">${i.so_nao_assinado ? `<span class="tag t-fora">${i.so_nao_assinado}</span>` : '—'}</td>
+      <td class="num">${i.encerradas || '—'}</td>
+      <td class="num">${i.termos}${i.sem_assinatura ? ` <span class="nota">(${i.sem_assinatura} s/ assin.)</span>` : ''}</td>
+      <td class="num">${i.a_revisar || '—'}</td>
+      <td class="num">${celulaEmUso(i)}</td>
+      <td class="num">${i.na_fila ? `<span class="tag t-aviso">${i.na_fila}</span>` : '—'}</td>
+      <td class="num">${i.achados || '—'}</td>
+      <td class="nota">${esc(i.ultima_assinatura || '—')}</td>
+      <td style="white-space:nowrap">${botoes}</td></tr>`;
+  }).join('');
+
+  document.getElementById('cardGrid').innerHTML = `
+    <table><thead><tr>
+      <th>Cliente</th><th>Estado</th><th class="num">Ativas</th><th class="num">Aviso</th>
+      <th class="num" title="placa ativa cujo único lastro é termo sem assinatura">Sem assin.</th>
+      <th class="num">Encerradas</th><th class="num">Termos</th><th class="num">A revisar</th>
+      <th class="num" title="placas sustentadas que EXISTEM no cadastro da WESO. É presença, não instalação — e a presença é global: placa cadastrada na WESO de outro cliente também conta aqui">Na WESO</th>
+      <th class="num" title="documento assinado que a carga nao conseguiu encaixar">Na fila</th>
+      <th class="num">Achados</th><th>Última assinatura</th><th>Ações</th>
+    </tr></thead><tbody>${linhas}</tbody></table>`;
+}
+
+function acao(id, cnpj) {
+  const linha = (ultimoGrid.itens || []).find(i => i.cnpj === cnpj) || {};
+  if (id === 'subir_termo') return abrirModal({ cnpj, nome: linha.nome });
+  if (id === 'nome') { clienteAberto = cnpj; nomeAberto = linha.nome; return corrigirNome(); }
+  if (id === 'fila') return abrirGaveta(cnpj, 'fila');
+  // Revisar, troca, achados e fila vivem na ficha, onde está o termo de que se fala.
+  return abrirGaveta(cnpj, id);
+}
+
+// ── Gaveta: a ficha do cliente ─────────────────────────────────────────────
+async function abrirGaveta(cnpj, foco) {
+  clienteAberto = cnpj;
+  const linha = ((ultimoGrid || {}).itens || []).find(i => i.cnpj === cnpj) || {};
+  nomeAberto = linha.nome || null;
+  document.getElementById('gavetaNome').textContent = nomeAberto || '(sem nome)';
+  document.getElementById('gavetaCnpj').textContent = cnpj;
+  document.getElementById('ficha').innerHTML = `<div class="vazio">Carregando a ficha…</div>`;
+  document.getElementById('gaveta').classList.add('on');
+  document.getElementById('fundo').classList.add('on');
+  await verFicha(foco);
+}
+
+function fecharTudo() {
+  document.getElementById('gaveta').classList.remove('on');
+  document.getElementById('fundo').classList.remove('on');
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('modal').classList.contains('on')) return fecharModal();
+  fecharTudo();
+});
+
+async function verFicha(foco) {
+  const m = document.getElementById('msgFicha');
+  const cnpj = clienteAberto;
+  m.className = 'msg';
+  try {
+    const r = await fetch(`/painel/api/contratos/cliente/${cnpj}`, { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    if (d.nome) { nomeAberto = d.nome; document.getElementById('gavetaNome').textContent = d.nome; }
+    pintarFicha(d);
+    if (foco === 'achados') await achadosDoCliente(cnpj);
+    await filaDoCliente(cnpj);
+    await aderenciaDoCliente(cnpj);
+  } catch (e) { m.textContent = 'Erro: ' + e.message; m.className = 'msg msg-erro'; }
+}
+
+// A última ficha lida, para as ações do termo não dependerem de dado costurado
+// dentro de atributo HTML.
+let fichaAberta = null;
+
+function pintarFicha(d) {
+  fichaAberta = d;
+  const partes = [];
+  const placas = (d.placas || []).map(p => {
+    const [cls, rotulo] = TAG[p.situacao] || ['t-info', p.situacao];
+    return `<tr><td class="mono"><strong>${esc(p.placa)}</strong></td>
+      <td><span class="tag ${cls}">${esc(rotulo)}</span></td>
+      <td class="nota" id="weso-${esc(p.chave || '')}">—</td>
+      <td class="mono">${esc(p.termo_vigente || '—')}</td>
+      <td>${esc(p.base || '—')}</td>
+      <td>${esc(p.aviso_ate || '—')}</td>
+      <td class="nota">${esc(p.obs || '')}</td></tr>`;
+  }).join('');
+
+  partes.push(`<div class="card tabela">
+    <div style="padding:16px 16px 0"><h2>Placas do cliente ${esc(d.cnpj)}</h2>
+      <p class="sub">Pelos termos gravados, o contrato sustenta hoje
+         <strong>${(d.sustentadas || []).length} placa(s)</strong>.
+         Placa em <strong>aviso prévio</strong> ainda conta: a rescisão assinada dá 90 dias.</p></div>
+    ${placas ? `<table><tr><th>Placa</th><th>Situação</th><th>Na WESO</th><th>Termo</th><th>Base</th><th>Aviso até</th><th>Observação</th></tr>${placas}</table>`
+             : `<div class="vazio">Nenhum termo gravado para este cliente.</div>`}</div>`);
+
+  if ((d.a_revisar || []).length) {
+    partes.push(`<div class="card decidir"><h2>Termos a revisar</h2>` +
+      d.a_revisar.map(t => `<div class="aviso-item">Termo <strong>${esc(t.numero)}</strong>: ${esc(t.motivo || '')}</div>`).join('') +
+      `</div>`);
+  }
+
+  const termos = (d.termos || []).map(t => {
+    const acoes = [];
+    // 🚨 A troca diz quem ENTRA, nunca quem SAI. A ação só aparece onde há
+    // anotação do Harmonit esperando confirmação.
+    if (t.troca_registrada && /confirma..o de qual placa sai/i.test(t.revisar_motivo || '')) {
+      acoes.push(`<button class="btn btn-mini" onclick="pedirSaida(${t.id})">Quem sai?</button>`);
+    }
+    if (t.revisar) acoes.push(`<button class="btn btn-mini" onclick="revisar(${t.id})">Marcar revisado</button>`);
+    if (!t.assinado) acoes.push(`<button class="btn btn-mini"
+        onclick="abrirModal({cnpj:'${esc(d.cnpj)}', nome:nomeAberto, termoId:${t.id}, numero:'${esc(t.numero)}'})">
+        Anexar assinado</button>`);
+    // ⚠️ Os termos da carga não têm PDF guardado, e a tela diz isso em vez de
+    // oferecer um link que devolveria 404.
+    if (t.arquivo) acoes.push(`<a class="btn btn-mini" href="/painel/api/contratos/termo/${t.id}/pdf"
+        target="_blank" rel="noopener" onclick="return abrirPdf(event, ${t.id})">PDF</a>`);
+    return `<tr>
+      <td class="mono"><strong>${esc(t.numero)}</strong></td>
+      <td>${esc(t.tipo || '—')}</td>
+      <td>${esc(t.empresa || '—')}</td>
+      <td>${t.assinado ? `<span class="tag t-ativa">Assinado</span>` : `<span class="tag t-fora">Sem assinatura</span>`}
+          ${!t.assinado && t.harmonit_assinado === 'sim'
+            ? `<div class="nota" title="marca do índice do Harmonit — não é assinatura verificável">Harmonit diz “sim”</div>` : ''}</td>
+      <td>${esc(t.assinado_em || '—')}</td>
+      <td class="num">${(t.eventos || []).length}</td>
+      <td class="nota">${esc(t.troca_registrada || '')}</td>
+      <td style="white-space:nowrap">${acoes.join(' ') || '—'}</td></tr>`;
+  }).join('');
+
+  partes.push(`<div class="card tabela">
+    <div style="padding:16px 16px 0"><h2>Linha do tempo dos termos</h2>
+      <p class="sub">Em ordem de <strong>número do termo</strong>, não de data: a data do Harmonit vem vazia em muitos
+         termos, e há contrato datado depois da própria rescisão.</p></div>
+    ${termos ? `<table><tr><th>Termo</th><th>Tipo</th><th>Empresa</th><th>Assinatura</th><th>Assinado em</th><th class="num">Eventos</th><th>Troca registrada</th><th>Ações</th></tr>${termos}</table>`
+             : `<div class="vazio">Nenhum termo gravado.</div>`}</div>`);
+
+  partes.push(`<div id="achadosCliente"></div>`);
+  partes.push(`<div id="filaCliente"></div>`);
+  document.getElementById('ficha').innerHTML = partes.join('');
+}
+
+async function abrirPdf(ev, id) {
+  // O link abre direto; se o arquivo não estiver lá, o servidor responde o
+  // motivo em JSON, e a tela precisa mostrar o motivo em vez de uma aba branca.
+  ev.preventDefault();
+  const r = await fetch(`/painel/api/contratos/termo/${id}/pdf`, { headers: auth() });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    const m = document.getElementById('msgFicha');
+    m.textContent = d.detail || ('Não foi possível abrir o PDF (HTTP ' + r.status + ').');
+    m.className = 'msg msg-erro';
+    return false;
+  }
+  const blob = await r.blob();
+  window.open(URL.createObjectURL(blob), '_blank', 'noopener');
+  return false;
+}
+
+// 🚨 A FILA DA CARGA DOS ASSINADOS. Cada linha é um documento que não pôde ser
+// encaixado sem uma decisão: a leitura devolveu a linha descritiva no lugar da
+// placa, o CNPJ do PDF diverge do cliente da pasta, ou o número existe no
+// Instituto E na Movisat. Fila invisível é fila que ninguém resolve.
+// 🚨 "ATIVA" NAO DISTINGUE A PLACA QUE ESTA RODANDO DA QUE NUNCA FOI INSTALADA.
+// Esta coluna e o desempate dele, por placa: quem esta na WESO vence, e quem
+// esta fora e tem rescisao na linha do tempo fechou de verdade.
+const MOTIVO_WESO = {
+  'em uso': ['t-ativa', 'em uso'],
+  'fora da WESO, com rescisao na linha do tempo': ['t-fora', 'saiu (rescindida)'],
+  'fora da WESO, sem rescisao: nada a fechar': ['t-aviso', 'nunca instalada'],
+};
+
+async function aderenciaDoCliente(cnpj) {
+  try {
+    const r = await fetch(`/painel/api/contratos/cliente/${cnpj}/aderencia`, { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) return;
+    if (!d.tem_cache) {
+      const m = document.getElementById('msgFicha');
+      m.textContent = 'Sem o cache da WESO não dá para dizer o que está em uso.';
+      m.className = 'msg msg-erro';
+      return;
+    }
+    for (const i of (d.itens || [])) {
+      const alvo = document.getElementById('weso-' + i.chave);
+      if (!alvo) continue;
+      const [cls, rot] = MOTIVO_WESO[i.destino] || ['t-info', i.destino];
+      alvo.innerHTML = `<span class="tag ${cls}">${esc(rot)}</span>`
+        + (i.falta_assinar ? ` <span class="nota">falta assinar</span>` : '');
+    }
+    // ⚠️ Cache velho é dito em voz alta: a rotina se recusa a decidir acima do
+    // teto, e a tela não pode afirmar em cima de dado que a rotina recusaria.
+    const m = document.getElementById('msgFicha');
+    if (d.cache_velho) {
+      m.textContent = `O cache da WESO está com ${Math.round(d.idade_h)}h (teto ${d.teto_h}h):`
+        + ' a coluna "Na WESO" pode estar desatualizada.';
+      m.className = 'msg msg-erro';
+    } else if (d.idade_h != null) {
+      m.textContent = `"Na WESO" comparado com o cache de ${Math.round(d.idade_h)}h atrás`
+        + ` (${d.veiculos_weso} veículos).`;
+      m.className = 'msg msg-ok';
+    }
+  } catch (e) { /* a coluna fica em "—": a ficha nao depende dela */ }
+}
+
+async function filaDoCliente(cnpj) {
+  const alvo = document.getElementById('filaCliente');
+  if (!alvo) return;
+  try {
+    const r = await fetch(`/painel/api/contratos/carga/fila?cnpj=${cnpj}`, { headers: auth() });
+    const d = await r.json();
+    if (!r.ok || !(d.itens || []).length) { alvo.innerHTML = ''; return; }
+    alvo.innerHTML = `<div class="card tabela decidir">
+      <div style="padding:16px 16px 0"><h2>Documento assinado esperando decisão</h2>
+        <p class="sub">${d.total} documento(s) deste cliente não puderam ser encaixados sozinhos.
+           <strong>Nada foi gravado por eles</strong> — forçar anexaria o assinado ao contrato errado.</p></div>
+      <table><tr><th>Termo</th><th>Arquivo</th><th>Estado</th><th>Por que parou</th></tr>
+        ${d.itens.map(x => `<tr>
+          <td class="mono"><strong>${esc(x.numero_no_pdf || x.numero_no_nome || '—')}</strong></td>
+          <td class="nota">${esc(x.arquivo || '')}</td>
+          <td>${x.status === 'rejeitado'
+                ? `<span class="tag t-fora">rejeitado</span>`
+                : `<span class="tag t-aviso">na fila</span>`}
+              <div class="nota">${esc(x.estado_origem || '')}</div></td>
+          <td class="nota">${esc(x.motivo || '')}</td></tr>`).join('')}
+      </table></div>`;
+  } catch (e) { alvo.innerHTML = ''; }
+}
+
+async function achadosDoCliente(cnpj) {
+  const alvo = document.getElementById('achadosCliente');
+  if (!alvo) return;
+  try {
+    const r = await fetch('/painel/api/contratos/auditoria/achados?limite=2000', { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    const meus = (d.achados || []).filter(a => a.cnpj === cnpj);
+    if (!meus.length) {
+      alvo.innerHTML = `<div class="card"><h2>Achados da auditoria</h2>
+        <p class="sub" style="margin-bottom:0">A última rodada não achou nada neste cliente.</p></div>`;
+      return;
+    }
+    alvo.innerHTML = `<div class="card tabela">
+      <div style="padding:16px 16px 0"><h2>Achados da auditoria</h2>
+        <p class="sub">Rodada de ${esc(d.rodada_em || '—')}. Achado é <strong>retrato do momento</strong>, e a lista é
+           refeita a cada rodada. ⚠️ Termo marcado “a revisar” pode gerar achado falso — a carga usou a placa do
+           Harmonit, não a do documento assinado.</p></div>
+      <table><tr><th>Tipo</th><th>Placa</th><th>Detalhe</th></tr>
+        ${meus.map(a => `<tr><td class="nota">${esc(a.tipo)}</td>
+          <td class="mono">${esc(a.placa || '')}</td><td class="nota">${esc(a.detalhe || '')}</td></tr>`).join('')}
+      </table></div>`;
+  } catch (e) {
+    alvo.innerHTML = `<div class="card"><p class="nota">Não deu para ler os achados: ${esc(e.message)}</p></div>`;
+  }
+}
+
+// ── Ações do termo ─────────────────────────────────────────────────────────
+async function pedirSaida(termoId) {
+  // As candidatas saem da ficha que está aberta, não de um JSON costurado no
+  // atributo do botão: placa com apóstrofo ou aspas quebraria o onclick.
+  const termo = ((fichaAberta || {}).termos || []).find(t => t.id === termoId) || {};
+  const candidatas = (termo.eventos || []).filter(e => e.acao === 'ENTRA').map(e => e.placa);
+  const placa = prompt('Qual placa SAI nesta troca?\n\nNo termo: ' + candidatas.join(', ')
+    + '\n\nA anotação do Harmonit nomeia só a placa que ENTRA; o sistema não adivinha qual sai.');
+  if (!placa) return;
+  const m = document.getElementById('msgFicha');
+  try {
+    const r = await fetch(`/painel/api/contratos/termo/${termoId}/saida`,
+      { method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placa }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    m.textContent = `Saída de ${d.saiu} gravada no termo ${d.numero}. O contrato sustenta ${d.sustentadas.length} placa(s).`;
+    m.className = 'msg msg-ok';
+    await verFicha(); await carregarGrid();
+  } catch (e) { m.textContent = 'Erro: ' + e.message; m.className = 'msg msg-erro'; }
+}
+
+async function revisar(termoId) {
+  const nota = prompt('O que você conferiu? (fica gravado com o seu nome)\n\n'
+    + 'O motivo original NÃO é apagado — ele continua dizendo por que o termo entrou duvidoso.');
+  if (nota === null) return;
+  const m = document.getElementById('msgFicha');
+  try {
+    const r = await fetch(`/painel/api/contratos/termo/${termoId}/revisado`,
+      { method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nota }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    m.textContent = `Termo ${d.numero} marcado como revisado.`; m.className = 'msg msg-ok';
+    await verFicha(); await carregarGrid();
+  } catch (e) { m.textContent = 'Erro: ' + e.message; m.className = 'msg msg-erro'; }
+}
+
+async function corrigirNome() {
+  const nome = prompt('Nome do cliente:\n\nOs nomes da carga vieram do índice do Harmonit e chegam abreviados.\n'
+    + 'A correção feita aqui não é desfeita por carga nenhuma.', nomeAberto || '');
+  if (!nome) return;
+  try {
+    const r = await fetch(`/painel/api/contratos/cliente/${clienteAberto}/nome`,
+      { method: 'PUT', headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    // A prova é o que o servidor releu.
+    nomeAberto = d.nome;
+    document.getElementById('gavetaNome').textContent = d.nome;
+    await carregarGrid();
+  } catch (e) { showMsg('Erro: ' + e.message, true); }
+}
+
+function exportar() {
+  const f = filtros();
+  const p = new URLSearchParams();
+  if (f.q) p.set('q', f.q);
+  if (f.estado) p.set('estado', f.estado);
+  if (f.empresa) p.set('empresa', f.empresa);
+  if (f.aderencia) p.set('aderencia', f.aderencia);
+  // O CSV precisa do token no cabeçalho, então não dá para só apontar o link.
+  fetch('/painel/api/contratos/clientes.csv?' + p.toString(), { headers: auth() })
+    .then(r => r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)))
+    .then(b => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b); a.download = 'contratos.csv'; a.click();
+    })
+    .catch(e => showMsg('Não deu para exportar: ' + e.message, true));
+}
+
+// ── Modal: o fluxo de input ────────────────────────────────────────────────
+let termoAlvo = null;
+
+function abrirModal(ctx) {
+  ctx = ctx || {};
+  termoAlvo = ctx.termoId || null;
+  document.getElementById('modalCliente').textContent = ctx.cnpj
+    ? `${ctx.nome || ''} · ${ctx.cnpj}` + (termoAlvo ? ` · anexando ao termo ${ctx.numero || termoAlvo}` : '')
+    : 'O cliente é confirmado no passo 4.';
+  document.getElementById('cnpj').value = ctx.cnpj || '';
+  document.getElementById('resultado').innerHTML = '';
+  document.getElementById('destino').innerHTML = '';
+  document.getElementById('cardGravar').style.display = termoAlvo ? '' : 'none';
+  document.getElementById('msgModal').className = 'msg';
+  document.getElementById('msgGravar').className = 'msg';
+  document.getElementById('modal').classList.add('on');
+  if (!document.getElementById('perfil').options.length) carregarPerfis();
+}
+
+function fecharModal() {
+  document.getElementById('modal').classList.remove('on');
+  document.getElementById('arquivo').value = '';
+  document.getElementById('arquivoHarmonit').value = '';
+  document.getElementById('resultado').innerHTML = '';
+  document.getElementById('destino').innerHTML = '';
+  document.getElementById('cardGravar').style.display = 'none';
+  termoAlvo = null;
+  ultimaConferencia = null;
+}
 
 async function carregarPerfis() {
   try {
@@ -203,14 +818,14 @@ async function carregarPerfis() {
     // que não está na lista e não descobre por quê.
     document.getElementById('recusados').innerHTML = 'Não entram aqui: ' +
       d.recusados.map(p => `<strong>${esc(p.id)}</strong> (${esc(p.motivo)})`).join(' · ');
-  } catch (e) { showMsg('Não foi possível carregar os tipos de termo: ' + e.message, true); }
+  } catch (e) { msgModal('Não foi possível carregar os tipos de termo: ' + e.message, true); }
 }
 
 async function conferir() {
   const btn = document.getElementById('btnConferir');
   const arq = document.getElementById('arquivo').files[0];
   const arqH = document.getElementById('arquivoHarmonit').files[0];
-  if (!arq) { showMsg('Escolha o PDF assinado.', true); return; }
+  if (!arq) { msgModal('Escolha o PDF assinado.', true); return; }
 
   const fd = new FormData();
   fd.append('arquivo', arq);
@@ -227,9 +842,10 @@ async function conferir() {
     if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
     pintar(d);
     prepararGravacao(d);
-    showMsg('Documento lido. Nada foi gravado — confira abaixo e use o passo 4 para gravar.', false);
+    await verDestino(d);
+    msgModal('Documento lido. Nada foi gravado — confira abaixo e use o passo 4 para gravar.', false);
   } catch (e) {
-    showMsg('Erro: ' + e.message, true);
+    msgModal('Erro: ' + e.message, true);
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-search"></i> Conferir';
@@ -270,6 +886,27 @@ function pintar(d) {
       <span class="mono">${esc((d.vagas[0] || {}).apelido_sugerido || '')}</span> até a placa real ser preenchida.</p></div>`);
   }
 
+  // 🚨 O VALOR DO TERMO É POR ITEM DE SERVIÇO, NÃO POR PLACA. A tela mostra o
+  // que leu e quantas placas ficaram sem valor; ratear o total seria inventar
+  // número, e a cobrança sairia em cima dele.
+  const v = d.valores || {};
+  if ((v.itens || []).length || (v.sem_valor || []).length) {
+    const itens = (v.itens || []).map(i =>
+      `<tr><td>${esc(i.descricao || '')}</td><td class="num">${esc(i.quantidade || '')}</td>
+           <td class="num mono">${esc(i.valor_unitario || '')}</td></tr>`).join('');
+    const ligados = Object.entries(v.por_placa || {}).map(([p, val]) =>
+      `<tr><td class="mono"><strong>${esc(p)}</strong></td><td class="mono">${esc(val)}</td></tr>`).join('');
+    partes.push(`<div class="card"><h2>Valor que o documento traz</h2>
+      ${itens ? `<table><tr><th>Item</th><th class="num">Qtd</th><th class="num">Valor</th></tr>${itens}</table>` : ''}
+      ${ligados ? `<p class="sub" style="margin:14px 0 6px">Ligado à placa, sem dúvida:</p>
+                   <table><tr><th>Placa</th><th>Valor mensal</th></tr>${ligados}</table>` : ''}
+      ${(v.sem_valor || []).length ? `<div class="aviso-item" style="margin-top:12px">
+          ${v.sem_valor.length} placa(s) ficam <strong>sem valor</strong>: o termo cobra por item de serviço e não
+          diz quanto é de cada veículo. Elas entram no contrato e o valor é confirmado depois —
+          ratear o total aqui seria inventar número.</div>` : ''}
+    </div>`);
+  }
+
   const linhas = (d.placas || []).map(p => {
     const [cls, rotulo] = TAG[p.situacao] || ['t-info', p.situacao];
     return `<tr><td class="mono"><strong>${esc(p.placa)}</strong></td>
@@ -301,7 +938,10 @@ let ultimaConferencia = null;
 
 function prepararGravacao(d) {
   ultimaConferencia = d;
-  document.getElementById('cnpj').value = d.cnpj || '';
+  const campoCnpj = document.getElementById('cnpj');
+  // ⚠️ O CNPJ da linha GANHA do PDF, e a diferença é dita em voz alta: a
+  // auditoria achou 33 documentos cujo CNPJ divergia do cliente do Harmonit.
+  if (!campoCnpj.value) campoCnpj.value = d.cnpj || '';
   const campo = document.getElementById('campoSaida');
   const sel = document.getElementById('saida');
   if (d.troca_confirmar) {
@@ -315,6 +955,46 @@ function prepararGravacao(d) {
   document.getElementById('cardGravar').style.display = '';
 }
 
+// 🚨 ONDE ESTE PDF VAI PARAR: num termo que já existe, ou num termo novo?
+// A carga gravou 4.599 termos SEM hash de PDF, e `/gravar` só deduplica por
+// hash. Sem esta pergunta, subir o assinado do 2649 criaria um SEGUNDO 2649 e
+// o primeiro seguiria contado como "sem assinatura".
+async function verDestino(d) {
+  const alvo = document.getElementById('destino');
+  alvo.innerHTML = '';
+  const cnpj = (document.getElementById('cnpj').value || '').replace(/\D/g, '');
+  if (!d.numero || cnpj.length < 11) return;
+  try {
+    const r = await fetch(`/painel/api/contratos/cliente/${cnpj}/candidatos?numero=${encodeURIComponent(d.numero)}`,
+                          { headers: auth() });
+    const j = await r.json();
+    if (!r.ok) return;
+    const cands = j.candidatos || [];
+    if (!cands.length) {
+      alvo.innerHTML = `<p class="nota" style="margin-top:12px">Este cliente não tem termo
+        <strong>${esc(d.numero)}</strong> sem documento — vai entrar como <strong>termo novo</strong>.</p>`;
+      termoAlvo = null;
+      return;
+    }
+    const opcoes = cands.map(c => `<option value="${c.id}" ${termoAlvo === c.id ? 'selected' : ''}>
+        termo ${esc(c.numero)} · ${esc(c.empresa)} · ${esc(c.tipo || 'tipo não reconhecido')}
+        ${c.assinado ? '· já marcado assinado' : '· sem assinatura'} (id ${c.id})</option>`).join('');
+    alvo.innerHTML = `<div class="card decidir" style="margin-top:12px">
+      <h2>Onde este documento entra</h2>
+      <p class="sub">O cliente já tem <strong>${cands.length}</strong> termo(s) <strong>${esc(d.numero)}</strong>
+         sem PDF guardado. Anexar ao que existe é o certo — gravar como novo duplicaria o contrato.</p>
+      <div class="linha">
+        <div class="campo"><label for="destinoTermo">Anexar a</label>
+          <select id="destinoTermo" onchange="termoAlvo = parseInt(this.value) || null">
+            ${opcoes}<option value="">— gravar como termo novo —</option>
+          </select></div>
+      </div></div>`;
+    termoAlvo = cands.length === 1 ? cands[0].id : (termoAlvo || cands[0].id);
+    const sel = document.getElementById('destinoTermo');
+    if (sel) sel.value = String(termoAlvo);
+  } catch (e) { /* o destino é uma ajuda; sem ela, o fluxo antigo segue valendo */ }
+}
+
 async function gravar() {
   const btn = document.getElementById('btnGravar');
   const m = document.getElementById('msgGravar');
@@ -325,6 +1005,10 @@ async function gravar() {
   if (cnpj.length !== 14 && cnpj.length !== 11) {
     m.textContent = 'Informe o CNPJ (14 dígitos) ou CPF (11).'; m.className = 'msg msg-erro'; return;
   }
+  if (ultimaConferencia && ultimaConferencia.cnpj && ultimaConferencia.cnpj !== cnpj) {
+    if (!confirm(`O documento traz o CNPJ ${ultimaConferencia.cnpj} e você vai gravar em ${cnpj}.\n\n`
+      + 'A auditoria achou 33 documentos com CNPJ divergente do cliente do Harmonit. Confirma?')) return;
+  }
   const saidas = Array.from(document.getElementById('saida').selectedOptions).map(o => o.value);
 
   const fd = new FormData();
@@ -334,6 +1018,7 @@ async function gravar() {
   const quando = document.getElementById('assinadoEm').value;
   if (quando) fd.append('assinado_em', quando);
   if (saidas.length) fd.append('saida_confirmada', JSON.stringify(saidas));
+  if (termoAlvo) fd.append('termo_id', String(termoAlvo));
 
   btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gravando…';
   try {
@@ -342,12 +1027,22 @@ async function gravar() {
                           { method: 'POST', headers: auth(), body: fd });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
-    m.textContent = d.a_revisar
-      ? `Gravado, e marcado para revisão: ${d.revisar_motivo}`
-      : `Gravado no termo ${d.gravado.termo_id}. O contrato do cliente sustenta ${d.ficha.sustentadas.length} placa(s).`;
+    const onde = d.modo === 'anexado'
+      ? `Anexado ao termo ${d.gravado.numero} (id ${d.gravado.termo_id}).`
+      : `Gravado no termo ${d.gravado.termo_id}.`;
+    const diff = (d.gravado.eventos_novos || []).length
+      ? ` Entraram ${d.gravado.eventos_novos.length} evento(s) que a base não tinha: ${d.gravado.eventos_novos.join(', ')}.`
+      : (d.modo === 'anexado' ? ' Nenhum evento novo — o documento confirma o que já estava gravado.' : '');
+    const nao = (d.gravado.nao_confirmados || []).length
+      ? ` ⚠️ O assinado não confirma: ${d.gravado.nao_confirmados.join(', ')} — nada foi apagado, o termo ficou a revisar.`
+      : '';
+    m.innerHTML = esc(onde + diff + nao
+      + ` O contrato do cliente sustenta ${d.ficha.sustentadas.length} placa(s).`)
+      + (d.a_revisar ? `<br><strong>Marcado para revisão:</strong> ${esc(d.revisar_motivo || '')}` : '');
     m.className = 'msg ' + (d.a_revisar ? 'msg-erro' : 'msg-ok');
-    document.getElementById('cnpjFicha').value = cnpj;
+    clienteAberto = cnpj;
     pintarFicha(d.ficha);
+    await carregarGrid();
   } catch (e) {
     m.textContent = 'Erro: ' + e.message; m.className = 'msg msg-erro';
   } finally {
@@ -355,67 +1050,16 @@ async function gravar() {
   }
 }
 
-async function verFicha() {
-  const m = document.getElementById('msgFicha');
-  const cnpj = (document.getElementById('cnpjFicha').value || '').replace(/\D/g, '');
-  if (cnpj.length !== 14 && cnpj.length !== 11) {
-    m.textContent = 'Informe o CNPJ (14 dígitos) ou CPF (11).'; m.className = 'msg msg-erro'; return;
-  }
-  m.className = 'msg';
-  try {
-    const r = await fetch(`/painel/api/contratos/cliente/${cnpj}`, { headers: auth() });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
-    pintarFicha(d);
-  } catch (e) { m.textContent = 'Erro: ' + e.message; m.className = 'msg msg-erro'; }
-}
-
-function pintarFicha(d) {
-  const partes = [];
-  const placas = (d.placas || []).map(p => {
-    const [cls, rotulo] = TAG[p.situacao] || ['t-info', p.situacao];
-    return `<tr><td class="mono"><strong>${esc(p.placa)}</strong></td>
-      <td><span class="tag ${cls}">${esc(rotulo)}</span></td>
-      <td class="mono">${esc(p.termo_vigente || '—')}</td>
-      <td>${esc(p.base || '—')}</td>
-      <td>${esc(p.aviso_ate || '—')}</td>
-      <td class="nota">${esc(p.obs || '')}</td></tr>`;
-  }).join('');
-
-  partes.push(`<div class="card tabela">
-    <div style="padding:16px 16px 0"><h2>Placas do cliente ${esc(d.cnpj)}</h2>
-      <p class="sub">Pelos termos gravados, o contrato sustenta hoje
-         <strong>${(d.sustentadas || []).length} placa(s)</strong>.
-         Placa em <strong>aviso prévio</strong> ainda conta: a rescisão assinada dá 90 dias.</p></div>
-    ${placas ? `<table><tr><th>Placa</th><th>Situação</th><th>Termo</th><th>Base</th><th>Aviso até</th><th>Observação</th></tr>${placas}</table>`
-             : `<div class="vazio">Nenhum termo gravado para este cliente.</div>`}</div>`);
-
-  if ((d.a_revisar || []).length) {
-    partes.push(`<div class="card decidir"><h2>Termos a revisar</h2>` +
-      d.a_revisar.map(t => `<div class="aviso-item">Termo <strong>${esc(t.numero)}</strong>: ${esc(t.motivo || '')}</div>`).join('') +
-      `</div>`);
-  }
-
-  const termos = (d.termos || []).map(t => `<tr>
-      <td class="mono"><strong>${esc(t.numero)}</strong></td>
-      <td>${esc(t.tipo || '—')}</td>
-      <td>${esc(t.empresa || '—')}</td>
-      <td>${t.assinado ? `<span class="tag t-ativa">Assinado</span>` : `<span class="tag t-fora">Sem assinatura</span>`}</td>
-      <td>${esc(t.assinado_em || '—')}</td>
-      <td>${(t.eventos || []).length}</td>
-      <td class="nota">${esc(t.troca_registrada || '')}</td></tr>`).join('');
-
-  partes.push(`<div class="card tabela">
-    <div style="padding:16px 16px 0"><h2>Linha do tempo dos termos</h2>
-      <p class="sub">Em ordem de <strong>número do termo</strong>, não de data: a data do Harmonit vem vazia em muitos
-         termos, e há contrato datado depois da própria rescisão.</p></div>
-    ${termos ? `<table><tr><th>Termo</th><th>Tipo</th><th>Empresa</th><th>Assinatura</th><th>Assinado em</th><th>Eventos</th><th>Troca registrada</th></tr>${termos}</table>`
-             : `<div class="vazio">Nenhum termo gravado.</div>`}</div>`);
-
-  document.getElementById('ficha').innerHTML = partes.join('');
-}
-
 // ── Auditoria: contrato × WESO (C6) ────────────────────────────────────────
+function dobrarAuditoria() {
+  const c = document.getElementById('corpoAuditoria');
+  const b = document.getElementById('btnDobrar');
+  const abrindo = c.style.display === 'none';
+  c.style.display = abrindo ? '' : 'none';
+  b.textContent = abrindo ? 'Esconder' : 'Mostrar';
+  if (abrindo && !c.dataset.carregado) { carregarRotina(); c.dataset.carregado = '1'; }
+}
+
 function msgAud(t, erro) {
   const m = document.getElementById('msgAuditoria');
   m.textContent = t; m.className = 'msg ' + (erro ? 'msg-erro' : 'msg-ok');
@@ -462,6 +1106,7 @@ async function rodarAgora() {
     msgAud(`${d.achados} achado(s) sobre ${d.veiculos_weso} veículos da WESO`
            + (d.idade_h != null ? ` (cache de ${Math.round(d.idade_h)}h).` : '.'), false);
     await verAchados();
+    await carregarGrid();
   } catch (e) { msgAud('Erro: ' + e.message, true); }
   finally { b.disabled = false; b.innerHTML = '<i class="bi bi-play-fill"></i> Rodar agora'; }
 }
@@ -477,21 +1122,20 @@ async function verAchados() {
       return;
     }
     const resumo = d.resumo.map(x => `<tr><td><strong>${esc(x.tipo)}</strong></td>
-      <td>${esc(x.o_que_e)}</td><td style="text-align:right"><strong>${x.quantos}</strong></td></tr>`).join('');
+      <td>${esc(x.o_que_e)}</td><td class="num"><strong>${x.quantos}</strong></td></tr>`).join('');
     const linhas = (d.achados || []).slice(0, 60).map(x => `<tr>
       <td class="nota">${esc(x.tipo)}</td><td class="mono">${esc(x.placa || '')}</td>
       <td class="mono">${esc(x.cnpj || '—')}</td><td class="nota">${esc(x.detalhe || '')}</td></tr>`).join('');
     document.getElementById('achados').innerHTML = `
       <p class="nota" style="margin:12px 0 6px">Última rodada: ${esc(d.rodada_em || '—')}.
          Achado é <strong>retrato do momento</strong>: a lista é refeita a cada rodada.</p>
-      <table><tr><th>Tipo</th><th>O que é</th><th style="text-align:right">Quantos</th></tr>${resumo}</table>
+      <table><tr><th>Tipo</th><th>O que é</th><th class="num">Quantos</th></tr>${resumo}</table>
       <p class="nota" style="margin:14px 0 6px">Primeiros ${Math.min(60, (d.achados || []).length)}:</p>
       <table><tr><th>Tipo</th><th>Placa</th><th>CNPJ</th><th>Detalhe</th></tr>${linhas}</table>`;
   } catch (e) { msgAud('Erro: ' + e.message, true); }
 }
 
-carregarPerfis();
-carregarRotina();
+carregarGrid();
 </script>
 </body>
 </html>
