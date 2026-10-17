@@ -10,7 +10,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fpsl_weso import storage
+from fpsl_weso import rotinas, storage
 from fpsl_weso.painel.templates_config import PAGAMENTO_TECNICO_ID, KM_DESLOCAMENTO_ID
 
 log = logging.getLogger("fpsl.fechamento")
@@ -229,12 +229,16 @@ async def loop_atualizar_cartoes():
     """A cada 1h, atualiza semaforos de todos os cards nao-pagos."""
     log.info("loop_atualizar_cartoes: iniciando (intervalo=%ds)", INTERVALO_ATUALIZAR_SEG)
     while True:
+        resultado = "nenhum cartão ativo"
         try:
             cartoes = await storage.listar_cartoes_fechamento_ativos()
             for c in cartoes:
                 await atualizar_semaforo(c["id"])
             if cartoes:
                 log.info("loop_atualizar_cartoes: %d cards atualizados", len(cartoes))
-        except Exception:
+                resultado = f"{len(cartoes)} cartões atualizados"
+        except Exception as exc:
             log.exception("loop_atualizar_cartoes: erro na rodada")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("cartoes_fechamento", resultado)
         await asyncio.sleep(INTERVALO_ATUALIZAR_SEG)

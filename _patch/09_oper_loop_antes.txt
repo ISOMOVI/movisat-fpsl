@@ -1,0 +1,9 @@
+    while True:
+        try:
+            r = await rodar()
+            if r["lidas"]:
+                log.info("rotina: %s pendências, %s concluídas",
+                         r["lidas"], r["concluidas"])
+        except Exception:
+            log.exception("rotina: a passada falhou inteira")
+        await asyncio.sleep(INTERVALO_ROTINA)

@@ -1,0 +1,6 @@
+    while True:
+        try:
+            await sync_tecnicos()
+        except Exception:
+            log.exception("loop_sync_tecnicos: erro na rodada")
+        await asyncio.sleep(INTERVALO_SEG)

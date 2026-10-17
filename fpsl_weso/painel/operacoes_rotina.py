@@ -52,7 +52,7 @@ import logging
 
 from . import operacoes_equipamentos as eqp
 from . import operacoes_espera as esp
-from .. import storage
+from .. import rotinas, storage
 from ..harmonit_client import harmonit_get, harmonit_post
 
 log = logging.getLogger("fpsl.operacoes.rotina")
@@ -458,11 +458,15 @@ async def loop_rotina():
     de OS, que é quem alimenta a tabela que esta rotina lê."""
     await asyncio.sleep(900)
     while True:
+        resultado = "nada pendente"
         try:
             r = await rodar()
             if r["lidas"]:
                 log.info("rotina: %s pendências, %s concluídas",
                          r["lidas"], r["concluidas"])
-        except Exception:
+                resultado = f"{r['lidas']} pendências, {r['concluidas']} concluídas"
+        except Exception as exc:
             log.exception("rotina: a passada falhou inteira")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("operacoes", resultado)
         await asyncio.sleep(INTERVALO_ROTINA)

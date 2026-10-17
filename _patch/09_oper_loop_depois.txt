@@ -1,0 +1,13 @@
+    while True:
+        resultado = "nada pendente"
+        try:
+            r = await rodar()
+            if r["lidas"]:
+                log.info("rotina: %s pendências, %s concluídas",
+                         r["lidas"], r["concluidas"])
+                resultado = f"{r['lidas']} pendências, {r['concluidas']} concluídas"
+        except Exception as exc:
+            log.exception("rotina: a passada falhou inteira")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("operacoes", resultado)
+        await asyncio.sleep(INTERVALO_ROTINA)

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from ..auth import requer_aba
 from ...services.conferencia_fechamento import INTERVALO_ROTINA, run_conferencia
-from ... import storage
+from ... import rotinas, storage
 
 router = APIRouter(prefix="/painel/api/conferencia-fechamento", tags=["painel-financeiro"])
 
@@ -36,9 +36,21 @@ async def listar(limit: int = Query(300, le=1000),
 
 @router.get("/interruptor")
 async def ler_interruptor(_=Depends(requer_aba("financeiro"))):
-    """Estado da rotina. Quem tem a aba LÊ; mudar é só do dono (ver o PUT)."""
+    """Estado da rotina. Quem tem a aba LÊ; mudar é só do dono (ver o PUT).
+
+    🚨 DEVOLVE TAMBÉM A ÚLTIMA PASSADA (16/10). Até aqui a tela dizia se o
+    interruptor estava ligado e nada mais -- e "ligada" não é "rodou". Depois
+    do reinício de 16/10 ficou claro que a tela não distinguia laço vivo de
+    laço morto. `sem_registro` é o terceiro estado honesto: ninguém carimbou
+    ainda (serviço acabou de subir), que não é o mesmo que atraso.
+    """
+    passada = await rotinas.ultima("conferencia_fechamento")
     return {"ativa": await storage.get_config(FLAG, "false") == "true",
-            "intervalo_min": INTERVALO_ROTINA // 60}
+            "intervalo_min": INTERVALO_ROTINA // 60,
+            "ultima_em": passada["ultima_em"],
+            "ultimo_resultado": passada["resultado"],
+            "atrasada": passada["atrasada"],
+            "sem_registro": passada["sem_registro"]}
 
 
 @router.put("/interruptor")

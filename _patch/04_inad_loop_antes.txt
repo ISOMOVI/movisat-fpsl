@@ -1,0 +1,15 @@
+    while True:
+        await asyncio.sleep(600)
+        now = datetime.now()
+        if now.hour < 5:
+            continue
+        last_run = await storage.get_config("sync_last_run_date", "")
+        if last_run == date.today().isoformat():
+            continue
+        sync_on = await storage.get_config("inadimplencia_sync", "false")
+        if sync_on != "true":
+            continue
+        try:
+            await run_sync()
+        except Exception as exc:
+            logger.error("loop_inadimplencia: falha nao tratada — %s", exc)

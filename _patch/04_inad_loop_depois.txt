@@ -1,0 +1,25 @@
+    while True:
+        await asyncio.sleep(600)
+        # 🚨 TODA PASSADA CARIMBA, inclusive a que não roda -- e o motivo é o que
+        # distingue, na tela, laço vivo com rotina desligada de laço morto. Os
+        # três `continue` viraram `elif` só por isso: o comportamento é o mesmo
+        # (o `continue` apenas pulava para o próximo sono).
+        resultado = "ok"
+        try:
+            now = datetime.now()
+            last_run = await storage.get_config("sync_last_run_date", "")
+            sync_on = await storage.get_config("inadimplencia_sync", "false")
+            if now.hour < 5:
+                resultado = "fora da janela (antes das 05:00)"
+            elif last_run == date.today().isoformat():
+                resultado = "já rodou hoje"
+            elif sync_on != "true":
+                resultado = "desligada"
+            else:
+                r = await run_sync()
+                resultado = (f"{r.get('processados', 0)} processados, "
+                             f"{r.get('erros', 0)} erros")
+        except Exception as exc:
+            logger.error("loop_inadimplencia: falha nao tratada — %s", exc)
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("inadimplencia", resultado)

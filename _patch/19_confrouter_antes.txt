@@ -1,0 +1,5 @@
+@router.get("/interruptor")
+async def ler_interruptor(_=Depends(requer_aba("financeiro"))):
+    """Estado da rotina. Quem tem a aba LÊ; mudar é só do dono (ver o PUT)."""
+    return {"ativa": await storage.get_config(FLAG, "false") == "true",
+            "intervalo_min": INTERVALO_ROTINA // 60}

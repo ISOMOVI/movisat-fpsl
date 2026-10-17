@@ -1,0 +1,16 @@
+    // 🚨 A ÚLTIMA PASSADA ENTRA AQUI (16/10): esta rotina NASCE DESLIGADA, e
+    // sem o carimbo a tela não distinguia "laço vivo, flag em false" de "laço
+    // morto". `sem_registro` é o terceiro estado, e não é atraso.
+    let passada = 'Última passada: sem registro ainda.';
+    if (!d.sem_registro) {
+      const q = new Date(d.ultima_em);
+      const quando = isNaN(q) ? d.ultima_em
+        : q.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      passada = (d.atrasada ? 'Última passada (ATRASADA): ' : 'Última passada: ')
+        + quando + (d.ultimo_resultado ? ' — ' + d.ultimo_resultado : '') + '.';
+    }
+    document.getElementById('subAuditoria').insertAdjacentHTML('beforeend',
+      ` <br>A rotina roda a cada <strong>${d.intervalo_h}h</strong> e <strong>ligar não a faz rodar na hora</strong>
+        — para isso existe o “Rodar agora”. Ela se recusa a comparar se o cache da WESO passar de
+        <strong>${d.idade_maxima_cache_h}h</strong>: dado velho acusaria problema que não existe.
+        <br>${passada}`);

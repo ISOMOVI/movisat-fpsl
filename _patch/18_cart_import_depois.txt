@@ -1,0 +1,2 @@
+from fpsl_weso import rotinas, storage
+from fpsl_weso.painel.templates_config import PAGAMENTO_TECNICO_ID, KM_DESLOCAMENTO_ID

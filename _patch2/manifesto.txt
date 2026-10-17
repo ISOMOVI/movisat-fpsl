@@ -1,0 +1,3 @@
+# rel_path | antes | depois | apelido
+frontend/conferencia_fechamento.html | 30_tela_conf_antes.txt | 30_tela_conf_depois.txt | tela FIN_1.1: ultima passada
+frontend/contratos.html | 31_tela_aud_antes.txt | 31_tela_aud_depois.txt | tela auditoria: ultima passada

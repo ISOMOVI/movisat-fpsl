@@ -1,0 +1,11 @@
+    while True:
+        resultado = "ok"
+        try:
+            r = await sync_tecnicos()
+            if isinstance(r, dict):
+                resultado = ", ".join(f"{k}={v}" for k, v in r.items())
+        except Exception as exc:
+            log.exception("loop_sync_tecnicos: erro na rodada")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("sync_tecnicos", resultado)
+        await asyncio.sleep(INTERVALO_SEG)

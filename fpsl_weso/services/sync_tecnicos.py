@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 
 from fpsl_weso.harmonit_client import harmonit_get
-from fpsl_weso import storage
+from fpsl_weso import rotinas, storage
 
 log = logging.getLogger("fpsl.sync_tecnicos")
 
@@ -59,8 +59,13 @@ async def loop_sync_tecnicos():
     """Roda sync_tecnicos() uma vez por dia."""
     log.info("loop_sync_tecnicos: iniciando (intervalo=%ds)", INTERVALO_SEG)
     while True:
+        resultado = "ok"
         try:
-            await sync_tecnicos()
-        except Exception:
+            r = await sync_tecnicos()
+            if isinstance(r, dict):
+                resultado = ", ".join(f"{k}={v}" for k, v in r.items())
+        except Exception as exc:
             log.exception("loop_sync_tecnicos: erro na rodada")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("sync_tecnicos", resultado)
         await asyncio.sleep(INTERVALO_SEG)

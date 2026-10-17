@@ -1,0 +1,9 @@
+    while True:
+        # Carimbo da passada: "desligada" também é informação (`rotinas.py`).
+        resultado = "desligada"
+        try:
+            ativa = await storage.get_config("conferencia_fechamento_ativa", "false")
+            if ativa == "true":
+                r = await run_conferencia()
+                resultado = (f"{r['conferidas']} conferidas, "
+                             f"{r['datas_preenchidas']} datas preenchidas")

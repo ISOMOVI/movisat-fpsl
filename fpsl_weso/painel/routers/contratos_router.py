@@ -463,12 +463,22 @@ async def cliente(cnpj: str):
 
 @router.get("/auditoria/interruptor")
 async def ler_interruptor():
-    """Estado da rotina. Quem tem a aba LÊ; mudar é do dono (ver o PUT)."""
-    from ... import storage
+    """Estado da rotina. Quem tem a aba LÊ; mudar é do dono (ver o PUT).
+
+    🚨 DEVOLVE TAMBÉM A ÚLTIMA PASSADA (16/10), pelo mesmo motivo da `FIN_1.1`:
+    "ligada" nunca foi "rodou", e esta rotina nasce desligada -- o carimbo é o
+    que mostra que o laço está vivo mesmo com a flag em `false`.
+    """
+    from ... import rotinas, storage
     from ...services import contratos_auditoria as aud
+    passada = await rotinas.ultima("contratos_auditoria")
     return {"ativa": await storage.get_config(aud.FLAG, "false") == "true",
             "intervalo_h": aud.INTERVALO_ROTINA // 3600,
-            "idade_maxima_cache_h": aud.IDADE_MAXIMA_H}
+            "idade_maxima_cache_h": aud.IDADE_MAXIMA_H,
+            "ultima_em": passada["ultima_em"],
+            "ultimo_resultado": passada["resultado"],
+            "atrasada": passada["atrasada"],
+            "sem_registro": passada["sem_registro"]}
 
 
 @router.put("/auditoria/interruptor")

@@ -1,0 +1,4 @@
+    document.getElementById('subAuditoria').insertAdjacentHTML('beforeend',
+      ` <br>A rotina roda a cada <strong>${d.intervalo_h}h</strong> e <strong>ligar não a faz rodar na hora</strong>
+        — para isso existe o “Rodar agora”. Ela se recusa a comparar se o cache da WESO passar de
+        <strong>${d.idade_maxima_cache_h}h</strong>: dado velho acusaria problema que não existe.`);

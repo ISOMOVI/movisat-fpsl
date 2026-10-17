@@ -1,0 +1,8 @@
+@router.get("/auditoria/interruptor")
+async def ler_interruptor():
+    """Estado da rotina. Quem tem a aba LÊ; mudar é do dono (ver o PUT)."""
+    from ... import storage
+    from ...services import contratos_auditoria as aud
+    return {"ativa": await storage.get_config(aud.FLAG, "false") == "true",
+            "intervalo_h": aud.INTERVALO_ROTINA // 3600,
+            "idade_maxima_cache_h": aud.IDADE_MAXIMA_H}

@@ -1,0 +1,22 @@
+# rel_path | antes | depois | apelido
+main.py | 01_main_imports_antes.txt | 01_main_imports_depois.txt | main.py: imports do log
+main.py | 02_main_handler_antes.txt | 02_main_handler_depois.txt | main.py: handler de arquivo (3A)
+fpsl_weso/services/sync_inadimplencia.py | 03_inad_import_antes.txt | 03_inad_import_depois.txt | inadimplencia: import
+fpsl_weso/services/sync_inadimplencia.py | 04_inad_loop_antes.txt | 04_inad_loop_depois.txt | inadimplencia: carimbo
+fpsl_weso/painel/routers/os_scan_router.py | 05_scan_import_antes.txt | 05_scan_import_depois.txt | os_scan: import
+fpsl_weso/painel/routers/os_scan_router.py | 06_scan_loop_antes.txt | 06_scan_loop_depois.txt | scan-os: carimbo
+fpsl_weso/painel/routers/os_scan_router.py | 07_resync_loop_antes.txt | 07_resync_loop_depois.txt | resync-os: carimbo
+fpsl_weso/painel/operacoes_rotina.py | 08_oper_import_antes.txt | 08_oper_import_depois.txt | operacoes: import
+fpsl_weso/painel/operacoes_rotina.py | 09_oper_loop_antes.txt | 09_oper_loop_depois.txt | operacoes: carimbo
+fpsl_weso/services/conferencia_fechamento.py | 10_conf_import_antes.txt | 10_conf_import_depois.txt | conferencia: import
+fpsl_weso/services/conferencia_fechamento.py | 11_conf_loop_antes.txt | 11_conf_loop_depois.txt | conferencia: carimbo (abre)
+fpsl_weso/services/conferencia_fechamento.py | 12_conf_tail_antes.txt | 12_conf_tail_depois.txt | conferencia: carimbo (fecha)
+fpsl_weso/services/contratos_auditoria.py | 13_aud_import_antes.txt | 13_aud_import_depois.txt | auditoria: import
+fpsl_weso/services/contratos_auditoria.py | 14_aud_loop_antes.txt | 14_aud_loop_depois.txt | auditoria: carimbo
+fpsl_weso/services/sync_tecnicos.py | 16_tec_import_antes.txt | 16_tec_import_depois.txt | tecnicos: import
+fpsl_weso/services/sync_tecnicos.py | 15_tec_loop_antes.txt | 15_tec_loop_depois.txt | tecnicos: carimbo
+fpsl_weso/services/fechamento.py | 18_cart_import_antes.txt | 18_cart_import_depois.txt | cartoes: import
+fpsl_weso/services/fechamento.py | 17_cart_loop_antes.txt | 17_cart_loop_depois.txt | cartoes: carimbo
+fpsl_weso/painel/routers/conferencia_fechamento_router.py | 20_confrouter_import_antes.txt | 20_confrouter_import_depois.txt | FIN_1.1 interruptor: import
+fpsl_weso/painel/routers/conferencia_fechamento_router.py | 19_confrouter_antes.txt | 19_confrouter_depois.txt | FIN_1.1 interruptor: ultima passada
+fpsl_weso/painel/routers/contratos_router.py | 21_audrouter_antes.txt | 21_audrouter_depois.txt | auditoria interruptor: ultima passada

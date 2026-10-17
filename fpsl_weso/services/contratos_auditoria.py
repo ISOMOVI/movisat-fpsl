@@ -25,7 +25,7 @@ import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from .. import storage
+from .. import rotinas, storage
 from ..painel import contratos_eventos as motor
 from ..painel import contratos_registro as registro
 from ..painel import contratos_tabelas
@@ -187,13 +187,20 @@ async def run_auditoria(hoje=None) -> dict:
 async def loop_contratos_auditoria():
     """Laço periódico. **Relê a flag a cada volta** — ligar não roda na hora."""
     while True:
+        # Nasce desligada: "desligada" é o carimbo honesto da passada que viu a
+        # flag em `false` -- laço vivo, rotina parada (`rotinas.py`).
+        resultado = "desligada"
         try:
             if await storage.get_config(FLAG, "false") == "true":
                 r = await run_auditoria()
                 if r.get("rodou"):
                     logger.info("contratos_auditoria: %s achados %s", r["achados"], r["por_tipo"])
+                    resultado = f"{r['achados']} achados"
                 else:
                     logger.warning("contratos_auditoria: não rodou — %s", r.get("motivo"))
-        except Exception:
+                    resultado = f"não rodou: {r.get('motivo')}"
+        except Exception as exc:
             logger.exception("contratos_auditoria: falha na rotina periódica")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("contratos_auditoria", resultado)
         await asyncio.sleep(INTERVALO_ROTINA)

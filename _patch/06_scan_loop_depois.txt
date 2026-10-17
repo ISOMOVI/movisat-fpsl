@@ -1,0 +1,14 @@
+    while True:
+        # "nada novo" é resultado, não ausência: é o que prova que a passada
+        # aconteceu num dia sem OS nova (ver `rotinas.py`).
+        resultado = "nada novo"
+        try:
+            r = await varrer_os()
+            if r["novas"]:
+                logger.info("scan-os: %s OS novas (última %s)", r["novas"], r["ultima_os"])
+                resultado = f"{r['novas']} OS novas (última {r['ultima_os']})"
+        except Exception as exc:
+            logger.exception("scan-os: falha na varredura periódica")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("scan_os", resultado)
+        await asyncio.sleep(INTERVALO_SCAN)

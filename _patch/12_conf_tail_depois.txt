@@ -1,0 +1,5 @@
+        except Exception as exc:
+            logger.exception("conferencia_fechamento: falha na rotina periódica")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("conferencia_fechamento", resultado)
+        await asyncio.sleep(INTERVALO_ROTINA)

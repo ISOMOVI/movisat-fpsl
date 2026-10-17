@@ -1,0 +1,6 @@
+    while True:
+        try:
+            r = await resync_os()
+            logger.info("resync-os: %s reencontradas, %s excluídas, %s erros", r["reencontradas"], r["excluidas"], r["erros"])
+        except Exception:
+            logger.exception("resync-os: falha no resync periódico")

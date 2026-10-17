@@ -2,6 +2,8 @@ import asyncio
 import logging
 import secrets
 import time
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -98,6 +100,45 @@ class MascararSegredoDaQueryString(logging.Filter):
 # processo -- registrar nos dois e barato e nao depende de lembrar qual e.
 for _nome in ("uvicorn.access", "gunicorn.access"):
     logging.getLogger(_nome).addFilter(MascararSegredoDaQueryString())
+
+
+# ── O FPSL passa a ter onde deixar rastro (16/10/2026) ───────────────────────
+#
+# 🚨 ATÉ HOJE O `logger.info` DAS ROTINAS NÃO IA A LUGAR NENHUM. Sem
+# `basicConfig`/`dictConfig`, o uvicorn configura só os loggers DELE, e o
+# `lastResort` do Python mostra WARNING para cima. Resultado medido: `resync-os`
+# loga toda passada e não havia uma linha dele em parte alguma. Depois do
+# reinício de 16/10 (manutenção de emergência da Hostinger), provar que os
+# laços tinham voltado exigiu ler carimbo de escrita de outras tabelas.
+#
+# ⚠️ ROTAÇÃO DENTRO DO PROCESSO, de propósito. O `/etc/logrotate.d/claude-logs`
+# cobre `movizap_*.log` e nomes fixos -- `fpsl.log` não casa com nenhum -- e a
+# própria documentação dele avisa que dois rotacionadores no mesmo arquivo
+# brigam pelo inode. Foi por isso que os logs do pm2 ficaram de fora de lá.
+#
+# ⚠️ NÃO TOCA NOS LOGGERS DO UVICORN: eles seguem indo para o journal. Trazer o
+# `uvicorn.access` para cá duplicaria em disco cada requisição do painel.
+#
+# 🚨 OS DOIS NOMES DE RAIZ, porque o projeto usa os dois: metade dos módulos faz
+# `getLogger("fpsl.algo")` e a outra metade `getLogger(__name__)`, que dá
+# `fpsl_weso.algo`. Pendurar em um só deixaria metade das rotinas calada --
+# exatamente o defeito que este bloco existe para fechar.
+#
+# 🚨 O FILTRO VEM JUNTO. A chave da WESO viaja na query string, e até aqui a
+# única proteção era o httpx estar em WARNING (`fpsl_weso/logger.py`). Com
+# arquivo em INFO eu quero as duas travas, não uma.
+#
+# ⚠️ `fpsl.requests` não é afetado: tem handler próprio e `propagate = False`.
+ARQUIVO_LOG = Path("/home/claude/logs/fpsl.log")
+_handler_fpsl = RotatingFileHandler(
+    ARQUIVO_LOG, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8")
+_handler_fpsl.setFormatter(
+    logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+_handler_fpsl.addFilter(MascararSegredoDaQueryString())
+for _raiz in ("fpsl", "fpsl_weso"):
+    _log_raiz = logging.getLogger(_raiz)
+    _log_raiz.addHandler(_handler_fpsl)
+    _log_raiz.setLevel(logging.INFO)
 
 
 @asynccontextmanager

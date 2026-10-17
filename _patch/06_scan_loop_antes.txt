@@ -1,0 +1,8 @@
+    while True:
+        try:
+            r = await varrer_os()
+            if r["novas"]:
+                logger.info("scan-os: %s OS novas (última %s)", r["novas"], r["ultima_os"])
+        except Exception:
+            logger.exception("scan-os: falha na varredura periódica")
+        await asyncio.sleep(INTERVALO_SCAN)

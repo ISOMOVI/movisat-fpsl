@@ -158,6 +158,11 @@ valor, equipamento.
 
 1. 🛑 **A aba Operações é intocável**, e os testes dela contam. `pdf_extractor` e `operacoes_*` são **lidos**,
    nunca alterados — conferido por `sha256sum` antes e depois de cada entrega.
+   ⚠️ **Exceção única, 16/10 (item 3, aprovado por ele):** `painel/operacoes_rotina.py` ganhou **só o carimbo
+   da passada** no laço (`from .. import rotinas` + `rotinas.marcar("operacoes", resultado)`, que nunca
+   levanta). A lógica da rotina não mudou — `diff` contra `operacoes_rotina.py.bak_2026-10-16_log` são 6
+   linhas, todas do carimbo — e as suítes da aba ficaram verdes (tela 62, ponta a ponta 35, f1–f6 412).
+   O `sha256sum` de referência passa a ser o de depois de 16/10.
 2. 🚨 **Não se inventa identificador.** Placa inventada é pior que placa faltando. Em 14/10 a primeira passada
    da carga inseriu a **linha descritiva do veículo** como se fosse placa, e anulou o identificador certo —
    foi revertida pelo livro-razão, e a guarda entrou com as linhas reais como fixture.
@@ -169,6 +174,24 @@ valor, equipamento.
 6. **Cache velho não decide.** Acima de 48 h a rotina se recusa a comparar e **diz por quê**; a tela avisa
    quando o dado pode estar desatualizado.
 7. **Publicar exige a palavra dele.** Editar local, rodar as suítes, subir e reiniciar só com autorização.
+8. **O FPSL deixa rastro desde 16/10** (item 3). Antes disso não havia handler de log: o `resync-os` logava
+   toda passada e **nunca deixou uma linha**, e a `logs/requests.log` está vazia desde 17/06 (o `log_req` só
+   cobre `/weso/*`, que ninguém chama — aposentar ou estender é decisão dele).
+   - **`/home/claude/logs/fpsl.log`**: `RotatingFileHandler` 10 MB × 5, rotação **dentro do processo** (o
+     `claude-logs` não casa com o nome; dois rotacionadores brigariam pelo inode), pendurado nas raízes
+     `fpsl` e `fpsl_weso`, com `MascararSegredoDaQueryString` — a chave da WESO viaja na query string. Os
+     loggers do uvicorn **não** foram tocados: seguem no journal.
+   - **`fpsl_weso/rotinas.py`**: os **8 laços** (inadimplência, scan-os, resync-os, operações, conferência,
+     auditoria de contratos, técnicos, cartões) carimbam `rotina_<nome>_ultima_em` e `_resultado` em
+     `config` **a cada passada**, inclusive a que não fez nada e a que viu a rotina desligada — *laço vivo
+     com rotina desligada* não é *laço morto*. `marcar()` nunca levanta.
+   - **Telas com interruptor** (`FIN_1.1` e auditoria de contratos): "Última passada: ... — resultado", com
+     três estados — recente, **ATRASADA** (dobro do intervalo) e **sem registro** (serviço recém-subido,
+     não é atraso).
+   - **`scripts/rotinas_mudas.py`** — **só relata**, sem WhatsApp. Cron `10 18 * * *` →
+     `logs/fpsl_rotinas_mudas.log`. Uma semana em arquivo; depois ele decide se vira aviso. Resumo diz
+     número: *"8 laços: 6 em dia, 0 mudos, 2 sem registro"*.
+   - **`tests/teste_rotinas.py`**: 28 verificações, em banco temporário.
 
 ---
 
@@ -180,6 +203,7 @@ valor, equipamento.
 | Contas a Receber | `docs/fpsl/32_Contas_a_Receber.md` (**a escrever**) |
 | Painel Financeiro (FIN_1.1 e FIN_2.1 — pagar técnico) | `docs/fpsl/30_Painel_Financeiro.md` |
 | Metodologia e o ciclo de entrega | `docs/fpsl/00_Metodologia.md` |
+| Log do FPSL e a última passada de cada rotina (16/10) | `/home/claude/logs/fpsl.log` · `venv/bin/python scripts/rotinas_mudas.py` · trava 8 acima |
 | A auditoria que originou tudo | `C:\code\termos_harmonit` (README com as regras dele) e `Downloads\Termos Harmonit por Cliente` |
 | O miolo vivo, com o estado do dia e as pendências | `C:\Users\Lenovo\Proximos_Passos.md` |
 

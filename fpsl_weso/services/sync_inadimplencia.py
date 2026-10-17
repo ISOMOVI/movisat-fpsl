@@ -4,7 +4,7 @@ from datetime import datetime, date, timedelta
 
 from ..harmonit_client import harmonit_get
 from ..client import weso_get, weso_post
-from .. import storage
+from .. import rotinas, storage
 from ..logger import log_req
 
 logger = logging.getLogger(__name__)
@@ -72,16 +72,26 @@ async def loop_inadimplencia():
     """Cron interno: dispara run_sync() apos 05:00 BRT, uma vez por dia."""
     while True:
         await asyncio.sleep(600)
-        now = datetime.now()
-        if now.hour < 5:
-            continue
-        last_run = await storage.get_config("sync_last_run_date", "")
-        if last_run == date.today().isoformat():
-            continue
-        sync_on = await storage.get_config("inadimplencia_sync", "false")
-        if sync_on != "true":
-            continue
+        # 🚨 TODA PASSADA CARIMBA, inclusive a que não roda -- e o motivo é o que
+        # distingue, na tela, laço vivo com rotina desligada de laço morto. Os
+        # três `continue` viraram `elif` só por isso: o comportamento é o mesmo
+        # (o `continue` apenas pulava para o próximo sono).
+        resultado = "ok"
         try:
-            await run_sync()
+            now = datetime.now()
+            last_run = await storage.get_config("sync_last_run_date", "")
+            sync_on = await storage.get_config("inadimplencia_sync", "false")
+            if now.hour < 5:
+                resultado = "fora da janela (antes das 05:00)"
+            elif last_run == date.today().isoformat():
+                resultado = "já rodou hoje"
+            elif sync_on != "true":
+                resultado = "desligada"
+            else:
+                r = await run_sync()
+                resultado = (f"{r.get('processados', 0)} processados, "
+                             f"{r.get('erros', 0)} erros")
         except Exception as exc:
             logger.error("loop_inadimplencia: falha nao tratada — %s", exc)
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("inadimplencia", resultado)

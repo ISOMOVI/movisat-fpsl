@@ -1,0 +1,11 @@
+    while True:
+        try:
+            if await storage.get_config(FLAG, "false") == "true":
+                r = await run_auditoria()
+                if r.get("rodou"):
+                    logger.info("contratos_auditoria: %s achados %s", r["achados"], r["por_tipo"])
+                else:
+                    logger.warning("contratos_auditoria: não rodou — %s", r.get("motivo"))
+        except Exception:
+            logger.exception("contratos_auditoria: falha na rotina periódica")
+        await asyncio.sleep(INTERVALO_ROTINA)

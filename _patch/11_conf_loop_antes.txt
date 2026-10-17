@@ -1,0 +1,5 @@
+    while True:
+        try:
+            ativa = await storage.get_config("conferencia_fechamento_ativa", "false")
+            if ativa == "true":
+                r = await run_conferencia()

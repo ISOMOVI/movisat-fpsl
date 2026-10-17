@@ -35,7 +35,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 
-from .. import storage
+from .. import rotinas, storage
 from . import conferencia_oficina as co
 from ..harmonit_client import harmonit_get
 from ..client import weso_get
@@ -453,16 +453,22 @@ async def run_conferencia() -> dict:
 
 async def loop_conferencia_fechamento():
     while True:
+        # Carimbo da passada: "desligada" também é informação (`rotinas.py`).
+        resultado = "desligada"
         try:
             ativa = await storage.get_config("conferencia_fechamento_ativa", "false")
             if ativa == "true":
                 r = await run_conferencia()
+                resultado = (f"{r['conferidas']} conferidas, "
+                             f"{r['datas_preenchidas']} datas preenchidas")
                 if r["conferidas"] or r["datas_preenchidas"]:
                     logger.info("conferencia_fechamento: %s OS conferidas (%s em Serviço "
                                "Realizado na janela de %s dias, %s respostas DataScope "
                                "sincronizadas, %s datas de finalização preenchidas)",
                                r["conferidas"], r["em_servico_realizado"], r["janela_dias"],
                                r["datascope_sincronizadas"], r["datas_preenchidas"])
-        except Exception:
+        except Exception as exc:
             logger.exception("conferencia_fechamento: falha na rotina periódica")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("conferencia_fechamento", resultado)
         await asyncio.sleep(INTERVALO_ROTINA)

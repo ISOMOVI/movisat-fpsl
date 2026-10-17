@@ -1,0 +1,8 @@
+function pintarChave(d) {
+  document.getElementById('chave').checked = d.ativa;
+  document.getElementById('chaveTx').textContent =
+    d.ativa ? 'Rotina ligada' : 'Rotina desligada';
+  document.getElementById('chaveNota').textContent = d.ativa
+    ? `Roda sozinha a cada ${d.intervalo_min} min — ligar não roda na hora.`
+    : (ehDono ? 'Nada roda sozinho enquanto estiver assim.'
+              : 'Nada roda sozinho enquanto estiver assim. Só o proprietário liga.');

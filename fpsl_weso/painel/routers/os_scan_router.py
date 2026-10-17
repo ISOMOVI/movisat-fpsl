@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from ..auth import requer_aba
 from ...harmonit_client import harmonit_get
-from ... import storage
+from ... import rotinas, storage
 from ...services.conferencia_oficina import conferir_do_banco
 
 logger = logging.getLogger(__name__)
@@ -154,12 +154,18 @@ async def loop_scan_os():
     if not await storage.get_config("os_scan_ultima_nova_em", ""):
         await storage.set_config("os_scan_ultima_nova_em", datetime.now(timezone.utc).isoformat())
     while True:
+        # "nada novo" é resultado, não ausência: é o que prova que a passada
+        # aconteceu num dia sem OS nova (ver `rotinas.py`).
+        resultado = "nada novo"
         try:
             r = await varrer_os()
             if r["novas"]:
                 logger.info("scan-os: %s OS novas (última %s)", r["novas"], r["ultima_os"])
-        except Exception:
+                resultado = f"{r['novas']} OS novas (última {r['ultima_os']})"
+        except Exception as exc:
             logger.exception("scan-os: falha na varredura periódica")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("scan_os", resultado)
         await asyncio.sleep(INTERVALO_SCAN)
 
 
@@ -167,11 +173,16 @@ async def loop_resync_os():
     """Resync a cada 12 h da janela recente."""
     await asyncio.sleep(600)  # espaça do boot pra não competir com a 1ª varredura
     while True:
+        resultado = "ok"
         try:
             r = await resync_os()
             logger.info("resync-os: %s reencontradas, %s excluídas, %s erros", r["reencontradas"], r["excluidas"], r["erros"])
-        except Exception:
+            resultado = (f"{r['reencontradas']} reencontradas, "
+                         f"{r['excluidas']} excluídas, {r['erros']} erros")
+        except Exception as exc:
             logger.exception("resync-os: falha no resync periódico")
+            resultado = f"ERRO: {exc}"
+        await rotinas.marcar("resync_os", resultado)
         await asyncio.sleep(INTERVALO_RESYNC)
 
 

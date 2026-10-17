@@ -1,0 +1,3 @@
+        except Exception:
+            logger.exception("conferencia_fechamento: falha na rotina periódica")
+        await asyncio.sleep(INTERVALO_ROTINA)

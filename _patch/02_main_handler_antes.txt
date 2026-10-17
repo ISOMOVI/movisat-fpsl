@@ -1,0 +1,2 @@
+for _nome in ("uvicorn.access", "gunicorn.access"):
+    logging.getLogger(_nome).addFilter(MascararSegredoDaQueryString())
