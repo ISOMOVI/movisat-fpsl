@@ -208,6 +208,12 @@ class AgendarTecnicoEntrada(BaseModel):
     # 🔵 21/10, decisão dele: **a validação é pelo E-MAIL do técnico**, e o
     # telefone é o que o encontra. O MoviZap manda o número do contato.
     tecnico_telefone: str | None = Field(default=None, max_length=32)
+    # 🚨 O JEITO EXATO, quando o MoviZap já tem o vínculo gravado: o
+    # `usuarioId` de cada técnico da OS **é o `tecnico_id` do cadastro**
+    # (medido em 21/10: Iago 7493, Franck 14262, dos dois lados). Com ele não
+    # há casamento nenhum a fazer -- e é o que faz o vínculo MANUAL funcionar,
+    # inclusive a exceção dele (6168 → Iago), que por telefone nunca casaria.
+    tecnico_id: int | None = None
     # Só para a mensagem de recusa ficar legível. ⚠️ NÃO casa por nome.
     tecnico_nome: str | None = Field(default=None, max_length=200)
 
@@ -254,7 +260,8 @@ def _quem_tem(tecnicos: list) -> list:
 
 
 def _escolher_vinculo(tecnicos: list, telefone: str | None,
-                      nome: str | None = None) -> tuple[dict | None, str]:
+                      nome: str | None = None,
+                      tecnico_id: int | None = None) -> tuple[dict | None, str]:
     """Qual `ordemServicoxTecnico` recebe o compromisso.
 
     🔵 Decisão dele, 21/10: *"a validação será pelo e-mail do técnico"*. O
@@ -269,6 +276,20 @@ def _escolher_vinculo(tecnicos: list, telefone: str | None,
     agendar.
     """
     livres = [t for t in tecnicos if not t.get("agendamentoId")]
+
+    # 1º o vínculo gravado, que é identidade e não semelhança.
+    if tecnico_id:
+        casados = [t for t in tecnicos if t.get("usuarioId") == tecnico_id]
+        if not casados:
+            return None, (f"o tecnico {tecnico_id} vinculado a esta conversa nao "
+                          f"esta nesta OS (tem: {_quem_tem(tecnicos)})")
+        livre = [t for t in casados if not t.get("agendamentoId")]
+        if not livre:
+            return None, (f"{casados[0].get('nomeTecnico')} ja tem compromisso "
+                          f"nesta OS (agendamentoId "
+                          f"{casados[0].get('agendamentoId')})")
+        return livre[0], ""
+
     chave = _chave_do_telefone(telefone)
     if chave:
         casados = [t for t in tecnicos if _email_do_tecnico(t) == chave]
@@ -331,7 +352,7 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
                 "motivo": "esta OS nao tem tecnico vinculado no Harmonit"}
 
     vinculo, motivo = _escolher_vinculo(tecnicos, entrada.tecnico_telefone,
-                                        entrada.tecnico_nome)
+                                        entrada.tecnico_nome, entrada.tecnico_id)
     if not vinculo:
         return {"ok": False, "numero_os": entrada.numero_os, "motivo": motivo}
 
@@ -414,3 +435,43 @@ async def tecnico_por_telefone(telefone: str = Query(..., min_length=8)):
     tecnico_id, nome, email, excluido = linhas[0]
     return {"achado": True, "tecnico_id": tecnico_id, "nome": nome,
             "email": email, "excluido": bool(excluido)}
+
+
+@router.get("/tecnicos")
+async def listar_tecnicos(ativos: int = Query(1, ge=0, le=1)):
+    """O cadastro de técnicos do Harmonit, para a varredura do MoviZap.
+
+    🔵 Pedido dele, 21/10: ligar o contato tipo técnico ao cadastro, *"assim
+    já traz sugerido pelo número dele"*.
+
+    A fonte é a tabela `tecnicos`, que a rotina `sync_tecnicos` atualiza
+    **1×/dia** cruzando `ObterTecnicos` com `ObterUsuarios` — ela já separa
+    técnico real de usuário do sistema, e é por isso que esta rota não precisa
+    falar com o Harmonit.
+
+    ⚠️ `excluido = 1` NÃO quer dizer "saiu da empresa": quer dizer **é usuário
+    do sistema**, não técnico de campo (9 dos 200 em 21/10, entre eles o
+    próprio dono). Por padrão eles ficam de fora — se entrassem, todo usuário
+    interno viraria candidato a técnico.
+
+    Devolve `chave`, que são os dígitos do e-mail: é por ela que o MoviZap
+    casa, e calculá-la aqui mantém a regra num lugar só.
+    """
+    sql = "SELECT tecnico_id, nome, email, excluido FROM tecnicos"
+    if ativos:
+        sql += " WHERE excluido = 0"
+    with storage._connect() as conn:
+        linhas = conn.execute(sql + " ORDER BY nome").fetchall()
+    return {
+        "tecnicos": [
+            {
+                "tecnico_id": tid,
+                "nome": nome,
+                "email": email,
+                "excluido": bool(excluido),
+                # Vazio quando o e-mail não é numérico (conta interna).
+                "chave": _email_do_tecnico({"email": email}),
+            }
+            for tid, nome, email, excluido in linhas
+        ]
+    }

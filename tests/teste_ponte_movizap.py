@@ -112,6 +112,53 @@ class TestEscolherOTecnico:
         assert "ja tem compromisso" in motivo
 
 
+class TestOVinculoGravadoManda:
+    """🔵 21/10: quando o MoviZap já tem o vínculo, ele casa por IDENTIDADE.
+
+    🚨 O `usuarioId` de cada técnico da OS **é o `tecnico_id` do cadastro** —
+    medido: Iago 7493 e Franck 14262, iguais dos dois lados. É isso que faz o
+    vínculo MANUAL funcionar, inclusive a exceção dele (6168 → Iago), que por
+    telefone jamais casaria.
+    """
+
+    IAGO = {"id": 1, "usuarioId": 7493, "nomeTecnico": "Iago Santos do Ó Souza",
+            "email": "iago@movisat.com.br"}
+    FRANCK = {"id": 2, "usuarioId": 14262, "nomeTecnico": "Franck",
+              "email": "997394026@movisat.com.br"}
+
+    def test_o_tecnico_id_vinculado_ganha_do_telefone(self):
+        achado, _ = os_ponte._escolher_vinculo(
+            [self.IAGO, self.FRANCK],
+            telefone="+5519997394026",   # este telefone é do Franck...
+            tecnico_id=7493)             # ...e o vínculo diz Iago.
+        assert achado["usuarioId"] == 7493
+
+    def test_a_excecao_dele_funciona_SO_pelo_vinculo(self):
+        """Pelo telefone, o 6168 não acharia ninguém."""
+        sem_vinculo, motivo = os_ponte._escolher_vinculo(
+            [self.IAGO, self.FRANCK], telefone="+5518998116168")
+        assert sem_vinculo is None
+
+        com_vinculo, _ = os_ponte._escolher_vinculo(
+            [self.IAGO, self.FRANCK], telefone="+5518998116168",
+            tecnico_id=7493)
+        assert com_vinculo["usuarioId"] == 7493
+
+    def test_vinculado_mas_fora_desta_OS_e_recusado_COM_a_lista(self):
+        achado, motivo = os_ponte._escolher_vinculo(
+            [self.FRANCK], telefone=None, tecnico_id=7493)
+        assert achado is None
+        assert "7493" in motivo
+        assert "Franck" in motivo
+
+    def test_vinculado_e_JA_AGENDADO_diz_qual(self):
+        ocupado = dict(self.IAGO, agendamentoId=930447)
+        achado, motivo = os_ponte._escolher_vinculo(
+            [ocupado], telefone=None, tecnico_id=7493)
+        assert achado is None
+        assert "930447" in motivo
+
+
 class TestORecorteDasOS:
     def test_em_aberto_inclui_status_NULO(self):
         """⚠️ Nulo não é finalizado: 37 das 572 OS da base estão assim, e em
