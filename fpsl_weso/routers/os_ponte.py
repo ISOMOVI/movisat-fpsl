@@ -205,46 +205,89 @@ class AgendarTecnicoEntrada(BaseModel):
     numero_os: int
     inicio: datetime
     fim: datetime | None = None
-    # O nome do técnico no MoviZap. ⚠️ É o único elo que existe: o MoviZap
-    # conhece o técnico como CONTATO de WhatsApp e o Harmonit como usuário da
-    # OS — não há tabela ligando os dois. Por isso o casamento é por nome, e
-    # por isso ele falha em voz alta em vez de escolher sozinho.
+    # 🔵 21/10, decisão dele: **a validação é pelo E-MAIL do técnico**, e o
+    # telefone é o que o encontra. O MoviZap manda o número do contato.
+    tecnico_telefone: str | None = Field(default=None, max_length=32)
+    # Só para a mensagem de recusa ficar legível. ⚠️ NÃO casa por nome.
     tecnico_nome: str | None = Field(default=None, max_length=200)
 
 
+def _so_digitos(texto: str) -> str:
+    return "".join(c for c in (texto or "") if c.isdigit())
+
+
+def _chave_do_telefone(telefone: str | None) -> str:
+    """Os 9 últimos dígitos — é o que serve de chave dos dois lados.
+
+    🚨 MEDIDO EM 21/10, e é isto que faz a regra dele funcionar: o e-mail do
+    técnico no Harmonit é o **telefone dele**. `Franck` tem
+    `997394026@movisat.com.br`, e o contato no MoviZap é `+5519997394026`.
+    **186 dos 200 técnicos** do cadastro seguem esse padrão; os 14 que não
+    seguem são contas internas (`comercial@`, `parceiros@`, pessoas da casa),
+    não técnicos de campo.
+
+    Nove dígitos porque é o número sem DDI nem DDD -- comparar o e164 inteiro
+    erraria em todo técnico cujo DDD o Harmonit não guardou.
+    """
+    so = _so_digitos(telefone)
+    return so[-9:] if len(so) >= 9 else ""
+
+
+def _email_do_tecnico(t: dict) -> str:
+    """A parte do e-mail antes do `@`, só dígitos. Vazio quando não é número."""
+    email = (t.get("email") or "").strip()
+    local = email.split("@")[0] if "@" in email else ""
+    return local if local.isdigit() else ""
+
+
 def _simples(texto: str) -> str:
-    """Nome sem acento, sem caixa e sem espaço dobrado, só para comparar."""
+    """Nome sem acento, sem caixa e sem espaço dobrado, só para a mensagem."""
     sem_acento = unicodedata.normalize("NFKD", texto or "")
     sem_acento = "".join(c for c in sem_acento if not unicodedata.combining(c))
     return " ".join(sem_acento.upper().split())
 
 
-def _escolher_vinculo(tecnicos: list, nome: str | None) -> tuple[dict | None, str]:
+def _quem_tem(tecnicos: list) -> list:
+    """Como a OS descreve os técnicos dela, para a recusa dizer algo útil."""
+    return [{"nome": t.get("nomeTecnico"), "email": t.get("email")}
+            for t in tecnicos]
+
+
+def _escolher_vinculo(tecnicos: list, telefone: str | None,
+                      nome: str | None = None) -> tuple[dict | None, str]:
     """Qual `ordemServicoxTecnico` recebe o compromisso.
 
-    🚨 NUNCA ESCOLHE NO ESCURO. Com nome, casa pelo nome; sem nome, só aceita
-    quando há um único técnico livre. Em qualquer outro caso devolve o motivo,
-    e quem chama mostra os nomes para a pessoa decidir — agendar no técnico
-    errado é pior do que não agendar.
+    🔵 Decisão dele, 21/10: *"a validação será pelo e-mail do técnico"*. O
+    nome **não** casa nada — e a medição explica por quê: dos 179 contatos de
+    técnico que casam por telefone, **21 têm nome diferente** do cadastro do
+    Harmonit, e quase todos os nomes do MoviZap carregam um sufixo de cidade
+    (`Franck | Campinas - SP`). Casar por nome recusaria praticamente todos.
+
+    🚨 NUNCA ESCOLHE NO ESCURO. Sem telefone, só aceita quando há um único
+    técnico livre na OS; em qualquer outro caso devolve o motivo com os nomes
+    e e-mails que a OS tem -- agendar no técnico errado é pior que não
+    agendar.
     """
     livres = [t for t in tecnicos if not t.get("agendamentoId")]
-    if nome:
-        alvo = _simples(nome)
-        casados = [t for t in tecnicos if _simples(t.get("nomeTecnico") or "") == alvo]
+    chave = _chave_do_telefone(telefone)
+    if chave:
+        casados = [t for t in tecnicos if _email_do_tecnico(t) == chave]
         if not casados:
-            return None, (f"nenhum tecnico da OS se chama {nome!r} "
-                          f"(tem: {[t.get('nomeTecnico') for t in tecnicos]})")
+            return None, (
+                f"nenhum tecnico desta OS tem o telefone {chave} no e-mail do "
+                f"cadastro do Harmonit (tem: {_quem_tem(tecnicos)})")
         livre = [t for t in casados if not t.get("agendamentoId")]
         if not livre:
-            return None, (f"{nome} ja tem compromisso nesta OS "
-                          f"(agendamentoId {casados[0].get('agendamentoId')})")
+            return None, (f"{casados[0].get('nomeTecnico')} ja tem compromisso "
+                          f"nesta OS (agendamentoId "
+                          f"{casados[0].get('agendamentoId')})")
         return livre[0], ""
     if len(livres) == 1:
         return livres[0], ""
     if not livres:
         return None, "todos os tecnicos desta OS ja tem compromisso"
-    return None, (f"a OS tem {len(livres)} tecnicos sem compromisso "
-                  f"({[t.get('nomeTecnico') for t in livres]}) -- diga qual")
+    return None, (f"a OS tem {len(livres)} tecnicos sem compromisso e o contato "
+                  f"nao tem telefone para casar ({_quem_tem(livres)})")
 
 
 def _uma_os(bruto) -> dict:
@@ -287,7 +330,8 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
         return {"ok": False, "numero_os": entrada.numero_os,
                 "motivo": "esta OS nao tem tecnico vinculado no Harmonit"}
 
-    vinculo, motivo = _escolher_vinculo(tecnicos, entrada.tecnico_nome)
+    vinculo, motivo = _escolher_vinculo(tecnicos, entrada.tecnico_telefone,
+                                        entrada.tecnico_nome)
     if not vinculo:
         return {"ok": False, "numero_os": entrada.numero_os, "motivo": motivo}
 
@@ -332,6 +376,41 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
         "ok": True,
         "numero_os": entrada.numero_os,
         "agendamento_id": agendamento_id,
+        # 🔵 O nome que vale é o do cadastro do Harmonit, não o do contato
+        # do WhatsApp: *"mesmo que nomeiem errado, ele vai trazer no orcamento
+        # o nome do cadastro harmonit"*.
         "tecnico": vinculo.get("nomeTecnico"),
+        "tecnico_email": vinculo.get("email"),
         "janela": novo.get("agendamentoOS") or {},
     }
+
+
+@router.get("/tecnico-por-telefone")
+async def tecnico_por_telefone(telefone: str = Query(..., min_length=8)):
+    """O técnico do cadastro do Harmonit, achado pelo telefone.
+
+    🔵 Decisão dele, 21/10: o orçamento imprime **o nome do cadastro do
+    Harmonit**, e não o do contato de WhatsApp -- *"mesmo que nomeiem errado,
+    ele vai trazer no orcamento o nome do cadastro harmonit"*.
+
+    Lê a tabela `tecnicos`, sincronizada do Harmonit (200 linhas), e não a OS:
+    o orçamento pode ser emitido antes de qualquer OS ser escolhida.
+
+    ⚠️ Devolve `{"achado": false}` em vez de 404: **não achar é resposta**, e
+    quem chama cai no nome do contato, avisando na tela.
+    """
+    chave = _chave_do_telefone(telefone)
+    if not chave:
+        return {"achado": False, "motivo": "telefone curto demais para casar"}
+    with storage._connect() as conn:
+        linhas = conn.execute(
+            "SELECT tecnico_id, nome, email, excluido FROM tecnicos "
+            " WHERE email LIKE ?", (f"{chave}@%",)).fetchall()
+    if not linhas:
+        return {"achado": False, "motivo": f"nenhum tecnico com o telefone {chave}"}
+    # Ativo primeiro: o cadastro guarda excluídos, e o nome de um excluído
+    # continua certo, mas o ativo é quem está trabalhando.
+    linhas.sort(key=lambda l: l[3] or 0)
+    tecnico_id, nome, email, excluido = linhas[0]
+    return {"achado": True, "tecnico_id": tecnico_id, "nome": nome,
+            "email": email, "excluido": bool(excluido)}
