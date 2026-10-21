@@ -98,7 +98,14 @@ async def main(chamar: bool):
                   "inventar dado. Parei, e isto e um achado do teste.")
             return
 
-        vinculo = tecnicos[0]
+        # 🚨 PREFERE O TECNICO SEM AGENDAMENTO (`agendamentoId: 0`). Medido em
+        # 21/10: reagendar o que ja existe devolve
+        # `Erro ao alterar Evento: TecnicoJaAgendado` -- e a pergunta do
+        # relatorio e se a rota CRIA, nao se ela remarca por cima.
+        livres = [t for t in tecnicos if not t.get("agendamentoId")]
+        vinculo = livres[0] if livres else tecnicos[0]
+        print(f"\n== TECNICO ESCOLHIDO: {vinculo.get('nomeTecnico')} "
+              f"(agendamentoId {vinculo.get('agendamentoId')}) ==")
         ja = vinculo.get("agendamentoOS") or {}
         # 🚨 USA O AGENDAMENTO QUE JA EXISTE (`id` real, nao 0): a OS 16991 ja
         # nasceu com um compromisso (`agendamentoId` 930447, `agendado:false`),

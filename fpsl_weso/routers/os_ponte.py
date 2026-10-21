@@ -25,11 +25,14 @@ nas 572 OS da base. Formato conferido: 0 nulas, 0 fora de `__/__/____`.
 import hmac
 import json
 import logging
-from datetime import date, timedelta
+import unicodedata
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from ..config import settings
+from ..harmonit_client import harmonit_get, harmonit_post
 from .. import storage
 
 log = logging.getLogger(__name__)
@@ -176,4 +179,159 @@ async def clientes_com_os(
     return {
         "meses": meses,
         "clientes": [{"cliente_id": cid, "quantas": q} for cid, q in linhas],
+    }
+
+
+# ---------------------------------------------------------------------------
+# A ESCRITA — 🔵 ligada por decisão dele em 21/10, depois do relatório do teste
+# na OS 16991: *"pode deixar ligado e seguir com o plano"*.
+# ---------------------------------------------------------------------------
+#
+# 🚨 O QUE O TESTE MEDIU, e que desenha esta rota (OS 16991, Velasco):
+#   · `id: 0` **CRIA** — nasceu o agendamento 944767 (Aline, 23/10 09:00-11:00),
+#     conferido RELENDO a OS, não pelo retorno da chamada;
+#   · mandar o `id` de um compromisso que já existe **RECUSA**, com
+#     `Erro ao alterar Evento: TecnicoJaAgendado`, e nada muda;
+#   · `agendado` continua `false` depois de agendar — o campo NÃO quer dizer
+#     "tem compromisso";
+#   · a data vai em ISO e volta em `dd/mm/aaaa`.
+#
+# 🚨 O MOVIZAP CONTINUA SENDO O DONO (decisão 7 dele): esta rota devolve a
+# recusa por extenso, quem chama grava o erro ao lado do compromisso, e o
+# agendamento do MoviZap NÃO depende disto dar certo.
+
+
+class AgendarTecnicoEntrada(BaseModel):
+    numero_os: int
+    inicio: datetime
+    fim: datetime | None = None
+    # O nome do técnico no MoviZap. ⚠️ É o único elo que existe: o MoviZap
+    # conhece o técnico como CONTATO de WhatsApp e o Harmonit como usuário da
+    # OS — não há tabela ligando os dois. Por isso o casamento é por nome, e
+    # por isso ele falha em voz alta em vez de escolher sozinho.
+    tecnico_nome: str | None = Field(default=None, max_length=200)
+
+
+def _simples(texto: str) -> str:
+    """Nome sem acento, sem caixa e sem espaço dobrado, só para comparar."""
+    sem_acento = unicodedata.normalize("NFKD", texto or "")
+    sem_acento = "".join(c for c in sem_acento if not unicodedata.combining(c))
+    return " ".join(sem_acento.upper().split())
+
+
+def _escolher_vinculo(tecnicos: list, nome: str | None) -> tuple[dict | None, str]:
+    """Qual `ordemServicoxTecnico` recebe o compromisso.
+
+    🚨 NUNCA ESCOLHE NO ESCURO. Com nome, casa pelo nome; sem nome, só aceita
+    quando há um único técnico livre. Em qualquer outro caso devolve o motivo,
+    e quem chama mostra os nomes para a pessoa decidir — agendar no técnico
+    errado é pior do que não agendar.
+    """
+    livres = [t for t in tecnicos if not t.get("agendamentoId")]
+    if nome:
+        alvo = _simples(nome)
+        casados = [t for t in tecnicos if _simples(t.get("nomeTecnico") or "") == alvo]
+        if not casados:
+            return None, (f"nenhum tecnico da OS se chama {nome!r} "
+                          f"(tem: {[t.get('nomeTecnico') for t in tecnicos]})")
+        livre = [t for t in casados if not t.get("agendamentoId")]
+        if not livre:
+            return None, (f"{nome} ja tem compromisso nesta OS "
+                          f"(agendamentoId {casados[0].get('agendamentoId')})")
+        return livre[0], ""
+    if len(livres) == 1:
+        return livres[0], ""
+    if not livres:
+        return None, "todos os tecnicos desta OS ja tem compromisso"
+    return None, (f"a OS tem {len(livres)} tecnicos sem compromisso "
+                  f"({[t.get('nomeTecnico') for t in livres]}) -- diga qual")
+
+
+def _uma_os(bruto) -> dict:
+    d = bruto.get("data") if isinstance(bruto, dict) and "data" in bruto else bruto
+    if isinstance(d, list):
+        d = d[0] if d else None
+    return d or {}
+
+
+def _cliente_da_os(numero_os: int) -> int | None:
+    """O `cliente_id`, da nossa própria base.
+
+    ⚠️ O corpo da OS do Harmonit **não traz `clienteId`** (medido em 21/10: as
+    39 chaves do retorno não incluem nenhuma). Quem tem esse número é a
+    `os_historico`, varrida a cada 5 min — e é dela que ele sai.
+    """
+    with storage._connect() as conn:
+        linha = conn.execute(
+            "SELECT cliente_id FROM os_historico WHERE numero_os = ?",
+            (numero_os,)).fetchone()
+    return linha[0] if linha else None
+
+
+@router.post("/agendar-tecnico")
+async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
+    """Cria o compromisso na OS do Harmonit. 🚨 A prova é RELER a OS."""
+    os_dict = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": entrada.numero_os}))
+    if not os_dict:
+        raise HTTPException(
+            status_code=404,
+            detail=f"OS {entrada.numero_os} nao encontrada no Harmonit")
+
+    # ⚠️ A chave é `tecnico`, no SINGULAR, e é uma lista. Chutar o nome fez a
+    # primeira versão do script de medição relatar "sem técnico" numa OS com
+    # três — achado por rodar, não por ler o swagger.
+    tecnicos = os_dict.get("tecnico") or []
+    if not tecnicos:
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": "esta OS nao tem tecnico vinculado no Harmonit"}
+
+    vinculo, motivo = _escolher_vinculo(tecnicos, entrada.tecnico_nome)
+    if not vinculo:
+        return {"ok": False, "numero_os": entrada.numero_os, "motivo": motivo}
+
+    cliente_id = _cliente_da_os(entrada.numero_os)
+    if not cliente_id:
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": "nao sei o cliente desta OS (ela nao esta na os_historico)"}
+
+    fim = entrada.fim or (entrada.inicio + timedelta(hours=2))
+    corpo = {
+        # 0 CRIA. Com id existente a rota recusa — medido em 21/10.
+        "id": 0,
+        "clienteId": cliente_id,
+        "ordemServicoId": os_dict.get("id"),
+        "ordemServicoxTecnicoId": vinculo.get("id"),
+        "inicioCompromisso": entrada.inicio.replace(tzinfo=None).isoformat(),
+        "fimCompromisso": fim.replace(tzinfo=None).isoformat(),
+    }
+    try:
+        await harmonit_post("/OrdemServico/AgendarTecnico", corpo)
+    except HTTPException as e:
+        # A rota é crua: a recusa vem como texto, e é esse texto que ajuda.
+        log.warning("AgendarTecnico recusou a OS %s: %s", entrada.numero_os, e.detail)
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": str(e.detail), "tecnico": vinculo.get("nomeTecnico")}
+    except Exception as e:  # noqa: BLE001 -- rota crua, qualquer coisa pode vir
+        log.warning("AgendarTecnico falhou na OS %s: %s", entrada.numero_os, e)
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": f"{type(e).__name__}: {e}"}
+
+    # 🚨 RELÊ A OS: o retorno da rota não é prova de que gravou.
+    depois = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": entrada.numero_os}))
+    novo = next((t for t in depois.get("tecnico") or []
+                 if t.get("id") == vinculo.get("id")), {})
+    agendamento_id = novo.get("agendamentoId") or 0
+    if not agendamento_id:
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": "a rota aceitou e a OS continua sem compromisso ao reler"}
+    return {
+        "ok": True,
+        "numero_os": entrada.numero_os,
+        "agendamento_id": agendamento_id,
+        "tecnico": vinculo.get("nomeTecnico"),
+        "janela": novo.get("agendamentoOS") or {},
     }
