@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     datascope_base_url: str = "https://www.mydatascope.com/api/external"
     datascope_api_key:  str = ""
 
+    # 21/10: a ponte de leitura de OS para o MoviZap (`routers/os_ponte.py`).
+    # 🚨 CHAVE PRÓPRIA, não a `fpsl_secret_key` da API WESO: compartilhar a
+    # mesma entre dois consumidores faz rotacionar um derrubar o outro.
+    # Vazia desliga a ponte -- `verificar_segredo` recusa tudo com 401.
+    ponte_fpsl_segredo: str = ""
+
     # Painel de geração de OS por contrato — login básico até o Google OAuth
     # entrar em produção (previsto ~20/07). Trocar/desligar quando isso acontecer.
     painel_admin_login: str = "admin"
