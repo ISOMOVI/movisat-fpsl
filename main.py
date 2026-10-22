@@ -31,6 +31,7 @@ from fpsl_weso.services.sync_inadimplencia import loop_inadimplencia
 from fpsl_weso.services.conferencia_fechamento import loop_conferencia_fechamento
 from fpsl_weso.services.contratos_auditoria import loop_contratos_auditoria
 from fpsl_weso.services.sync_tecnicos import loop_sync_tecnicos
+from fpsl_weso.services.sync_tipos_os import loop_sync_tipos_os
 from fpsl_weso.services.fechamento import loop_atualizar_cartoes
 from fpsl_weso.painel.routers import fechamento_router as painel_fechamento_router
 from fpsl_weso.painel.routers import conferencia_fechamento_router as painel_conferencia_fechamento_router
@@ -168,6 +169,12 @@ async def lifespan(app: FastAPI):
     # da WESO.
     asyncio.create_task(loop_contratos_auditoria())
     asyncio.create_task(loop_sync_tecnicos())
+    # 🆕 21/10, ponta 1 do plano de Agendamentos: o dicionário de nomes de
+    # tipo de OS, para o cabeçalho da mensagem que sai para o cliente. 1×/dia,
+    # como o sync de técnicos -- nome de tipo muda em cadastro, não em
+    # operação, e consultar o Harmonit por mensagem poria a tela do operador
+    # na frente de uma rota lenta.
+    asyncio.create_task(loop_sync_tipos_os())
     asyncio.create_task(loop_atualizar_cartoes())
     yield
     await stop_datascope_client()

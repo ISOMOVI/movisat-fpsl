@@ -87,29 +87,51 @@ class TestEscolherOTecnico:
         assert "998116168" in motivo
         assert "997394026@movisat.com.br" in motivo
 
-    def test_tecnico_JA_AGENDADO_e_recusado_dizendo_qual(self):
+    def test_tecnico_JA_AGENDADO_e_ACEITO(self):
+        """🔵 21/10, segunda decisao dele: *"a barreira de agendamento do
+        tecnico nao deve existir, no harmonit ja foi liberada tbm"*.
+
+        🚨 ESTE TESTE AFIRMAVA O CONTRARIO ATE 21/10, e a troca e deliberada:
+        a barreira era DAQUI, e foi ela que derrubou o teste dele das 15:11.
+        Quem decide agora e o Harmonit, e a recusa dele chega por extenso.
+        """
         ocupado = dict(self.FRANCK, agendamentoId=944780)
         achado, motivo = os_ponte._escolher_vinculo([ocupado], "+5519997394026")
-        assert achado is None
-        assert "944780" in motivo
+        assert achado["id"] == 2
+        assert motivo == ""
 
-    def test_sem_telefone_so_aceita_quando_ha_UM_livre(self):
-        """🚨 Nunca escolhe no escuro."""
+    def test_prefere_o_vinculo_SEM_compromisso_quando_ha_os_dois(self):
+        """⚠️ Criar onde nao ha e mais barato que mexer onde ha -- mas e
+        preferencia, nao recusa."""
+        tecnicos = [dict(self.FRANCK, id=2, agendamentoId=944780),
+                    dict(self.FRANCK, id=3)]
+        achado, _ = os_ponte._escolher_vinculo(tecnicos, "+5519997394026")
+        assert achado["id"] == 3
+
+    def test_sem_telefone_so_aceita_quando_a_OS_TEM_UM_TECNICO(self):
+        """🚨 Nunca escolhe no escuro -- esta guarda NAO caiu."""
         achado, _ = os_ponte._escolher_vinculo([self.FRANCK], None)
         assert achado["id"] == 2
 
-    def test_sem_telefone_e_com_dois_livres_recusa(self):
+    def test_sem_telefone_e_com_dois_tecnicos_recusa(self):
         achado, motivo = os_ponte._escolher_vinculo(
             [self.IAGO, self.FRANCK], None)
         assert achado is None
         assert "nao tem telefone" in motivo
 
-    def test_todos_ocupados_recusa(self):
+    def test_dois_tecnicos_JA_AGENDADOS_recusa_por_AMBIGUIDADE_e_nao_por_ocupacao(self):
+        """🚨 A conta e sobre TODOS os tecnicos, nao so os livres.
+
+        Contar so os livres faria a OS de tres tecnicos, dois ja agendados,
+        escolher o terceiro sozinha e em silencio -- a barreira cairia junto
+        com a guarda de ambiguidade, e so a barreira devia cair.
+        """
         ocupados = [dict(self.IAGO, agendamentoId=1),
                     dict(self.FRANCK, agendamentoId=2)]
         achado, motivo = os_ponte._escolher_vinculo(ocupados, None)
         assert achado is None
-        assert "ja tem compromisso" in motivo
+        assert "nao tem telefone nem vinculo" in motivo
+        assert "ja tem compromisso" not in motivo
 
 
 class TestOVinculoGravadoManda:
@@ -151,12 +173,15 @@ class TestOVinculoGravadoManda:
         assert "7493" in motivo
         assert "Franck" in motivo
 
-    def test_vinculado_e_JA_AGENDADO_diz_qual(self):
+    def test_vinculado_e_JA_AGENDADO_e_ACEITO(self):
+        """🔵 A barreira caiu em 21/10 (ver `TestEscolherOTecnico`). Este e
+        o caso exato do teste dele das 15:11: o 6168 esta vinculado ao Iago,
+        que ja tinha o compromisso 930447 na OS 16991."""
         ocupado = dict(self.IAGO, agendamentoId=930447)
         achado, motivo = os_ponte._escolher_vinculo(
             [ocupado], telefone=None, tecnico_id=7493)
-        assert achado is None
-        assert "930447" in motivo
+        assert achado["usuarioId"] == 7493
+        assert motivo == ""
 
 
 class TestORecorteDasOS:
@@ -182,3 +207,60 @@ class TestORecorteDasOS:
         assert os_ponte._placas("isto nao e json") == []
         assert os_ponte._placas(None) == []
         assert os_ponte._placas('{"nao": "e lista"}') == []
+
+
+class TestODicionarioDeTiposDeOS:
+    """🆕 21/10, ponta 1 do plano: o nome do tipo, para o cabeçalho da mensagem.
+
+    🚨 O NOME NÃO EXISTE PARA TODA OS, e isto é o ponto: a lista do Harmonit
+    tem **5 tipos**, que cobrem **374 das 547** OS não excluídas. As outras
+    **173** estão em nove ids fora da lista (57, 76, 73, 72, 55, 77, 75, 576,
+    814) -- tipos removidos ou renomeados lá. O `os_router` já registrava o
+    caso do 55 desde 14/08: *"id fixo em código apodrece em silêncio"*.
+    """
+
+    def test_a_lista_crua_do_harmonit_e_aceita(self):
+        """⚠️ Medido em 21/10: esta rota devolve LISTA, sem embrulho `data`."""
+        from fpsl_weso.services import sync_tipos_os
+        bruto = [{"id": 2, "codigo": 2, "descricao": "Contrato"}]
+        assert sync_tipos_os._lista(bruto) == bruto
+
+    def test_o_embrulho_data_tambem_e_aceito(self):
+        """Outras rotas do Harmonit embrulham: tratar os dois custa 3 linhas e
+        evita a rotina parar de achar tipo no dia em que padronizarem."""
+        from fpsl_weso.services import sync_tipos_os
+        assert sync_tipos_os._lista({"data": [{"id": 2, "descricao": "C"}]}) \
+            == [{"id": 2, "descricao": "C"}]
+        assert sync_tipos_os._lista(None) == []
+        assert sync_tipos_os._lista("isto nao e lista") == []
+
+    def test_base_sem_a_tabela_nao_derruba_a_consulta(self):
+        """⚠️ Base antiga: sem dicionário, nenhum nome -- e nenhuma exceção.
+
+        A ponte lê o dicionário no meio de montar a resposta das OS; estourar
+        ali faria a tela dizer "não deu para consultar as OS deste cliente"
+        por causa de um rótulo que é enfeite do cabeçalho.
+        """
+        import sqlite3
+
+        from fpsl_weso import storage
+        with sqlite3.connect(":memory:") as vazia:
+            assert storage.nomes_dos_tipos_os(vazia) == {}
+
+    def test_o_dicionario_devolve_ausencia_para_tipo_fora_da_lista(self):
+        """🚨 A regra inteira da ponta 1: tipo sem nome -> `None`, e quem monta
+        a mensagem OMITE o segmento. Imprimir o número não diz nada ao cliente,
+        e inventar rótulo é tela que mente."""
+        import sqlite3
+
+        from fpsl_weso import storage
+        with sqlite3.connect(":memory:") as conn:
+            conn.execute("CREATE TABLE tipos_os (tipo_id INTEGER PRIMARY KEY,"
+                         " nome TEXT NOT NULL, codigo INTEGER,"
+                         " atualizado_em TEXT NOT NULL)")
+            conn.execute("INSERT INTO tipos_os VALUES (2, 'Contrato', 2, 'x')")
+            d = storage.nomes_dos_tipos_os(conn)
+        assert d.get(2) == "Contrato"
+        # 55 é o tipo morto que o FPSL já conhecia; 57 e 76 são os dois mais
+        # numerosos entre os nove de fora (81 e 39 OS em 21/10).
+        assert d.get(55) is None and d.get(57) is None and d.get(76) is None

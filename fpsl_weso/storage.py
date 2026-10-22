@@ -332,6 +332,21 @@ def init_db():
         contratos_tabelas.criar(conn)
         contratos_tabelas.migrar(conn)
 
+        # 🆕 21/10: o NOME de cada tipo de OS, para o cabecalho da mensagem do
+        # agendamento (ponta 1 do plano). A rotina `sync_tipos_os` a preenche
+        # 1x/dia. 🚨 DICIONARIO, NAO AUTORIDADE: 173 das 547 OS tem `tipo`
+        # fora da lista do Harmonit (nove ids, medido em 21/10), e para essas
+        # a resposta certa e "nao sei o nome" -- quem monta a mensagem omite o
+        # segmento em vez de inventar rotulo.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tipos_os (
+                tipo_id       INTEGER PRIMARY KEY,
+                nome          TEXT NOT NULL,
+                codigo        INTEGER,
+                atualizado_em TEXT NOT NULL
+            )
+        """)
+
 
 # ── veiculos ──────────────────────────────────────────────────────────────────
 
@@ -1433,6 +1448,42 @@ def novo_lote() -> str:
     """Identificador da rodada. Curto o bastante para caber na tela."""
     return uuid.uuid4().hex[:12]
 
+
+
+# ── tipos de OS ──────────────────────────────────────────────────────────────
+
+async def salvar_tipo_os(tipo_id: int, nome: str, codigo=None) -> None:
+    """Grava o nome de um tipo de OS. Chamada pela rotina `sync_tipos_os`."""
+    def _run():
+        agora = datetime.now(timezone.utc).isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO tipos_os "
+                "(tipo_id, nome, codigo, atualizado_em) VALUES (?, ?, ?, ?)",
+                (tipo_id, nome, codigo, agora),
+            )
+    await asyncio.get_running_loop().run_in_executor(None, _run)
+
+
+def nomes_dos_tipos_os(conn) -> dict[int, str]:
+    """`tipo_id` -> nome, do que o Harmonit soube nomear na ultima varredura.
+
+    🚨 RECEBE A CONEXAO e e SINCRONA de proposito: quem a usa e a ponte de OS,
+    que ja esta dentro de um `with storage._connect()` montando a resposta.
+    Abrir uma segunda conexao ali seria abrir duas vezes o mesmo arquivo por
+    requisicao.
+
+    ⚠️ Tipo que nao esta aqui NAO existe no dicionario, e a resposta certa e
+    ausencia: 173 das 547 OS estao nessa situacao (nove ids fora da lista,
+    medido em 21/10). Quem monta a mensagem omite o segmento.
+    """
+    try:
+        return {r[0]: r[1] for r in conn.execute(
+            "SELECT tipo_id, nome FROM tipos_os").fetchall()}
+    except sqlite3.OperationalError:
+        # Base antiga, antes da tabela existir: sem dicionario, nenhum nome --
+        # e nenhuma consulta derrubada por causa disso.
+        return {}
 
 
 # ── tecnicos ─────────────────────────────────────────────────────────────────

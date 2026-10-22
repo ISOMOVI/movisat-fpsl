@@ -37,6 +37,7 @@ LACOS: dict[str, tuple[str, int]] = {
     "conferencia_fechamento": ("Conferência de Fechamento", 3600),
     "contratos_auditoria": ("Auditoria de Contratos", 21600),
     "sync_tecnicos": ("Sync de técnicos", 86400),
+    "sync_tipos_os": ("Sync de tipos de OS", 86400),
     "cartoes_fechamento": ("Semáforo dos cartões", 3600),
 }
 

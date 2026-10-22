@@ -422,3 +422,99 @@ Retorna o histórico completo de mudanças de status.
 
 7. Finalizar OS (mudar status via SalvarOrdemServico com novo situacaoId)
 ```
+
+---
+
+## Medido ao vivo em 21/10 — agendamento, vínculo e endereço
+
+> Tudo abaixo foi medido na conta real, a maior parte só lendo. As escritas
+> aconteceram na **OS 16991** (Velasco), que o usuário liberou para teste.
+
+### `TecnicoJaAgendado` é do VÍNCULO, não do técnico
+
+`AgendarTecnico` com `id: 0` recusa quando a linha `ordemServicoxTecnico`
+escolhida **já tem** `agendamentoId`. Não é limite por técnico: lendo as 547 OS
+da base, o mesmo `usuarioId` tem vários compromissos, inclusive **dois na mesma
+OS** (14316 na OS 16921: agendamentos 935886 e 938166), e três no **mesmo
+horário** em OS diferentes (8528, 08/10 às 08:00).
+
+**O caminho que funciona**, provado na 16991: `SalvarTecnicoOrdemServico` cria
+uma segunda linha de vínculo para o mesmo técnico, e `AgendarTecnico` com
+`id: 0` nessa linha nova grava. Vínculo 1143048 → compromisso 945220.
+
+### O endereço da OS tem oito campos, e a escrita é da OS INTEIRA
+
+A OS devolve `cep` (8 dígitos, **sem máscara**, ao contrário do exemplo da doc
+acima), `endereco` (a rua), `numero`, `bairro`, `cidade`, `uf`, `complemento` e
+`localServico`.
+
+Não existe rota de "atualizar endereço": é `SalvarOrdemServico`, a OS completa.
+🚨 **Os nomes de leitura e de escrita não batem** — `tipo`→`tipoId`,
+`localServico`→`localServicoId`, `prioridade`→`prioridadeId`,
+`problema`→`problemaId`, `produtoId`→`produtoServicoId`,
+`descricao`→`descricaoDetalhada`, `dataPrevisao`→`dataPrevisaoEntrega` (e de
+`dd/mm/aaaa HH:MM:SS` para ISO).
+
+⚠️ **`parceiro` é o `clienteId`** — 998063 na 16991. A nota antiga de que a OS
+não traz o cliente valia para a chave `clienteId`, que de fato não existe no
+retorno.
+
+⚠️ `checkList`, `materiais`, `oficina` e `tecnico` são listas e **não vão** no
+corpo da escrita; cada uma tem rota própria. Uma escrita no-op na 16991 (gravar
+o mesmo endereço de volta) deixou as quatro intactas.
+
+### Não há consulta de CEP no Harmonit
+
+Conferido nas 17 rotas de OS e nas de dados de suporte. Quem precisa de CEP usa
+fonte externa — o MoviZap usa o ViaCEP, pelo backend.
+
+### Tipos de OS: 5 na lista, e nove ids fora dela
+
+`/TipoOrdemServico/ObterListaTipoOrdemServico` devolve **lista crua** (sem
+embrulho `data`) com 5 tipos, que cobrem **374 das 547** OS não excluídas. Os
+outros **173** estão em nove ids que não constam da lista — 57, 76, 73, 72, 55,
+77, 75, 576, 814 — tipos removidos ou renomeados. O caso do 55 já estava
+registrado desde 14/08 em `os_router._resolver_cabecalho_por_nome`.
+
+### Os compromissos de teste que existem hoje na OS 16991
+
+🚨 Lista para não se confundirem com serviço real, e para serem apagados quando
+ele mandar:
+
+| agendamentoId | vínculo | técnico | janela | origem |
+|---|---|---|---|---|
+| 930447 | 1126373 | Iago | 05/10 15:22 | dele, antes desta frente |
+| 944767 | 1126522 | Aline | 23/10 09:00 | meu, teste da escrita (21/10 manhã) |
+| 944780 | 1130133 | Franck | 25/10 14:00 | meu, teste da escrita (21/10 manhã) |
+| 945219 | 1143047 | Iago | 29/10 08:00 | meu, teste da barreira (21/10 tarde) |
+| 945220 | 1143048 | Iago | 29/10 08:00 | meu, teste da barreira pela ponte |
+
+Os vínculos **1143047** e **1143048** também foram criados por esses testes.
+A OS teve o `numero` mudado de `S/N` para **26** (pedido dele) e o
+`solucaoTecnica` passou de `null` para `""` numa escrita no-op minha, antes de
+a causa ser corrigida.
+
+### 21/10, noite — o que passou a ter teste, e o que continua só medido
+
+🚨 **A auditoria do dia achou que as duas coisas mais delicadas desta página
+não tinham teste**: a escrita de endereço (que é escrever a OS inteira) e o
+segundo vínculo. As duas estavam provadas **ao vivo na OS 16991** — prova real,
+mas que não se repete sozinha: uma regressão passaria verde.
+
+`tests/teste_endereco_ponte.py` (20 testes, nenhum fala com o Harmonit) guarda
+agora:
+
+| O que | Por que estava em risco |
+|---|---|
+| `solucaoTecnica` vai **como está** | foi o `or ""` trocando `null` por `""` que o ensaio a seco pegou — e só pegou porque a escrita no-op comparou os 39 campos |
+| `dataPrevisao` → ISO, e **formato desconhecido grita** | devolver `None` em silêncio apagaria a previsão, que é 100% preenchida e é o prazo que a aba Operações mede |
+| `parceiro` ≠ `clienteId` | os nomes de leitura e de escrita não batem; usar o `parceiro` lido trocaria o cliente da OS |
+| CEP sem máscara | a doc do Harmonit mostra `"01000-000"`, o dado real vem `"19013180"` — duas formas na mesma coluna |
+| campo não enviado **não apaga** o que a OS tem | `None` no pedido é "não mexe" |
+| `_diferencas` acusa campo **fora** do endereço | é o que permite dizer `fora_do_endereco` por extenso |
+| o **segundo vínculo** é provado por **reler a OS** | o POST devolve um `osxTecId`, e confiar nele seria confiar no retorno em vez do estado |
+
+⚠️ **O que continua só medido, e não testado:** que o Harmonit aceita o corpo
+de escrita. Isso só a OS de verdade diz, e está registrado acima — por isso a
+rota tem o `conferir` (ensaio a seco), que é o jeito de medir de novo sem
+gravar.

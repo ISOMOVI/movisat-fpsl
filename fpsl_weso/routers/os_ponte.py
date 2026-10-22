@@ -127,6 +127,10 @@ async def os_por_cliente(
 
     with storage._connect() as conn:
         linhas = conn.execute("\n".join(sql), params).fetchall()
+        # 🆕 21/10, ponta 1 do plano: o dicionário de nomes de tipo, varrido
+        # 1×/dia pela rotina `sync_tipos_os`. Lido na mesma conexão, uma vez
+        # por requisição -- e não por linha.
+        nomes_de_tipo = storage.nomes_dos_tipos_os(conn)
 
     return {
         "cliente_id": cliente_id,
@@ -135,8 +139,16 @@ async def os_por_cliente(
             {
                 "numero_os": n,
                 # `tipo` é o ID do tipo no Harmonit, não o nome -- a base não
-                # guarda o nome, e inventar um seria tela que mente.
+                # guarda o nome na própria OS.
                 "tipo": tipo,
+                # 🚨 `tipo_nome` É NULO COM FREQUÊNCIA, e isso é resposta, não
+                # falha: 173 das 547 OS têm `tipo` fora da lista do Harmonit
+                # (nove ids, medido em 21/10 -- entre eles o 55, que o
+                # `os_router` já documentava como tipo morto desde 14/08).
+                # Quem monta a mensagem do agendamento OMITE o segmento do
+                # cabeçalho quando isto vem nulo; inventar rótulo seria tela
+                # que mente, e imprimir o número não diz nada ao cliente.
+                "tipo_nome": nomes_de_tipo.get(tipo),
                 "problema": problema,
                 "status_str": status,
                 "sem_situacao": status is None,
@@ -270,12 +282,22 @@ def _escolher_vinculo(tecnicos: list, telefone: str | None,
     Harmonit, e quase todos os nomes do MoviZap carregam um sufixo de cidade
     (`Franck | Campinas - SP`). Casar por nome recusaria praticamente todos.
 
-    🚨 NUNCA ESCOLHE NO ESCURO. Sem telefone, só aceita quando há um único
-    técnico livre na OS; em qualquer outro caso devolve o motivo com os nomes
-    e e-mails que a OS tem -- agendar no técnico errado é pior que não
-    agendar.
+    🚨 NUNCA ESCOLHE NO ESCURO. Sem telefone, só aceita quando a OS tem um
+    único técnico; em qualquer outro caso devolve o motivo com os nomes e
+    e-mails que a OS tem -- agendar no técnico errado é pior que não agendar.
+
+    🔵 21/10, SEGUNDA DECISÃO DELE: **ter compromisso não barra mais nada**
+    -- *"a barreira de agendamento do tecnico não deve existir, no harmonit ja
+    foi liberada tbm"*. A barreira era DAQUI, não do Harmonit: este arquivo
+    recusava antes de chamar, e foi o que derrubou o teste dele das 15:11
+    (*"Iago Santos do Ó Souza ja tem compromisso nesta OS, agendamentoId
+    930447"*). Agora quem decide é o Harmonit, e a recusa dele chega por
+    extenso.
+
+    ⚠️ O QUE SOBROU DA GUARDA, e tem de sobrar: **ambiguidade**. "Vários
+    técnicos na OS e nenhuma pista de qual" continua sendo recusa. O que caiu
+    foi `agendamentoId`, não o cuidado de não escolher no escuro.
     """
-    livres = [t for t in tecnicos if not t.get("agendamentoId")]
 
     # 1º o vínculo gravado, que é identidade e não semelhança.
     if tecnico_id:
@@ -283,12 +305,11 @@ def _escolher_vinculo(tecnicos: list, telefone: str | None,
         if not casados:
             return None, (f"o tecnico {tecnico_id} vinculado a esta conversa nao "
                           f"esta nesta OS (tem: {_quem_tem(tecnicos)})")
+        # ⚠️ Prefere o vínculo SEM compromisso quando o mesmo usuário aparece
+        # duas vezes na OS: criar onde não há é mais barato que mexer onde há.
+        # Mas ter compromisso **não recusa** -- ver o docstring.
         livre = [t for t in casados if not t.get("agendamentoId")]
-        if not livre:
-            return None, (f"{casados[0].get('nomeTecnico')} ja tem compromisso "
-                          f"nesta OS (agendamentoId "
-                          f"{casados[0].get('agendamentoId')})")
-        return livre[0], ""
+        return (livre or casados)[0], ""
 
     chave = _chave_do_telefone(telefone)
     if chave:
@@ -298,17 +319,17 @@ def _escolher_vinculo(tecnicos: list, telefone: str | None,
                 f"nenhum tecnico desta OS tem o telefone {chave} no e-mail do "
                 f"cadastro do Harmonit (tem: {_quem_tem(tecnicos)})")
         livre = [t for t in casados if not t.get("agendamentoId")]
-        if not livre:
-            return None, (f"{casados[0].get('nomeTecnico')} ja tem compromisso "
-                          f"nesta OS (agendamentoId "
-                          f"{casados[0].get('agendamentoId')})")
-        return livre[0], ""
-    if len(livres) == 1:
-        return livres[0], ""
-    if not livres:
-        return None, "todos os tecnicos desta OS ja tem compromisso"
-    return None, (f"a OS tem {len(livres)} tecnicos sem compromisso e o contato "
-                  f"nao tem telefone para casar ({_quem_tem(livres)})")
+        return (livre or casados)[0], ""
+
+    # Sem telefone e sem vínculo: só quando não há dúvida de quem é.
+    # ⚠️ A conta agora é sobre TODOS os técnicos da OS, não só os sem
+    # compromisso: com a barreira fora, "livre" deixou de ser critério de
+    # escolha -- e contar só os livres faria a OS de três técnicos, dois já
+    # agendados, escolher o terceiro sozinha e em silêncio.
+    if len(tecnicos) == 1:
+        return tecnicos[0], ""
+    return None, (f"a OS tem {len(tecnicos)} tecnicos e o contato nao tem "
+                  f"telefone nem vinculo para casar ({_quem_tem(tecnicos)})")
 
 
 def _uma_os(bruto) -> dict:
@@ -330,6 +351,56 @@ def _cliente_da_os(numero_os: int) -> int | None:
             "SELECT cliente_id FROM os_historico WHERE numero_os = ?",
             (numero_os,)).fetchone()
     return linha[0] if linha else None
+
+
+async def _segundo_vinculo(os_dict: dict, vinculo: dict) -> tuple[dict | None, str]:
+    """Cria OUTRA linha `ordemServicoxTecnico` para o mesmo tecnico, e devolve-a.
+
+    🚨 ESTE E O CAMINHO DO PROPRIO HARMONIT, e nao uma invencao nossa. O que a
+    medicao de 21/10 mostrou, lendo as 547 OS da base sem escrever nada: o
+    mesmo tecnico tem varios compromissos, inclusive **dois na mesma OS** --
+    `usuarioId 14316` aparece duas vezes na OS 16921, com os agendamentos
+    935886 e 938166. Cada linha de vinculo guarda UM `agendamentoId`, e e por
+    isso que `AgendarTecnico` responde `TecnicoJaAgendado` quando o vinculo ja
+    tem um: a recusa e do VINCULO, nunca do tecnico.
+
+    🔵 21/10: foi assim que a decisao dele (*"a barreira de agendamento do
+    tecnico nao deve existir"*) virou comportamento. Provado ao vivo na OS
+    16991, que ele liberou: vinculo novo 1143047 -> compromisso 945219, com o
+    930447 dele intacto ao lado.
+
+    ⚠️ `tecnicoResponsavelPelaOS: False` de proposito: o vinculo novo e para
+    carregar um compromisso, e nao para tirar de alguem a responsabilidade pela
+    OS.
+
+    🚨 A PROVA E RELER A OS e achar um id de vinculo que nao existia antes --
+    o retorno da rota traz um `osxTecId`, mas confiar nele seria confiar no
+    retorno em vez do estado.
+    """
+    antes = {t_.get("id") for t_ in (os_dict.get("tecnico") or [])}
+    corpo = {
+        "osId": os_dict.get("id"),
+        "empresaId": os_dict.get("empresaId"),
+        "tecnicoId": vinculo.get("usuarioId"),
+        "tecnicoResponsavelPelaOS": False,
+    }
+    try:
+        await harmonit_post("/OrdemServico/SalvarTecnicoOrdemServico", corpo)
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        log.warning("SalvarTecnicoOrdemServico falhou na OS %s: %s",
+                    os_dict.get("numeroOrdem"), e)
+        return None, f"nao deu para criar o segundo vinculo do tecnico: {e}"
+
+    depois = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": os_dict.get("numeroOrdem")}))
+    novos = [t_ for t_ in (depois.get("tecnico") or [])
+             if t_.get("id") not in antes
+             and t_.get("usuarioId") == vinculo.get("usuarioId")]
+    if not novos:
+        return None, ("a rota aceitou e a OS continua com os mesmos vinculos ao "
+                      "reler -- o segundo vinculo nao foi criado")
+    return novos[0], ""
 
 
 @router.post("/agendar-tecnico")
@@ -360,6 +431,28 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
     if not cliente_id:
         return {"ok": False, "numero_os": entrada.numero_os,
                 "motivo": "nao sei o cliente desta OS (ela nao esta na os_historico)"}
+
+    # 🔵 A BARREIRA CAIU EM 21/10, e aqui está o que faz dela comportamento:
+    # se o vínculo escolhido já carrega um compromisso, cria-se OUTRO vínculo
+    # para o mesmo técnico e agenda-se nele. Sem isto, a decisão dele pararia
+    # na recusa do Harmonit (`TecnicoJaAgendado`), que é do vínculo e não do
+    # técnico -- medido na base e provado na 16991.
+    vinculo_criado = False
+    if vinculo.get("agendamentoId"):
+        novo_vinculo, motivo = await _segundo_vinculo(os_dict, vinculo)
+        if not novo_vinculo:
+            return {"ok": False, "numero_os": entrada.numero_os,
+                    "motivo": motivo, "tecnico": vinculo.get("nomeTecnico")}
+        vinculo = novo_vinculo
+        vinculo_criado = True
+
+    # 🚨 O QUE A PROVA PASSOU A SER, e por que ela TINHA de mudar junto com a
+    # barreira: antes, "a OS tem `agendamentoId`" só podia ser verdade depois
+    # da escrita, porque este arquivo recusava quando já havia. Com a barreira
+    # fora, isso é verdade ANTES de chamar -- e relatar sucesso por ele seria
+    # dizer "agendei" sobre o compromisso de outra pessoa. Então guarda-se o id
+    # de antes, e só vale se ele MUDOU.
+    id_antes = vinculo.get("agendamentoId") or 0
 
     fim = entrada.fim or (entrada.inicio + timedelta(hours=2))
     corpo = {
@@ -393,10 +486,27 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
     if not agendamento_id:
         return {"ok": False, "numero_os": entrada.numero_os,
                 "motivo": "a rota aceitou e a OS continua sem compromisso ao reler"}
+    if agendamento_id == id_antes:
+        # 🚨 Mesmo id que antes: o Harmonit aceitou a chamada e NADA mudou na
+        # OS. Isto é falha, e dizê-la por extenso é o que impede "achei que
+        # tinha ido" -- o compromisso que está lá é o de antes, não o nosso.
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": (f"a rota aceitou e o compromisso continua sendo o "
+                           f"mesmo de antes (agendamentoId {id_antes}) -- nada "
+                           f"foi criado"),
+                "tecnico": vinculo.get("nomeTecnico")}
     return {
         "ok": True,
         "numero_os": entrada.numero_os,
         "agendamento_id": agendamento_id,
+        # O id anterior vai na resposta: quando havia um, quem lê o rastro
+        # precisa saber que este técnico passou a ter DOIS compromissos nesta
+        # OS -- e não que o antigo virou este.
+        "agendamento_id_anterior": id_antes or None,
+        # Quando foi preciso criar o segundo vínculo, isto fica dito: a OS
+        # ganhou uma linha de técnico, e quem olhar a OS depois tem de saber
+        # por quê.
+        "vinculo_criado": vinculo_criado,
         # 🔵 O nome que vale é o do cadastro do Harmonit, não o do contato
         # do WhatsApp: *"mesmo que nomeiem errado, ele vai trazer no orcamento
         # o nome do cadastro harmonit"*.
@@ -474,4 +584,260 @@ async def listar_tecnicos(ativos: int = Query(1, ge=0, le=1)):
             }
             for tid, nome, email, excluido in linhas
         ]
+    }
+
+
+@router.get("/endereco")
+async def ler_endereco_da_os(numero_os: int = Query(..., ge=1)):
+    """O endereço estruturado da OS, ao vivo do Harmonit.
+
+    🔵 21/10: é o que pré-preenche os sete campos do modal de agendamento --
+    endereço vindo da fonte é melhor que endereço digitado.
+
+    ⚠️ VEM VAZIO COM FREQUÊNCIA, e isso é resposta: em 30 OS amostradas em
+    21/10, **7 têm os oito campos em branco**. `tem_endereco: false` é o que
+    diz à tela para oferecer o caminho do CEP em vez de mostrar campos vazios
+    sem explicação.
+    """
+    os_dict = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": numero_os}))
+    if not os_dict:
+        raise HTTPException(status_code=404,
+                            detail=f"OS {numero_os} nao encontrada no Harmonit")
+    endereco = {c: (os_dict.get(c) or None) for c in CAMPOS_DO_ENDERECO}
+    return {
+        "numero_os": numero_os,
+        "endereco": endereco,
+        # "Tem endereço" = tem rua. CEP sozinho não leva técnico a lugar nenhum.
+        "tem_endereco": bool(endereco.get("endereco")),
+    }
+
+
+# ---------------------------------------------------------------------------
+# O ENDEREÇO DA OS — 🔵 pedido dele, 21/10: *"vai enviar para o endereço da OS
+# e salvar ela lá no harmonit corretamente"*.
+# ---------------------------------------------------------------------------
+#
+# 🚨 NÃO EXISTE "ATUALIZAR SÓ O ENDEREÇO". A única rota de escrita é
+# `SalvarOrdemServico`, que a doc do Harmonit chama de *"criar/atualizar OS
+# completa"*: manda-se a OS inteira, e o que não for mandado se perde. Por
+# isso aqui a OS é LIDA, remontada campo a campo, gravada e **relida**, e a
+# resposta diz o que mudou de verdade.
+#
+# 🚨 OS NOMES DE LEITURA E DE ESCRITA NÃO BATEM, e é a armadilha central desta
+# rota (medido na OS 16991, em 21/10):
+#
+#   leitura        ->  escrita
+#   tipo           ->  tipoId
+#   localServico   ->  localServicoId
+#   prioridade     ->  prioridadeId
+#   problema       ->  problemaId
+#   produtoId      ->  produtoServicoId
+#   descricao      ->  descricaoDetalhada
+#   dataPrevisao   ->  dataPrevisaoEntrega  (⚠️ `dd/mm/aaaa HH:MM:SS` -> ISO)
+#
+# ⚠️ `clienteId` NÃO TEM O MESMO NOME NOS DOIS LADOS TAMBÉM: na leitura ele vem
+# como **`parceiro`** (998063 na 16991, igual ao `cliente_id` da nossa
+# `os_historico`). Medido em UMA OS, então a `os_historico` continua sendo a
+# fonte e o `parceiro` é só o reforço -- a base tem 547 OS e eu conferi uma.
+#
+# 🚨 ENSAIO A SECO ANTES DE GRAVAR: com `conferir: true` a rota monta tudo,
+# diz o que mudaria e **não escreve**. Foi assim que o remapeamento foi provado
+# na OS 16991 (que ele liberou) antes de a primeira escrita de verdade sair.
+
+# Os campos escalares que a OS devolve e que esta rota tem de preservar
+# inteiros. ⚠️ `checkList`, `materiais`, `oficina` e `tecnico` são LISTAS e
+# **não entram no corpo da escrita** -- a rota de OS não os aceita, e cada um
+# tem rota própria. Eles entram na conferência de depois: se uma lista encurtar
+# por causa desta escrita, isto grita.
+_ESCALARES_DA_OS = (
+    "bairro", "cep", "cidade", "complemento", "dataPrevisao", "descricao",
+    "empresaId", "endereco", "id", "isMobile", "localServico", "nomeVendedor",
+    "numero", "numeroOrdem", "origem", "parceiro", "parceiroCodigoStr",
+    "parceiroTelefone", "prioridade", "problema", "produtoCodigo",
+    "produtoDescricao", "produtoId", "servicoPorTecnico", "situacaoId",
+    "solucaoTecnica", "status", "statusStr", "tipo", "uf",
+    "usuaroIdResponsavel", "valorOutrasRetencoes", "valorRetAlimentacao",
+    "valorRetProdutosLimpeza", "valorRetValeTransporte", "vendedorId",
+)
+_LISTAS_DA_OS = ("checkList", "materiais", "oficina", "tecnico")
+
+# Os únicos campos que esta rota tem o direito de mudar.
+CAMPOS_DO_ENDERECO = ("cep", "endereco", "numero", "bairro", "cidade", "uf",
+                      "complemento")
+
+
+class EnderecoDaOS(BaseModel):
+    numero_os: int
+    # ⚠️ NENHUM É OBRIGATÓRIO, e os limites são os que a tela mostra. O teto
+    # real do Harmonit não está documentado: o que se mediu em 30 OS reais é o
+    # PISO (logradouro 41, bairro 54, cidade 21, número 4, complemento 9) --
+    # prova que cabe, não prova o limite. Estes tetos são escolha nossa,
+    # folgada sobre o piso medido.
+    cep: str | None = Field(default=None, max_length=9)
+    endereco: str | None = Field(default=None, max_length=80)
+    numero: str | None = Field(default=None, max_length=10)
+    bairro: str | None = Field(default=None, max_length=60)
+    cidade: str | None = Field(default=None, max_length=50)
+    uf: str | None = Field(default=None, max_length=2)
+    complemento: str | None = Field(default=None, max_length=40)
+    # 🚨 Ensaio a seco: monta, diz o que mudaria, NÃO grava.
+    conferir: bool = False
+
+
+def _so_digitos_cep(valor: str | None) -> str | None:
+    """O CEP vai como a base o guarda: 8 dígitos, SEM máscara.
+
+    ⚠️ A doc do Harmonit mostra `"01000-000"` com máscara e o dado real vem
+    `"19013180"` sem -- medido em 30 OS. Gravar com máscara criaria duas
+    formas do mesmo CEP na mesma coluna.
+    """
+    if valor is None:
+        return None
+    so = "".join(c for c in valor if c.isdigit())
+    return so or None
+
+
+def _previsao_iso(valor) -> str | None:
+    """`dd/mm/aaaa HH:MM:SS` -> ISO, que é o que a escrita espera.
+
+    🚨 DEVOLVER O TEXTO BRUTO AQUI APAGARIA A PREVISÃO DA OS: o campo é 100%
+    preenchido na base (572 de 572) e é por ele que a aba Operações mede
+    prazo.
+    """
+    if not valor:
+        return None
+    texto = str(valor).strip()
+    for forma in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(texto, forma).isoformat()
+        except ValueError:
+            continue
+    # Já vem ISO? Então segue. Formato desconhecido NÃO vira None em silêncio.
+    try:
+        return datetime.fromisoformat(texto).isoformat()
+    except ValueError:
+        log.warning("dataPrevisao em formato desconhecido: %r", texto)
+        raise HTTPException(
+            status_code=500,
+            detail=(f"nao sei converter a dataPrevisao {texto!r} desta OS, e "
+                    f"gravar sem ela apagaria a previsao"))
+
+
+def _corpo_de_escrita(os_dict: dict, cliente_id: int, novo: dict) -> dict:
+    """A OS inteira, remontada, com SÓ o endereço trocado."""
+    atual = {c: os_dict.get(c) for c in CAMPOS_DO_ENDERECO}
+    atual.update({k: v for k, v in novo.items() if v is not None})
+    return {
+        "id": os_dict.get("id"),
+        "empresaId": os_dict.get("empresaId"),
+        "numeroOrdem": os_dict.get("numeroOrdem"),
+        "dataPrevisaoEntrega": _previsao_iso(os_dict.get("dataPrevisao")),
+        "localServicoId": os_dict.get("localServico"),
+        "tipoId": os_dict.get("tipo"),
+        "prioridadeId": os_dict.get("prioridade"),
+        "situacaoId": os_dict.get("situacaoId"),
+        "problemaId": os_dict.get("problema"),
+        "produtoServicoId": os_dict.get("produtoId"),
+        "clienteId": cliente_id,
+        "descricaoDetalhada": os_dict.get("descricao"),
+        "status": os_dict.get("status"),
+        # 🚨 PASSA O VALOR COMO ESTA, sem `or ""`: a escrita no-op de 21/10
+        # provou que `or ""` troca `null` por string vazia nesta coluna -- e a
+        # comparacao de depois acusou. Diferenca pequena e diferenca.
+        "solucaoTecnica": os_dict.get("solucaoTecnica"),
+        "valorRetAlimentacao": os_dict.get("valorRetAlimentacao") or 0,
+        "valorRetProdutosLimpeza": os_dict.get("valorRetProdutosLimpeza") or 0,
+        "valorRetValeTransporte": os_dict.get("valorRetValeTransporte") or 0,
+        "vendedorId": os_dict.get("vendedorId") or 0,
+        "bairro": atual.get("bairro"),
+        "cep": _so_digitos_cep(atual.get("cep")),
+        "cidade": atual.get("cidade"),
+        "endereco": atual.get("endereco"),
+        "uf": atual.get("uf"),
+        "complemento": atual.get("complemento"),
+        "numero": atual.get("numero"),
+    }
+
+
+def _diferencas(antes: dict, depois: dict) -> dict:
+    """O que mudou de fato, lendo os dois retratos da OS."""
+    mudou = {}
+    for c in _ESCALARES_DA_OS:
+        if antes.get(c) != depois.get(c):
+            mudou[c] = {"antes": antes.get(c), "depois": depois.get(c)}
+    for c in _LISTAS_DA_OS:
+        a, d = len(antes.get(c) or []), len(depois.get(c) or [])
+        if a != d:
+            mudou[c] = {"antes": f"{a} itens", "depois": f"{d} itens"}
+    return mudou
+
+
+@router.post("/endereco")
+async def gravar_endereco_da_os(entrada: EnderecoDaOS):
+    """Grava o endereço na OS do Harmonit. 🚨 A prova é RELER e COMPARAR.
+
+    Devolve `{"ok", "mudou", "fora_do_endereco"}`. 🚨 `fora_do_endereco` é o
+    que importa: se esta escrita tocou qualquer campo que não é endereço, ela
+    diz quais, por extenso. Não dá para desfazer -- o que dá é não descobrir
+    seis meses depois.
+    """
+    antes = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": entrada.numero_os}))
+    if not antes:
+        raise HTTPException(
+            status_code=404,
+            detail=f"OS {entrada.numero_os} nao encontrada no Harmonit")
+
+    # ⚠️ A `os_historico` é a fonte do cliente; o `parceiro` da própria OS é o
+    # reforço quando ela não o tem (OS nova, ainda não varrida).
+    cliente_id = _cliente_da_os(entrada.numero_os) or antes.get("parceiro")
+    if not cliente_id:
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": "nao sei o cliente desta OS, e gravar sem ele a "
+                          "desvincularia do cadastro"}
+
+    novo = {c: getattr(entrada, c) for c in CAMPOS_DO_ENDERECO}
+    corpo = _corpo_de_escrita(antes, cliente_id, novo)
+
+    if entrada.conferir:
+        # 🚨 Ensaio a seco: nada é escrito.
+        return {
+            "ok": True, "conferido_sem_gravar": True,
+            "numero_os": entrada.numero_os, "corpo": corpo,
+            "endereco_antes": {c: antes.get(c) for c in CAMPOS_DO_ENDERECO},
+            "endereco_depois": {c: corpo.get(c) for c in CAMPOS_DO_ENDERECO},
+        }
+
+    try:
+        await harmonit_post("/OrdemServico/SalvarOrdemServico", corpo)
+    except HTTPException as e:
+        log.warning("SalvarOrdemServico recusou a OS %s: %s",
+                    entrada.numero_os, e.detail)
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": str(e.detail)}
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        log.warning("SalvarOrdemServico falhou na OS %s: %s", entrada.numero_os, e)
+        return {"ok": False, "numero_os": entrada.numero_os,
+                "motivo": f"{type(e).__name__}: {e}"}
+
+    depois = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": entrada.numero_os}))
+    mudou = _diferencas(antes, depois)
+    fora = {k: v for k, v in mudou.items() if k not in CAMPOS_DO_ENDERECO}
+    if fora:
+        # 🚨 ISTO É FALHA, mesmo com o endereço gravado: a OS perdeu ou ganhou
+        # algo que esta rota não devia tocar, e dizê-lo é a única reação
+        # honesta -- o remapeamento está errado em algum campo.
+        log.error("SalvarOrdemServico mudou campos fora do endereco na OS %s: %s",
+                  entrada.numero_os, fora)
+    return {
+        "ok": not fora,
+        "numero_os": entrada.numero_os,
+        "mudou": mudou,
+        "fora_do_endereco": fora or None,
+        "endereco": {c: depois.get(c) for c in CAMPOS_DO_ENDERECO},
     }
