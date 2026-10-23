@@ -84,8 +84,11 @@ async def main():
         # ⚠️ CONTINUA 5 COM A CTR_1.1 (13/10), e é de propósito: `contratos`
         # nasceu em `PERMISSOES_SO_OWNER` por decisão dele ("somente eu, como
         # padrão owner inicial"), e permissão de owner não é concedível.
-        checar("catalogo tem 5 abas concediveis", len(catalogo) == 5, str(ids))
-        checar("contratos NAO e concedivel (nasceu so-owner)", "contratos" not in ids, str(ids))
+        # 23/10: 5 -> 7. Decisao dele: "todas devem permitir que eu escolha
+        # o que ela ve". `contratos` e `config` sairam de PERMISSOES_SO_OWNER.
+        checar("catalogo tem 7 abas concediveis", len(catalogo) == 7, str(ids))
+        checar("contratos E concedivel (23/10, era so-owner desde 13/10)",
+               "contratos" in ids, str(ids))
         checar("operacoes e concedivel", "operacoes" in ids, str(ids))
         checar("gerar_os NAO e mais concedivel (expurgo F7)", "gerar_os" not in ids, str(ids))
         checar("cadastro_placas NAO e mais concedivel (expurgo F7)",
@@ -95,7 +98,17 @@ async def main():
         # e `oficinas` em 17/08, com o fluxo inteiro
         checar("oficinas NAO e mais concedivel", "oficinas" not in ids, str(ids))
         checar("usuarios NAO e concedivel", "usuarios" not in ids)
-        checar("config NAO e concedivel (so owner)", "config" not in ids, str(ids))
+        checar("config E concedivel (23/10, era so-owner desde 27/07)",
+               "config" in ids, str(ids))
+        # A trava que faltava: `usuarios` fica fora porque NENHUMA ROTA o
+        # exige -- o router inteiro usa `get_owner_painel`. Conceder daria
+        # tela no menu com 403 em toda chamada (a porta trancada da `placas`).
+        raiz = pathlib.Path(__file__).resolve().parent.parent
+        rotas = (raiz / "fpsl_weso" / "painel" / "routers")
+        fonte = "\n".join(f.read_text(encoding="utf-8")
+                          for f in rotas.glob("*.py") if ".bak" not in f.name)
+        checar("e nenhuma rota exige 'usuarios' (por isso fica fora)",
+               'requer_aba("usuarios")' not in fonte)
 
         # ⚠️ A COBAIA E `vinculos`, E ISSO NAO E DETALHE. Ate 17/08 este teste
         # usava a aba `oficinas` -- o assunto dele sempre foi PERMISSAO, e a
@@ -104,13 +117,15 @@ async def main():
         # Trocada por `vinculos`, que e concedivel e tem rota propria.
         print("\n[2] cria operador so com 'vinculos'")
         await c.request("DELETE", "/painel/api/usuarios/0", headers=h_owner)  # no-op, so aquece
+        # 23/10: `config` passou a ser concedivel, entao nao e mais descartado.
+        # Quem testa o descarte agora e `usuarios`, o unico so-owner que restou.
         r = await c.post("/painel/api/usuarios", headers=h_owner,
                          json={"login": LOGIN_TESTE, "senha": "senha-de-teste-123",
-                               "abas": ["vinculos", "usuarios", "config"]})
+                               "abas": ["vinculos", "usuarios", "inventada"]})
         checar("criou operador", r.status_code == 200, r.text[:120])
 
         op = await storage.buscar_usuario_painel(LOGIN_TESTE)
-        checar("'usuarios' e 'config' descartados no cadastro",
+        checar("'usuarios' (so-owner) e 'inventada' descartados no cadastro",
                op["abas"] == ["vinculos"], str(op["abas"]))
         h_op = {"Authorization": "Bearer " + criar_token(LOGIN_TESTE)}
 

@@ -68,7 +68,7 @@ Rota        /painel/contratos
 Tela        frontend/contratos.html
 ```
 
-🚨 **A aba nasce só para o owner.** `contratos` entra em `PERMISSOES_SO_OWNER`, junto de `config` e `usuarios`.
+🚨 **A aba NASCEU só para o owner** (13/10). ⚠️ **Mudou em 23/10:** `contratos` **saiu** de `PERMISSOES_SO_OWNER` por decisão dele — *"ela precisa das abas que eu quiser"* — e hoje é **concedível**. A primeira conta a recebê-la foi a da Karla (`financeiro` + `contratos`). Só `usuarios` segue fora.
 Consequência medida no registro: `pode_acessar` devolve `False` para toda conta que não seja owner, e
 `PERMISSOES_CONCEDIVEIS` (que é `VALIDAS - SO_OWNER`) **não cresce** — então a trava de "abas concedíveis"
 continua em 5. Abrir para outros perfis é decisão dele, depois, e é uma linha.
@@ -390,7 +390,7 @@ e sai 0 é pior que teste que não existe.
 
 | # | Pendência |
 |---|---|
-| 1 | **`C4`** — registrar `CTR_1.1` em `telas.py`, permissão `contratos` em `PERMISSOES_SO_OWNER`, rota da página no `main.py`, e **as duas contagens**: `teste_barra_status` 11 → **12**, `teste_perfis` "9 telas do menu" → **10**. "Abas concedíveis" **não muda** (fica 5), porque permissão de owner não entra em `PERMISSOES_CONCEDIVEIS` |
+| 1 | **`C4`** — registrar `CTR_1.1` em `telas.py`, permissão `contratos` em `PERMISSOES_SO_OWNER`, rota da página no `main.py`, e **as duas contagens**: `teste_barra_status` 11 → **12**, `teste_perfis` "9 telas do menu" → **10**. "Abas concedíveis" **não mudou** na época (ficou 5), porque permissão de owner não entra em `PERMISSOES_CONCEDIVEIS`. ⚠️ **Em 23/10 passou para 7** (entraram `contratos` e `config`) |
 | 2 | **Gancho de uma linha** no `storage.init_db`: `contratos_tabelas.criar(conn)`. Tem de ser feito sobre o `storage.py` **vivo** (1.816 linhas na VPS contra 837 no espelho local de 14/08) |
 | 3 | **`C5`** — carga histórica dos 731 clientes, com "a revisar" no que não fechou |
 | 4 | **`C6`** — rotina de auditoria CTR × WESO × Harmonit, **nascendo desligada**, com interruptor na própria tela |

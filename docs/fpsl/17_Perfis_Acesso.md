@@ -43,8 +43,8 @@ sidebar — não se mexe no frontend.
 | `oficinas` | Oficinas | sim |
 | `os_historico` | Histórico de OS | sim |
 | `harmonit_historico` | Serviços Harmonit | sim |
-| `config` | Configurações | **não** — `somente_owner` (decisão do usuário em 27/07: é onde vive o toggle que libera escrita na WESO, e isso não se delega) |
-| `usuarios` | Usuários | **não** — `somente_owner` |
+| `config` | Configurações | ✅ **sim, desde 23/10** — era `somente_owner` por decisão de 27/07; ele reabriu: *"todas devem permitir que eu escolha o que ela vê"*. Continua **desligada** em toda conta até ele ligar |
+| `usuarios` | Usuários | **não** — `somente_owner`. 🚨 E não por tradição: **nenhuma rota exige** essa permissão, o router inteiro usa `get_owner_painel`. Concedê-la daria tela no menu com 403 em toda chamada |
 
 O perfil vai em `painel_usuarios.abas` (JSON de ids). Conta nova nasce **sem
 nenhuma aba**: falhar fechado. Valor corrompido/ausente também vira lista vazia.

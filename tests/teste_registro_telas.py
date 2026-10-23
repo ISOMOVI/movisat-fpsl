@@ -143,6 +143,48 @@ async def main():
 
 asyncio.run(main())
 
+print("\n[9] o modal de perfil nao esconde tela nenhuma")
+# 🚨 O DEFEITO DE 23/10: `para_frontend` nomeia a linha com o titulo da
+# PRIMEIRA tela da permissao. Quem concedia `financeiro` lia "Conferencia de
+# Fechamento" e nao via que estava dando tambem o FIN_2.1, no ar desde 06/10.
+# `operacoes` escondia o HST_4.1 do mesmo jeito. Ninguem notou porque a tela de
+# Usuarios so e aberta quando se mexe numa conta -- e foi criando a conta da
+# Karla que ele viu.
+catalogo = abas_painel.para_frontend()
+
+checar("toda linha traz a chave `telas`", True,
+       all("telas" in l for l in catalogo))
+checar("`telas` casa com `codigos`, uma a uma", [],
+       [l["id"] for l in catalogo
+        if [t["codigo"] for t in l["telas"]] != l["codigos"]])
+checar("toda tela listada tem titulo, nao so codigo", [],
+       [t["codigo"] for l in catalogo for t in l["telas"] if not t.get("titulo")])
+
+# A invariante de verdade: nada ativo e concedivel fora do modal.
+no_modal = {t["codigo"] for l in catalogo for t in l["telas"]}
+deviam = {t["codigo"] for t in telas.ativas()
+          if t["permissao"] in telas.PERMISSOES_CONCEDIVEIS}
+checar("nenhuma tela ativa e concedivel fica fora do modal", set(), deviam - no_modal)
+checar("e o modal nao inventa tela que nao existe", set(), no_modal - deviam)
+
+# As duas que o defeito escondia, pelo nome, para a regressao doer.
+checar("FIN_2.1 aparece em `financeiro`", True,
+       "FIN_2.1" in {t["codigo"] for l in catalogo if l["id"] == "financeiro"
+                     for t in l["telas"]})
+checar("HST_4.1 aparece em `operacoes`", True,
+       "HST_4.1" in {t["codigo"] for l in catalogo if l["id"] == "operacoes"
+                     for t in l["telas"]})
+
+# 🚨 E A TELA TEM DE CONSUMIR O DADO. O backend ja mandava `codigos` antes de
+# 23/10 e o HTML descartava -- so o dado nao conserta nada.
+html = (pathlib.Path(__file__).resolve().parent.parent
+        / "frontend" / "usuarios.html").read_text(encoding="utf-8")
+checar("usuarios.html desenha as telas da permissao", True,
+       "telasDaPermissao(a)" in html)
+checar("e a funcao existe", True, "function telasDaPermissao(" in html)
+
+
+
 print()
 print("=" * 52)
 print(f"{ok} verificações OK, {len(falhas)} falha(s)")

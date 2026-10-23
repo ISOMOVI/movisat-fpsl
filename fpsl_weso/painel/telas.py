@@ -286,14 +286,23 @@ CODIGOS_VALIDOS = {t["codigo"] for t in TELAS}
 # `None` (as públicas) não é permissão e não entra.
 PERMISSOES_VALIDAS = {t["permissao"] for t in TELAS if t["permissao"]}
 
-# Permissões que o owner concede a outra conta. As de owner ficam de fora --
-# quem tem essas telas liga a escrita real na WESO e cria contas, e isso não
-# se delega (decisão do usuário, 27/07).
-# 🆕 `contratos` entrou em 13/10 por decisão dele (*"somente eu, como padrão
-# owner inicial para FPSL"*). Estar aqui é o que torna a aba invisível e
-# inacessível para toda conta que não seja owner -- e é o que mantém
-# `PERMISSOES_CONCEDIVEIS` em 5.
-PERMISSOES_SO_OWNER = {"config", "usuarios", "contratos"}
+# Permissões que o owner concede a outra conta. O que fica de fora daqui é o
+# que não se delega.
+#
+# 🆕 23/10 -- DECISÃO DELE: *"ela precisa das abas que eu quiser, portanto
+# todas devem permitir que eu escolha o que ela vê"*. `contratos` (só-owner
+# desde 13/10) e `config` saíram daqui e viraram concedíveis: de 5 para 7.
+# Sair daqui NÃO concede nada a ninguém -- só faz a permissão APARECER no
+# modal de perfil, desligada, para ele ligar em quem quiser.
+#
+# 🚨 `usuarios` CONTINUA SÓ-OWNER, e não por tradição: NENHUMA ROTA EXIGE
+# essa permissão. O `usuarios_router` inteiro é guardado por
+# `get_owner_painel`, então conceder `usuarios` daria uma tela no menu que
+# responde 403 em toda chamada -- a porta trancada que matou a aba `placas`
+# em 14/08, e que o bloco [4] do teste prende. Delegá-la de verdade exige
+# trocar a guarda do router, e aí quem recebe passa a criar contas e a
+# conceder permissão a si mesmo. Isso é decisão dele, não conserto.
+PERMISSOES_SO_OWNER = {"usuarios"}
 PERMISSOES_CONCEDIVEIS = PERMISSOES_VALIDAS - PERMISSOES_SO_OWNER
 
 
@@ -384,6 +393,15 @@ def para_frontend() -> list[dict]:
     🚨 POR PERMISSÃO, NÃO POR TELA. O que se concede é a permissão; mostrar
     tela a tela sugeriria que dá para dar o Histórico de Cadastros sem dar o
     Cadastro de Placas, e não dá -- é a mesma permissão.
+
+    ⚠️ MAS A LINHA TEM DE DIZER TODAS AS TELAS QUE DESTRAVA (23/10). O
+    `nome` é o da PRIMEIRA tela da permissão, e isso escondia as que
+    vieram depois: quem ligava `financeiro` lia "Conferência de
+    Fechamento" e não ficava sabendo que estava dando também o `FIN_2.1
+    Fechamento Tecnicos`, de 06/10; `operacoes` escondia do mesmo jeito o
+    `HST_4.1 Histórico de Operações`. Era a tela mentindo (`M12`): o texto
+    era verdadeiro quando foi escrito e a entrega seguinte não voltou para
+    matá-lo. A chave `telas` resolve -- nome E código de cada uma.
     """
     fora = []
     for p in sorted(PERMISSOES_CONCEDIVEIS):
@@ -396,6 +414,9 @@ def para_frontend() -> list[dict]:
             "icone": telas[0]["icone"],
             "descricao": telas[0]["descricao"],
             "codigos": [t["codigo"] for t in telas],
+            # 🆕 23/10: a lista inteira, para a tela parar de esconder.
+            "telas": [{"codigo": t["codigo"], "titulo": t["titulo"],
+                       "icone": t["icone"]} for t in telas],
             "sensivel": False,
         })
     return fora

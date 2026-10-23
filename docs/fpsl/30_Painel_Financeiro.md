@@ -325,7 +325,8 @@ diferentes, decisão desta obra — não "corrigir" para o padrão do outro.
 | `PUT .../interruptor` | `requer_aba("config")` | grava `config.conferencia_fechamento_ativa` e **relê** antes de responder |
 
 🚨 **A tranca do PUT é `requer_aba("config")`, não `get_owner_painel`.** As duas
-barram quem não é dono — `config` está em `PERMISSOES_SO_OWNER` e
+barram quem não é dono — `config` estava em `PERMISSOES_SO_OWNER` (⚠️ **saiu em
+23/10**, e desde então a tranca `requer_aba("config")` vale para quem ele conceder) e
 `abas.pode_acessar` devolve `False` para permissão não concedível. A diferença é
 o **recado**: `get_owner_painel` responderia *"Só o proprietário do painel
 gerencia usuários"* para quem tentou ligar uma rotina. Tranca certa, recado

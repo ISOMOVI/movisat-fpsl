@@ -35,9 +35,9 @@ As demais, que não mudam:
 | `OSG_2.1` | Vínculos | `vinculos` | sim |
 | `HST_1.1` | Histórico de OS | `os_historico` | sim |
 | `HST_2.1` | Serviços Harmonit | `harmonit_historico` | sim |
-| `CFG_1.1` | Configurações | `config` (só owner) | sim |
+| `CFG_1.1` | Configurações | `config` (concedível desde 23/10) | sim |
 | `CFG_2.1` | Usuários | `usuarios` (só owner) | sim |
-| `CFG_9.1` | Registro de telas | `config` (só owner) | sim |
+| `CFG_9.1` | Registro de telas | `config` (concedível desde 23/10) | sim |
 | `DMD_1.1` | Demandas — esteira | **pública** | não |
 | `DMD_1.2` | Demandas — planilha | **pública** | não |
 
@@ -121,16 +121,37 @@ não dá.
 
 ### Só do owner
 
-`config` e `usuarios`. Quem tem essas telas liga a escrita real na WESO e cria
-contas, e isso não se delega (decisão do usuário, 27/07). Elas não aparecem no
-modal de perfil e `normalizar` as descarta silenciosamente se vierem do
-formulário.
+**Desde 23/10 é UMA só: `usuarios`.** Decisão dele: *"ela precisa das abas que
+eu quiser, portanto todas devem permitir que eu escolha o que ela vê"*.
+`contratos` (só-owner desde 13/10) e `config` saíram da lista — as concedíveis
+passaram de **5 para 7**.
+
+⚠️ **Sair da lista não concede nada a ninguém.** Só faz a permissão aparecer
+no modal de perfil, **desligada**, para o owner ligar em quem quiser. Conta
+existente não mudou.
+
+🚨 **Por que `usuarios` fica:** não é tradição, é medição. **Nenhuma rota
+exige a permissão `usuarios`** — o `usuarios_router` inteiro é guardado por
+`get_owner_painel`. Concedê-la daria uma tela no menu que responde **403 em
+toda chamada**: a porta trancada que matou a aba `placas` em 14/08, e que o
+bloco [4] do teste prende. Delegá-la de verdade exige trocar a guarda do
+router — e aí quem recebe passa a **criar contas e a conceder permissão a si
+mesmo**, o que encerra a distinção de owner. 🔴 Decisão dele, não conserto.
+
+🚨 **O efeito colateral que veio junto:** a rota da `CFG_9.1` era guardada
+por `get_owner_painel`, com a justificativa de que `config` já fosse só-owner
+(*"duas travas para a mesma coisa é uma delas mentindo em algum momento"*). O
+momento chegou: ela trocou para `requer_aba("config")`, senão a própria
+CFG_9.1 viraria porta trancada para quem recebesse `config`.
+
+Quem fica de fora não aparece no modal de perfil, e `normalizar` o descarta
+silenciosamente se vier do formulário.
 
 ---
 
 ## O teste, e o que ele impede
 
-`tests/teste_registro_telas.py` — **39 verificações**.
+`tests/teste_registro_telas.py` — **50 verificações** (23/10: entrou o bloco [9], do modal que escondia tela).
 
 | O que prende | O estrago que evita |
 |---|---|
@@ -138,7 +159,8 @@ formulário.
 | `abas.py` sem lista própria | duas fontes divergindo |
 | toda permissão é exigida por alguma rota | permissão de mentira — o que matou a `PLC_1.1` |
 | reservada não sobe | tela de fase futura aparecendo antes da hora |
-| só-owner não é concedível | delegar o que liga escrita na WESO |
+| só-owner não é concedível | delegar o que não se delega |
+| **toda tela ativa e concedível aparece no modal** | **conceder às cegas — o defeito de 23/10** |
 | conta nova com menu vazio | falhar aberto |
 | toda tela ativa responde | rota registrada que não existe |
 

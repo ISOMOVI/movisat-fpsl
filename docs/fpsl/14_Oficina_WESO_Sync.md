@@ -78,8 +78,8 @@ deste arquivo. Corrigido: agora só o que responde de fato.
 |---|---|---|
 | `POST /painel/api/oficina/resync/{registro_id}` | aba `oficinas` | Reprocessa um registro do histórico |
 | `GET /painel/api/oficina/historico?limit=200` | aba `oficinas` | Histórico geral (todas as OS), fonte da aba de auditoria |
-| `GET /painel/api/oficina/config/ativo` | aba `config` (**só owner**) | Lê o toggle `oficina_registro_ativo` |
-| `PUT /painel/api/oficina/config/ativo` | aba `config` (**só owner**) | Liga/desliga o toggle |
+| `GET /painel/api/oficina/config/ativo` | aba `config` (⚠️ **concedível desde 23/10**) | Lê o toggle `oficina_registro_ativo` |
+| `PUT /painel/api/oficina/config/ativo` | aba `config` (⚠️ **concedível desde 23/10**) | Liga/desliga o toggle |
 
 **Removidas em 2026-07-22, retornam 404** (estavam listadas aqui como se existissem):
 `GET /painel/api/oficina/buscar` · `POST /painel/api/oficina/sincronizar`.

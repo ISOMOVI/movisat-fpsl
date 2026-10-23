@@ -73,6 +73,13 @@
   .aba-row.sensivel { background:#FFFBEB; }
   .aba-txt { flex:1; min-width:0; }
   .aba-nome { font-size:.84rem; font-weight:600; display:flex; align-items:center; gap:6px; }
+  /* 23/10: a permissao destrava mais de uma tela, e a linha tem de dizer
+     quais. Sem isto o modal mostrava so o titulo da primeira. */
+  .aba-telas { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+  .aba-tela { display:inline-flex; align-items:center; gap:4px; font-size:.68rem;
+              padding:2px 7px; border-radius:999px; border:1px solid var(--border);
+              background:var(--bg); color:var(--text2); }
+  .aba-tela code { font-size:.63rem; opacity:.75; font-family:ui-monospace,monospace; }
   .aba-desc { font-size:.72rem; color:var(--text2); margin-top:1px; }
   .aba-alerta { font-size:.65rem; font-weight:700; color:#B45309; background:#FEF3C7;
                 padding:1px 6px; border-radius:999px; }
@@ -200,6 +207,21 @@ async function carregarAbas() {
    Erika que ele viu.
 
    O nome novo diz o que ela desenha: as abas CONCEDIDAS a alguém. */
+/* As telas que UMA permissao destrava, para a linha parar de esconder as
+   que entraram depois da primeira (FIN_2.1 em 06/10, HST_4.1, ...).
+   Tolera backend antigo: sem `telas`, cai em `codigos`, e sem os dois nao
+   desenha nada em vez de quebrar a tela de Usuarios. */
+function telasDaPermissao(a) {
+  const lista = Array.isArray(a.telas) && a.telas.length
+    ? a.telas
+    : (a.codigos || []).map((c) => ({ codigo: c, titulo: '' }));
+  if (lista.length < 2) return '';
+  return '<div class="aba-telas">' + lista.map((t) =>
+    `<span class="aba-tela">${escapeHtml(t.titulo || t.codigo)}` +
+    (t.titulo ? ` <code>${escapeHtml(t.codigo)}</code>` : '') +
+    '</span>').join('') + '</div>';
+}
+
 function desenharAbasConcedidas(marcadas) {
   const set = new Set(marcadas || []);
   document.getElementById('abasBox').innerHTML = ABAS.map((a) => `
@@ -208,6 +230,7 @@ function desenharAbasConcedidas(marcadas) {
         <div class="aba-nome"><i class="bi ${a.icone}"></i> ${escapeHtml(a.nome)}
           ${a.sensivel ? '<span class="aba-alerta">acesso sensível</span>' : ''}</div>
         <div class="aba-desc">${escapeHtml(a.descricao)}</div>
+        ${telasDaPermissao(a)}
       </div>
       <label class="switch">
         <input type="checkbox" value="${a.id}"${set.has(a.id) ? ' checked' : ''}><span></span>

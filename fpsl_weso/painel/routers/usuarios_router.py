@@ -12,7 +12,7 @@ from passlib.context import CryptContext
 from ... import storage
 from .. import abas as abas_painel
 from .. import telas
-from ..auth import get_owner_painel
+from ..auth import get_owner_painel, requer_aba
 
 router = APIRouter(prefix="/painel/api/usuarios", tags=["painel-usuarios"])
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -71,10 +71,13 @@ async def meu_email(body: UsuarioUpdate, owner=Depends(get_owner_painel)):
 
 
 @router.get("/telas")
-# ⚠️ `get_owner_painel`, não `requer_aba("config")`: este router inteiro é do
-# owner, e a permissão `config` já é só-owner no registro. Duas travas para a
-# mesma coisa é uma delas mentindo em algum momento.
-async def registro_de_telas(_=Depends(get_owner_painel)):
+# 🚨 23/10: ERA `get_owner_painel`, e a justificativa era que `config` já
+# fosse só-owner -- "duas travas para a mesma coisa é uma delas mentindo em
+# algum momento". O momento chegou: `config` virou concedível hoje, e a trava
+# de owner aqui deixaria a CFG_9.1 visível no menu de quem recebeu `config` e
+# 403 ao abrir. Agora a tranca é a permissão, igual à das outras rotas de
+# `config` (interruptor da FIN_1.1 e da auditoria de contratos).
+async def registro_de_telas(_=Depends(requer_aba("config"))):
     """CFG_9.1 — o registro se mostrando, para conferência e auditoria.
 
     🚨 DEVOLVE O REGISTRO INTEIRO, inclusive as reservadas e os aposentados.
