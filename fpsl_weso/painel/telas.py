@@ -173,6 +173,30 @@ TELAS = [
         "permissao": "contratos",
         "fase": 1,
     },
+    # 🆕 CAR_1.1 (28/10). Contas a Receber: o que se cobra de cada cliente por
+    # mês, conforme contrato. Spec: `docs/fpsl/32_Contas_a_Receber.md`.
+    #
+    # 🚨 PERMISSÃO PRÓPRIA, `contas_receber`, por decisão dele em 28/10 -- e não
+    # a `financeiro` das duas FIN acima. O motivo é medido, não estético: esta
+    # aba **cancela cobrança** e lança preço em 335 placas num clique, e quem
+    # tem `financeiro` hoje confere OS e fecha pagamento de técnico. Reusar a
+    # aba daria esse poder de carona, sem ninguém decidir. Ela nasce concedível
+    # (7 -> 8) e **ligada em ninguém**: conceder é ato dele, no modal de perfil.
+    #
+    # ⚠️ ENTRA DEPOIS DA CTR_1.1 DE PROPÓSITO, e não ao lado das FIN: a ordem de
+    # TELAS é a ordem do trabalho real -- o termo vira contrato na CTR, e o
+    # contrato vira cobrança aqui. Pôr ao lado da FIN_1.1 mudaria a posição de
+    # telas existentes no menu, e isso é decisão dele, não estilo (§12 item 4 do
+    # documento de controle).
+    {
+        "codigo": "CAR_1.1",
+        "titulo": "Contas a Receber",
+        "rota": "/painel/contas-receber",
+        "icone": "bi-cash-coin",
+        "descricao": "O que se cobra de cada cliente por mês, conforme contrato.",
+        "permissao": "contas_receber",
+        "fase": 1,
+    },
     # ---- CFG: configuração ----
     {
         "codigo": "CFG_1.1",

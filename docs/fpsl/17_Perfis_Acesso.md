@@ -31,18 +31,25 @@ conta que já existia). O owner:
   deixe o painel sem dono.
 
 ### Abas
-`painel/abas.py` é a **fonte única**. Cada aba tem `id`, `nome`, `rota`, `icone`,
-`descricao`, `sensivel` e `somente_owner`. Aba nova aparece sozinha no modal e na
-sidebar — não se mexe no frontend.
+🚨 **A FONTE É `painel/telas.py` DESDE 2026-08-17, NÃO `abas.py`.** Tela nova entra
+no registro de telas (doc 27), com **código imutável**, e `PERMISSOES_VALIDAS` /
+`PERMISSOES_CONCEDIVEIS` são **derivadas** dele — permissão nova aparece sozinha no
+modal de perfil e na sidebar, desligada em toda conta. `painel/abas.py` continua
+existindo só para **traduzir** o registro ao vocabulário antigo de "abas" que
+`requer_aba(...)` e `painel_usuarios.abas` falam; o próprio arquivo avisa
+*"NÃO ACRESCENTE TELA AQUI"*.
+
+**As 8 permissões concedíveis em 28/10** (eram 5 até 23/10, 7 até 28/10):
 
 | id | aba | concedível |
 |---|---|---|
-| `gerar_os` | Gerar OS | sim |
-| `placas` | Placas | sim |
+| `operacoes` | Operações (`OPR_1.1`) | sim |
 | `vinculos` | Vínculos | sim |
-| `oficinas` | Oficinas | sim |
 | `os_historico` | Histórico de OS | sim |
 | `harmonit_historico` | Serviços Harmonit | sim |
+| `financeiro` | Conferência de Fechamento (`FIN_1.1`) **+** Fechamento Técnicos (`FIN_2.1`) — contas a **pagar** | sim |
+| `contratos` | Gestão de Contratos (`CTR_1.1`) | ✅ **sim, desde 23/10** — nasceu só-owner em 13/10 |
+| `contas_receber` | Contas a Receber (`CAR_1.1`) — contas a **receber** | ✅ **sim, desde 28/10.** 🚨 **Permissão PRÓPRIA, e não a `financeiro`**, por decisão dele: esta aba **cancela cobrança** e lança preço em centenas de placas num clique, e quem tem `financeiro` apenas confere OS e fecha pagamento de técnico |
 | `config` | Configurações | ✅ **sim, desde 23/10** — era `somente_owner` por decisão de 27/07; ele reabriu: *"todas devem permitir que eu escolha o que ela vê"*. Continua **desligada** em toda conta até ele ligar |
 | `usuarios` | Usuários | **não** — `somente_owner`. 🚨 E não por tradição: **nenhuma rota exige** essa permissão, o router inteiro usa `get_owner_painel`. Concedê-la daria tela no menu com 403 em toda chamada |
 
@@ -50,7 +57,11 @@ O perfil vai em `painel_usuarios.abas` (JSON de ids). Conta nova nasce **sem
 nenhuma aba**: falhar fechado. Valor corrompido/ausente também vira lista vazia.
 
 ### Onde a permissão é aplicada de verdade
-`auth.requer_aba(*ids)` — dependency em **todas as 20 rotas** do painel. Owner
+`auth.requer_aba(*ids)` — dependency em **toda rota** `/painel/api/*`. ⚠️ O número
+exato envelhece a cada aba nova (eram 20 em 27/07; só a `CTR_1.1` trouxe 18 e a
+`CAR_1.1` 16), então **o que vale é a trava, não a contagem**: o bloco [4] do
+`tests/teste_registro_telas.py` reprova permissão que **nenhuma rota exige** — a
+porta trancada que matou a aba `placas` em 14/08. Owner
 passa em tudo; os demais precisam ter a aba. Aceita mais de uma porque três
 lookups são compartilhados (`/perfis`, `/servicos/buscar`, `/produtos/buscar`
 servem Gerar OS **e** Vínculos).

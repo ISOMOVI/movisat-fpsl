@@ -1,0 +1,191 @@
+"""Tabelas das Contas a Receber (`CAR_1.1`). 2026-10-28.
+
+Spec: `docs/fpsl/32_Contas_a_Receber.md`. Controle da frente:
+`C:\\Users\\Lenovo\\Desktop\\CAR_1.1_Financeiro_FPSL.md`.
+
+🚨 MÓDULO PRÓPRIO, no mesmo molde de `contratos_tabelas.py`, e por motivo igual:
+o `storage.py` é lido pelo painel inteiro, e esta aba precisa de 3 tabelas e de
+**nenhuma alteração** nas existentes. A DDL mora aqui e o `init_db` chama
+`criar(conn)` + `migrar(conn)` -- duas linhas de diff naquele arquivo.
+
+🚨 A CAR LÊ A CTR, NÃO A ALTERA. Nenhum `ALTER` nas 8 tabelas `contrato_*`.
+Regra da casa: regra que muda **clona**, infraestrutura **reusa**. É também por
+isso que as ações financeiras NÃO entraram em `contrato_evento`: as ações de lá
+(ENTRA · SAI · RESCINDE · UPGRADE · ANULA) são sobre **existência de placa**, e
+o motor que as interpreta (`contratos_eventos.situacao_das_placas`) é puro e
+travado por teste. Acrescentar ação financeira ali mudaria regra sob trava.
+
+🚨 `car_evento` É IMUTÁVEL. Nada de `UPDATE` nela: corrigir é lançar um `ANULA`
+apontando o errado, que **continua visível**. É o que permite responder "por que
+este cliente pagou isto neste mês?" com o documento e o autor na mão.
+
+🚨 `car_contrato` É DERIVADA, NÃO FONTE. Cache de uma régua que roda sobre os
+eventos (os da CTR e os daqui). Em caso de dúvida entre as duas, **o evento
+ganha** e a derivada se refaz. Nenhuma regra lê `car_contrato` para decidir.
+
+🚨 NÃO EXISTE TABELA DE FATURA, VENCIMENTO, PARCELA OU BOLETO, e isso é
+desenho, não falta. A cobrança de um mês é uma **leitura** do contrato naquele
+mês -- `contratos_eventos.situacao_das_placas(termos, hoje=fim da competência)`
+mais o último `PRECO` vigente. Recebível copiado congela, e no mês seguinte
+ninguém sabe dizer por que aquele valor está lá (doc 33 §11). `car_leitura`
+guarda a AUDITORIA de uma leitura, não o recebível.
+
+⚠️ SEM `CHECK` em `acao` nem em `situacao`, de propósito. A CTR aprendeu isso:
+`ACOES` ficou fechado **no código**, e quando a `ANULA` precisou nascer, em
+14/10, bastou mudar o motor -- com `CHECK` no SQLite teria sido reconstrução de
+tabela com 12 mil linhas. O conjunto válido vive em `car_motor.py` e é travado
+por teste.
+
+Padrão da casa: `CREATE TABLE IF NOT EXISTS` + `ALTER` idempotente conferido
+por `PRAGMA table_info`. Rodar duas vezes não quebra e não perde dado.
+"""
+
+TABELAS = ("car_evento", "car_contrato", "car_leitura")
+
+
+def criar(conn) -> None:
+    """Cria o que falta. Idempotente -- seguro em todo start do serviço."""
+
+    # ─────────────────────────────────────────────────────────────────────
+    # car_evento — o livro-razão do dinheiro
+    # ─────────────────────────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS car_evento (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            cnpj          TEXT    NOT NULL,
+            -- O fato é do CONTRATO, não da placa: é o termo que dá o preço, a
+            -- vigência e a fidelidade. `termo_id` aponta `contrato_termo.id`,
+            -- sem FOREIGN KEY por simetria com a CTR (que também não usa).
+            termo_id      INTEGER NOT NULL,
+            -- NULO = o fato vale para TODAS as placas do termo. É o caso
+            -- comum: o termo dá um preço de mensalidade, não um por veículo.
+            -- Preenchido = o fato é de uma placa só (reajuste individual,
+            -- isenção de uma, troca de plano de uma).
+            placa_chave   TEXT,
+            -- PRECO · CANCELA · RENOVA · EXCECAO · ANULA. Enum no código
+            -- (`car_motor`), não em CHECK -- ver o aviso do topo.
+            acao          TEXT    NOT NULL,
+            -- 🚨 TEXT, NÃO REAL, pela mesma razão de `contrato_item`: o termo
+            -- escreve "R$ 999,90", e valor riscado ou renegociado já enganou a
+            -- leitura antes. A conversão para número acontece num lugar só, na
+            -- hora de somar, e erro de conversão é DITO, não silenciado.
+            valor_mensal  TEXT,
+            -- 'AAAA-MM' a partir do qual o fato passa a valer. É o eixo do
+            -- tempo desta aba: a pré-fatura de um mês lê o último PRECO com
+            -- competencia <= aquele mês.
+            competencia   TEXT    NOT NULL,
+            -- Obrigatório quando `fonte` = 'operador' (quem valida é o
+            -- registro, não o banco): sem motivo, meses depois ninguém sabe
+            -- por que o valor mudou, e era essa a pergunta.
+            motivo        TEXT,
+            -- O que PROVA o fato: hash/arquivo do termo ou do aditivo. Vazio
+            -- em evento de operador, e a tela mostra essa diferença.
+            documento     TEXT,
+            fonte         TEXT    NOT NULL,     -- termo · aditivo · operador
+            -- 🚨 NUNCA VAZIO. Dinheiro sem autor é dinheiro sem responsável; é
+            -- a mesma régua do `finalizado_por` da FIN_1.1.
+            por           TEXT    NOT NULL,
+            criado_em     TEXT    NOT NULL,
+            -- Qual evento DESTA tabela este anula. É o que permite corrigir
+            -- sem apagar: o errado continua na linha do tempo, marcado.
+            corrige_evento_id INTEGER
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_car_evento_termo ON car_evento(termo_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_car_evento_cnpj  ON car_evento(cnpj)")
+    # ⚠️ Índice ÚNICO parcial: o mesmo evento não pode ser anulado duas vezes.
+    # Sem ele, repetir uma correção empilharia anulação sobre anulação e o
+    # histórico de preço mostraria a mesma correção repetida. É o mesmo remédio
+    # de `idx_contrato_evento_corrige`.
+    conn.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_car_evento_corrige
+                      ON car_evento(corrige_evento_id)
+                   WHERE corrige_evento_id IS NOT NULL""")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # car_contrato — o status ativo/inativo do CONTRATO, derivado
+    # ─────────────────────────────────────────────────────────────────────
+    # Decisão dele, 28/10: "o ativo e inativo é por placa dentro do contrato e
+    # pelo contrato em si". O nível de BAIXO já existe e não se duplica aqui: é
+    # `contrato_placa.situacao`, calculada pelo motor da CTR. Esta tabela é só o
+    # nível de CIMA.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS car_contrato (
+            termo_id      INTEGER PRIMARY KEY,
+            cnpj          TEXT    NOT NULL,
+            numero        TEXT,
+            empresa       TEXT,
+            situacao      TEXT,                 -- ATIVO · INATIVO
+            -- 🚨 O POR QUÊ, SEMPRE. "INATIVO" sozinho faz o operador abrir o
+            -- contrato para descobrir se foi cancelado, se não tem placa ou se
+            -- o termo nunca foi assinado -- três coisas diferentes. Tela que
+            -- mostra estado sem causa é tela que mente por omissão.
+            motivo        TEXT,
+            placas_ativas     INTEGER,
+            placas_com_valor  INTEGER,
+            placas_sem_valor  INTEGER,
+            -- 🚨 NULO quando nenhuma placa tem valor, NUNCA '0,00'. "0,00"
+            -- afirma que o contrato não cobra nada; nulo com motivo diz a
+            -- verdade, que é "não sabemos". Em 28/10 isto vale para quase toda
+            -- a base: 1 item com valor, de 6.463.
+            valor_mensal_total TEXT,
+            -- Preenchida quando a CAR e a CTR discordam: "cancelado na CAR com
+            -- 3 placas ATIVAS na CTR", e o inverso. É o achado que impede as
+            -- duas abas de mentirem uma para a outra.
+            divergencia   TEXT,
+            -- A competência em que esta linha foi calculada. Sem ela, o status
+            -- seria afirmado sem prazo -- a mesma razão do `situacao_em` do
+            -- MoviZap e do `calculado_em` de `contrato_placa`.
+            competencia   TEXT,
+            calculado_em  TEXT    NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_car_contrato_cnpj ON car_contrato(cnpj)")
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_car_contrato_situacao
+                      ON car_contrato(situacao)""")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # car_leitura — a auditoria de UMA leitura de mês. Não é recebível.
+    # ─────────────────────────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS car_leitura (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            competencia   TEXT    NOT NULL,
+            -- NULO = a carteira inteira. Preenchido = a leitura foi de um
+            -- cliente só.
+            cnpj          TEXT,
+            gerada_em     TEXT    NOT NULL,
+            por           TEXT    NOT NULL,
+            clientes      INTEGER,
+            placas        INTEGER,
+            sem_valor     INTEGER,
+            total         TEXT,
+            -- sha256 do resultado normalizado. Serve para uma pergunta só, e é
+            -- uma pergunta que vai aparecer: "reabri outubro e o número mudou,
+            -- por quê?". Com a assinatura, a mudança é FATO; sem ela, é
+            -- discussão. A causa se explica pelos eventos.
+            assinatura    TEXT
+        )
+    """)
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_car_leitura_comp
+                      ON car_leitura(competencia)""")
+
+
+def _colunas(conn, tabela) -> set:
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})").fetchall()}
+
+
+def migrar(conn) -> list:
+    """Colunas acrescentadas depois da primeira versão. Devolve o que mudou.
+
+    Nasce vazia, de propósito: em 28/10 as 3 tabelas são novas e o `criar()`
+    já as põe completas. A função existe desde o começo porque a da CTR não
+    existia, e quando a primeira coluna nova precisou nascer o `ALTER` foi
+    escrito solto -- e duas suítes quebraram em `no such column`, porque elas
+    chamam `criar()` sem `migrar()`.
+
+    🚨 Daí a regra desta casa, aprendida ali: coluna nova entra no `CREATE`
+    **e** no `migrar()`. O `CREATE` serve à base nova (teste, cópia); o `ALTER`
+    serve à base que já existe.
+    """
+    feitas = []
+    return feitas

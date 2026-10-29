@@ -82,7 +82,8 @@ async def main():
     # ATUALIZADO -- a suíte ficou vermelha de 06/10 a 13/10, saindo com exit=1,
     # e ninguém olhou. A trava funcionou; quem falhou foi a leitura dela.
     # 13 desde 13/10: `contratos.html` (CTR_1.1, Gestão de Contratos).
-    checar("achou as 13 paginas do painel", paginas == 13, f"achou {paginas}")
+    # 14 desde 28/10: `contas_receber.html` (CAR_1.1, Contas a Receber).
+    checar("achou as 14 paginas do painel", paginas == 14, f"achou {paginas}")
 
     print("\n[3] o servidor devolve o req id")
     u = await storage.buscar_usuario_painel("admin")

@@ -4,8 +4,8 @@
 > conciliação com a WESO. **É o documento de leitura primeira**: quem chegar aqui entende o porquê antes de
 > abrir código.
 >
-> ⚠️ O número é **33** porque o **32 está reservado** para a `CAR_1.1` (Contas a Receber), já citada por esse
-> número no doc 31 e no plano.
+> ⚠️ O número é **33** porque o **32 é** da `CAR_1.1` (Contas a Receber), **escrita em 28/10 e no ar na
+> produção desde 28/10 14:24** — ela deixou de ser reserva de número e passou a ser tela.
 >
 > 🚨 **Todo número aqui tem data, e número sem data não se copia.** O estado real se mede com
 > `sqlite3 -readonly` e com a suíte; esta página explica o DESENHO, e os números servem de ordem de
@@ -200,7 +200,7 @@ valor, equipamento.
 | Assunto | Onde |
 |---|---|
 | A aba de Contratos, do C0 ao D4, com todos os achados | `docs/fpsl/31_Gestao_Contratos.md` |
-| Contas a Receber | `docs/fpsl/32_Contas_a_Receber.md` (**a escrever**) |
+| Contas a Receber | `docs/fpsl/32_Contas_a_Receber.md` (a spec, escrita em 28/10/2026) |
 | Painel Financeiro (FIN_1.1 e FIN_2.1 — pagar técnico) | `docs/fpsl/30_Painel_Financeiro.md` |
 | Metodologia e o ciclo de entrega | `docs/fpsl/00_Metodologia.md` |
 | Log do FPSL e a última passada de cada rotina (16/10) | `/home/claude/logs/fpsl.log` · `venv/bin/python scripts/rotinas_mudas.py` · trava 8 acima |

@@ -31,7 +31,8 @@ fpsl_weso/
   services/resolucao.py        resolver_serial() · resolver_cnpjcpf() — Harmonit id -> identificador WESO (numeroSerie / cnpjcpf); CACHE local com fallback ao vivo (2026-07-22; antes devolvia 422 "rode o seed")
   painel/                      painel web do operador — auth propria por usuario (tabela painel_usuarios), separada do X-FPSL-Key das rotas /weso
     auth.py                    get_usuario_painel · get_owner_painel · requer_aba(*abas) · seed_admin_inicial (a conta semeada e o OWNER)
-    abas.py                    REGISTRO CENTRAL das abas do painel (id/nome/rota/icone/sensivel/somente_owner) — fonte unica do modal de perfil e da sidebar. Ver docs/fpsl/17_Perfis_Acesso.md
+    telas.py                   🚨 REGISTRO CENTRAL DAS TELAS, e a FONTE desde 2026-08-17: codigo imutavel (CTR_1.1, FIN_2.1, CAR_1.1...), titulo, rota, icone, permissao, fase. TELA NOVA ENTRA AQUI. Deriva `PERMISSOES_VALIDAS` e `PERMISSOES_CONCEDIVEIS` (8 em 28/10) -- permissao nova aparece sozinha no modal de perfil. Ver docs/fpsl/27_Registro_Telas.md
+    abas.py                    ⚠️ COMPATIBILIDADE, NAO FONTE (desde 2026-08-17): traduz `telas.py` para o vocabulario antigo de "abas" que `requer_aba(...)` e `painel_usuarios.abas` falam. O proprio arquivo avisa: NAO ACRESCENTE TELA AQUI. Ver docs/fpsl/17_Perfis_Acesso.md
     pdf_extractor.py           extracao de termo/contrato POR PERFIL (cliente_novo · aditivo · rescisao · substituicao · transferencia · upgrade), por regex+tabela, sem IA (ver docs/fpsl/14_Painel_OS.md e 15_Particularidades_Documentos.md)
     templates_config.py        PERFIS: de-para perfil -> tipoId/problemaId da OS no Harmonit; ENTREGA_OS_ID (material fixo em toda OS)
     routers/login_router.py    POST /painel/api/login · GET /painel/api/me
@@ -39,6 +40,11 @@ fpsl_weso/
     routers/os_router.py       geracao de OS por contrato (prefixo /painel/api): GET /perfis · POST /extrair · GET /clientes|servicos|produtos/buscar · GET/POST /vinculos · POST /vinculos/extrair-preview · POST /gerar-os (dry-run quando confirmar:false)
     routers/oficina_router.py  POST /painel/api/oficina/resync/{id} · GET /painel/api/oficina/historico · GET/PUT /painel/api/oficina/config/ativo — aba "Oficinas" e SO historico + Resync (busca por OS/sincronizar REMOVIDOS em 2026-07-22). Ver docs/fpsl/14_Oficina_WESO_Sync.md
     routers/os_scan_router.py  POST /painel/api/os-scan/varrer · /resync · GET /painel/api/os-scan/historico · GET/PUT /painel/api/os-scan/checkpoint — VARREDURA de OS por numero (scan 5min + resync 12h agendados no lifespan do main.py) e painel "Historico de OS". E o gatilho oficina->WESO. Fase 1 SO LEITURA. Ver docs/fpsl/16_Historico_OS_Scan.md
+    routers/operacoes_router.py  prefixo /painel/api/operacoes — a aba Operacoes (OPR_1.1). 🛑 INTOCAVEL por decisao dele (01/10): "deve permanecer 100% integra acima de tudo". Ver docs/fpsl/28_Operacoes.md
+    routers/conferencia_fechamento_router.py  GET /painel/api/conferencia-fechamento · POST /rodar-agora · GET/PUT /interruptor — FIN_1.1, OS finalizada no Harmonit cruzada com DataScope e WESO. Aba `financeiro`; MUDAR o interruptor exige `config`. Ver docs/fpsl/30_Painel_Financeiro.md
+    routers/fechamento_router.py  prefixo /painel/api/fechamento (11 rotas) — FIN_2.1, apuracao do que PAGAR a cada tecnico por periodo. Aba `financeiro`. Ver docs/fpsl/30_Painel_Financeiro.md
+    routers/contratos_router.py  prefixo /painel/api/contratos (18 rotas) — CTR_1.1/CTR_1.2, o termo assinado vira a base do cliente (placas, eventos, situacao, auditoria). Aba `contratos`. Ver docs/fpsl/31_Gestao_Contratos.md
+    routers/car_router.py      prefixo /painel/api/car (16 rotas) — CAR_1.1, o que se COBRA do cliente por mes conforme contrato: pre-fatura por competencia, as 5 acoes de dinheiro (PRECO · CANCELA · RENOVA · EXCECAO · ANULA), lancamento em lote e a busca das 4 chaves. Aba `contas_receber` (PROPRIA, nao `financeiro` -- decisao dele em 28/10). Ver docs/fpsl/32_Contas_a_Receber.md
 ```
 
 **Permissao do painel (desde 2026-07-27):** toda rota `/painel/api/*` exige a ABA correspondente
@@ -78,7 +84,7 @@ requirements.txt      fastapi · uvicorn · httpx · pydantic-settings
 | 14_Painel_OS.md | **Painel de geração de OS por contrato** — perfis, extração, vínculos item↔catálogo, geração com dry-run (sessões 4-7). ⚠ dois arquivos começam com "14" | painel, OS, perfil, extração, vínculo, gerar, substituição, transferência, dry-run |
 | 15_Particularidades_Documentos.md | **Particularidades por tipo de documento** (Substituição/`A DEFINIR`/acessórios, Rescisão, Transferência) + regra comodato×cobrar | documento, substituição, A DEFINIR, acessórios, comodato, cobrar |
 | 16_Historico_OS_Scan.md | **Gatilho oficina→WESO por VARREDURA DE OS** — scan 5min/resync 12h, checkpoint, salvaguardas, painel "Histórico de OS". Fase 1 só leitura; Fase 2 (escrita) pendente | varredura, scan, checkpoint, os_historico, oficina, gatilho, resync |
-| 17_Perfis_Acesso.md | **Perfis de acesso do painel** — owner + permissão por aba (`requer_aba`), modal de perfil, `abas.py` como fonte única (2026-07-27) | owner, aba, permissão, perfil, usuários, requer_aba, sidebar |
+| 17_Perfis_Acesso.md | **Perfis de acesso do painel** — owner + permissão por aba (`requer_aba`), modal de perfil. ⚠️ A fonte é `telas.py` desde 17/08 (ver 27), não `abas.py` | owner, aba, permissão, perfil, usuários, requer_aba, sidebar |
 | 18_Testes.md | **Testes — 448 verificações em 11 arquivos** (14/08). Não há pytest e não são `assert`: a função é `checar()`, então `grep assert` devolve zero. Inclui o exercício da tela em node. Cada número travado é um bug que já aconteceu | teste, regressão, extração, fixtures, checar, tela, node |
 | 19_Plano_Implantacao.md | **Plano de implantação (5 etapas, por dependência)** — padrão de placa → 1 escrita real → espelho diário → resolução no termo → cadastro → automático. Caminho crítico e o que está bloqueado no usuário | plano, etapas, placa, espelho, escrita, caminho crítico |
 | 20_Fluxo_Oficina_e_Reconciliacao.md | **Caminho oficial da Oficina→WESO** (a oficina VINCULA, nunca CRIA — o evento não tem modelo/ICCID/cliente) + **rotinas de espelho e diff** pra manter Harmonit e WESO iguais | oficina, vínculo, reconciliação, espelho, diff, divergência, desinstalação |
@@ -86,6 +92,15 @@ requirements.txt      fastapi · uvicorn · httpx · pydantic-settings
 | 22_Auditoria_Servicos_Harmonit.md | **Auditoria dos serviços do Harmonit** — o que existe no catálogo e o que a OS usa | auditoria, serviço, produto, catálogo |
 | 23_Manutencao.md | **Os 2 perfis que nascem de chamado, sem termo** (14/08) — no local e com troca, recipiente `-MANUT`, liberação da série, tipo/problema por NOME | manutenção, recipiente, MANUT, liberar série, sem termo |
 | 24_Desempenho_e_Timeout.md | 🚨 **A medição de 29/07 envelheceu e INVERTEU** — base inteira 2,3s→16-33s, placa filtrada 6s→0,67s. Era isso o 504 do nginx que aparecia como "erro json". Orçamento de tempo, tetos e como remedir | desempenho, timeout, 504, orçamento, medição, WESO lenta |
+| 25_Login_Google.md | Entrada pelo Google no painel (17/08) | google, login, oauth, painel |
+| 26_Cadastro_de_Placas.md | Cadastro de Placas pelo termo — ⚠️ a tela foi **aposentada no expurgo F7** (02/10); o doc fica como histórico da regra | placa, termo, cadastro, aposentada |
+| 27_Registro_Telas.md | **Registro de telas (`CFG_9.1`)** — `telas.py` é a FONTE: código imutável por tela, permissão derivada. É aqui que tela nova entra | registro, tela, código, permissão, telas.py |
+| 28_Operacoes.md | 🛑 **A aba Operações (`OPR_1.1`)** — a aba única que substituiu Cadastro de Placas e Gerar OS. **INTOCÁVEL** por decisão dele (01/10) | operações, lote, intocável, termo, OS |
+| 29_Rastreador_Preso_Harmonit.md | Rastreador preso no Harmonit — plano de **consulta, não automação** (decisão dele, 29/09) | rastreador, preso, consulta, harmonit |
+| 30_Painel_Financeiro.md | **Contas a PAGAR** — `FIN_1.1` Conferência de Fechamento + `FIN_2.1` Fechamento de Técnicos. Porta = situação **15694**. ⚠️ 25 pendências auditadas em 27/10 | financeiro, conferência, fechamento, técnico, 15694, DataScope |
+| 31_Gestao_Contratos.md | **`CTR_1.1`/`CTR_1.2`** — o termo assinado vira a base do cliente: placas, eventos imutáveis, situação derivada, auditoria. **Não emite cobrança** | contrato, termo, placa, evento, aviso prévio, auditoria |
+| 32_Contas_a_Receber.md | **`CAR_1.1` — contas a RECEBER**: o que se cobra de cada cliente por mês conforme contrato. Pré-fatura por competência, 5 ações de dinheiro, lançamento em lote. Aba própria `contas_receber` | cobrança, pré-fatura, competência, preço, mensalidade, CAR |
+| 33_Nocoes_do_Projeto.md | 📘 **LEITURA PRIMEIRA DO FPSL** — o que o projeto é e por que é assim: as quatro fontes que discordam por desenho (Harmonit, Clicksign, WESO, boleto) | noções, por quê, fontes, desenho, leitura primeira |
 
 ---
 

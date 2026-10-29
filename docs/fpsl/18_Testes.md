@@ -5,7 +5,13 @@ o que existia era `test_extracao.py`, um script de 21 linhas que **imprimia JSON
 afirmava nada** — apontando para `/tmp/testes_pdf/`, que qualquer reboot apaga. Foi
 removido nesta data.
 
-Tudo aqui é **só leitura**: nenhum teste escreve na WESO, no Harmonit, nem em produção.
+⚠️ **Nenhum teste escreve na WESO, no Harmonit nem no banco de produção** — e é
+isso que a frase "só leitura" sempre quis dizer. Vários **escrevem**, em banco
+**temporário próprio**: as 6 suítes `teste_car_*` (28/10) e as da `CTR_1.1` montam
+o banco, gravam e releem, porque as regras que elas provam **são de escrita** e
+provar só a tranca deixaria o lançamento de preço sem teste nenhum.
+🚨 **A trava disso é explícita:** `teste_car_router.py` **para no bloco [0]** se
+`storage.DB_PATH` não estiver apontando para o temporário.
 
 ---
 
@@ -312,7 +318,21 @@ cd /home/claude/fpsl_weso && venv/bin/python tests/teste_tela_gerar_os.py
 | `tests/teste_disjuntor_harmonit.py` | 2 |
 
 Trilha: **448/11** (14/08) → **677/19** (17/08) → **784/21** (18/08) →
-**804/22** (19/08).
+**804/22** (19/08) → **73 arquivos** (28/10).
+
+🚨 **A PARTIR DE 28/10 O PLACAR SE MEDE POR ARQUIVO, NÃO POR VERIFICAÇÃO**, e o
+critério de verde do projeto é *"os mesmos 2 vermelhos de antes, e nenhum novo"*:
+
+```bash
+for t in tests/teste_*.py; do out=$(venv/bin/python "$t" 2>&1); echo "$? | $t | $(printf '%s' "$out" | tail -1)"; done
+```
+
+Medido em **28/10, depois da `CAR_1.1`: 73 arquivos, 71 verdes.** Os 2 vermelhos
+são conhecidos e **não** são regressão: `teste_extrair_termo` (desde 02/10,
+**espera decisão dele**) e `teste_higiene_placas_weso` (1 falha de **dado** — placa
+com espaço à direita na WESO). ⚠️ Somar verificações deixou de ser útil porque
+cada arquivo imprime o total no formato dele; o que prende regressão é o **exit
+code por arquivo** mais as travas de contagem (telas, páginas, rotas por router).
 
 ⚠️ **Os roteadores caíram de 81 para 75** em 14/08 porque as 2 rotas de
 `api/placas` saíram junto com o router. Número menor aqui não é regressão.

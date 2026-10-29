@@ -36,6 +36,7 @@ from fpsl_weso.services.fechamento import loop_atualizar_cartoes
 from fpsl_weso.painel.routers import fechamento_router as painel_fechamento_router
 from fpsl_weso.painel.routers import conferencia_fechamento_router as painel_conferencia_fechamento_router
 from fpsl_weso.painel.routers import contratos_router as painel_contratos_router
+from fpsl_weso.painel.routers import car_router as painel_car_router
 from fpsl_weso import storage
 
 log = logging.getLogger("fpsl")
@@ -240,6 +241,7 @@ app.include_router(demandas_router.router)
 app.include_router(painel_conferencia_fechamento_router.router)
 app.include_router(painel_fechamento_router.router)
 app.include_router(painel_contratos_router.router)
+app.include_router(painel_car_router.router)
 
 app.mount("/painel/static", StaticFiles(directory="frontend"), name="painel_static")
 
@@ -323,3 +325,12 @@ async def painel_fechamento_tecnicos_page():
 @app.get("/painel/contratos")
 async def painel_contratos_page():
     return FileResponse("frontend/contratos.html")
+
+
+# -- Contas a Receber (CAR_1.1, 28/10) ----------------------------------------
+# A pagina e publica como todas as do painel; o que ela MOSTRA vem das rotas de
+# `/painel/api/car`, atras de `requer_aba("contas_receber")`. Mesmo desenho da
+# CTR_1.1 acima.
+@app.get("/painel/contas-receber")
+async def painel_contas_receber_page():
+    return FileResponse("frontend/contas_receber.html")

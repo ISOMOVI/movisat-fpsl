@@ -98,6 +98,52 @@ ROTAS = [
     ("GET",  "/painel/api/conferencia-fechamento/interruptor", "financeiro", None, False),
     ("PUT",  "/painel/api/conferencia-fechamento/interruptor", "config",
      {"ativa": False}, True),
+
+    # Fechamento de Tecnicos (FIN_2.1, 06/10) -- as 11 rotas ficam atras de
+    # `requer_aba("financeiro")` declarado no proprio APIRouter
+    # (fechamento_router.py:28), e a matriz nao tinha NENHUMA linha delas ate
+    # 28/10. Era a pendencia A8 da auditoria de 27/10.
+    ("GET",  "/painel/api/fechamento/tecnicos",      "financeiro", None, False),
+    ("POST", "/painel/api/fechamento/cartoes/gerar", "financeiro", None, True),
+
+    # Gestao de Contratos (CTR_1.1, 13/10) -- as 18 rotas ficam atras de
+    # `requer_aba("contratos")` declarado no proprio APIRouter
+    # (contratos_router.py:36).
+    #
+    # 🚨 ESTA AUSENCIA DEIXOU O LACO [7] VERMELHO DE 23/10 A 28/10. Quando
+    # `contratos` virou concedivel (5 -> 7 abas), a aba passou a ser acusada de
+    # "permissao que nao protege nada" -- e protegia: o `teste_contratos_router`
+    # prova as 18 rotas herdando a tranca, uma por uma. O vermelho era da
+    # LISTA, nao do codigo. Licao: quem muda `PERMISSOES_SO_OWNER` vem aqui no
+    # mesmo dia, porque `exigidas` sai desta lista escrita a mao, e nao do app.
+    ("GET",  "/painel/api/contratos/perfis",            "contratos", None, False),
+    ("GET",  "/painel/api/contratos/auditoria/achados", "contratos", None, False),
+    # ⚠️ A rota de escrita aqui e `/termo/{id}/revisado` (corpo JSON), e nao a
+    # `/gravar`: aquela recebe multipart com o PDF, e um 422 de corpo invalido
+    # mascararia o 401/403 que este laco existe para medir.
+    ("POST", "/painel/api/contratos/termo/0/revisado",  "contratos", {}, True),
+    # Mudar o interruptor da auditoria e `config`, igual a FIN_1.1 -- e `config`
+    # nao entra no conjunto `concediveis` do laco [7] por ser somente_owner.
+    ("PUT",  "/painel/api/contratos/auditoria/interruptor", "config",
+     {"ativa": False}, True),
+
+    # Contas a Receber (CAR_1.1, 28/10) -- as 16 rotas ficam atras de
+    # `requer_aba("contas_receber")` declarado no proprio APIRouter
+    # (car_router.py:51).
+    #
+    # 🚨 ESTA LINHA ENTRA NO MESMO DIA QUE A PERMISSAO NOVA, e nao no dia
+    # seguinte: e exatamente o erro que deixou o laco [7] vermelho de 23/10 a
+    # 28/10 quando `contratos` virou concedivel. O laco monta `exigidas` DESTA
+    # LISTA escrita a mao, nao do app -- permissao concedivel sem linha aqui e
+    # acusada de "nao protege nada", e protegia.
+    ("GET",  "/painel/api/car/clientes",        "contas_receber", None, False),
+    ("GET",  "/painel/api/car/fila-sem-valor",  "contas_receber", None, False),
+    # ⚠️ A rota de escrita tem CORPO JSON, nunca multipart: um 422 de corpo
+    # invalido mascararia o 401/403 que este laco existe para medir. E o
+    # `termo 0` nao existe, de proposito -- a tranca responde antes de o
+    # registro chegar a gravar coisa nenhuma.
+    ("POST", "/painel/api/car/termo/0/preco",   "contas_receber",
+     {"valor": "1,00", "motivo": "zz tranca"}, True),
 ]
 
 

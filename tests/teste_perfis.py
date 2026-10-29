@@ -69,8 +69,9 @@ async def main():
         # Técnicos) nasceu no menu e este número não foi atualizado -- a suíte
         # ficou vermelha de 06/10 a 13/10 (exit=1) sem ninguém olhar.
         # 11 desde 13/10: CTR_1.1 (Gestão de Contratos).
-        checar("owner enxerga as 11 telas do menu",
-               len(me.get("abas", [])) == 11, str(len(me.get("abas", []))))
+        # 12 desde 28/10: CAR_1.1 (Contas a Receber).
+        checar("owner enxerga as 12 telas do menu",
+               len(me.get("abas", [])) == 12, str(len(me.get("abas", []))))
         checar("e Operações é uma delas",
                any(a.get("id") == "operacoes" for a in me.get("abas", [])),
                str([a.get("id") for a in me.get("abas", [])]))
@@ -86,7 +87,14 @@ async def main():
         # padrão owner inicial"), e permissão de owner não é concedível.
         # 23/10: 5 -> 7. Decisao dele: "todas devem permitir que eu escolha
         # o que ela ve". `contratos` e `config` sairam de PERMISSOES_SO_OWNER.
-        checar("catalogo tem 7 abas concediveis", len(catalogo) == 7, str(ids))
+        # 28/10: 7 -> 8. A CAR_1.1 (Contas a Receber) nasce com permissao
+        # PROPRIA, `contas_receber`, e nao reusando `financeiro`: a aba cancela
+        # cobranca e preco em lote, e quem tem `financeiro` confere OS. Nascer
+        # concedivel NAO concede nada a ninguem -- so faz a permissao APARECER
+        # no modal de perfil, desligada, para ele ligar em quem quiser.
+        checar("catalogo tem 8 abas concediveis", len(catalogo) == 8, str(ids))
+        checar("contas_receber e concedivel, e NAO e a `financeiro`",
+               "contas_receber" in ids, str(ids))
         checar("contratos E concedivel (23/10, era so-owner desde 13/10)",
                "contratos" in ids, str(ids))
         checar("operacoes e concedivel", "operacoes" in ids, str(ids))

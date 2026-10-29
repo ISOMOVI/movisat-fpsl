@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contas a Receber — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/painel/static/barra_status.css">
+<style>
+  :root {
+    --blue:#2563EB; --blue-dim:#EFF6FF; --green:#16a34a; --green-dim:#F0FDF4;
+    --red:#DC2626; --red-dim:#FEF2F2; --amber:#D97706; --amber-dim:#FFFBEB;
+    --bg:#F8FAFC; --bg2:#F1F5F9; --text:#0F172A; --text2:#64748B;
+    --border:#E2E8F0; --card:#FFFFFF; --sidebar-bg:#0F172A; --sidebar-tx:#94A3B8; --sidebar-w:230px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .main { flex:1; padding:32px; max-width:1420px; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:8px; flex-wrap:wrap; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  h2 { font-size:1rem; font-weight:700; margin-bottom:10px; }
+  h3 { font-size:.88rem; font-weight:700; margin-bottom:8px; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:18px; line-height:1.5; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card.tabela { padding:0; overflow:hidden; }
+  label { display:block; font-size:.78rem; font-weight:600; color:var(--text2); margin-bottom:5px; }
+  select, input[type=text], input[type=month] {
+    font-family:inherit; font-size:16px; padding:8px 10px; border:1px solid var(--border);
+    border-radius:7px; background:#fff; width:100%; }
+  .linha { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+  .campo { flex:1; min-width:200px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; background:#fff; color:var(--text); }
+  .btn-primary { background:var(--blue); color:#fff; } .btn-primary:hover { background:#1d4ed8; }
+  .btn-linha { border-color:var(--border); }
+  .btn-perigo { border-color:var(--red); color:var(--red); }
+  .btn:disabled { opacity:.55; cursor:default; }
+  .btn-mini { font-size:.76rem; padding:5px 9px; border-color:var(--border); }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.03em;
+       padding:11px 12px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
+  td { padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tbody tr:hover { background:var(--bg); }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .tag { display:inline-block; font-size:.72rem; font-weight:700; padding:3px 8px; border-radius:20px; white-space:nowrap; }
+  .t-ativa { background:var(--green-dim); color:var(--green); }
+  .t-aviso { background:var(--amber-dim); color:var(--amber); }
+  .t-fora  { background:var(--red-dim); color:var(--red); }
+  .t-info  { background:var(--blue-dim); color:var(--blue); }
+  .msg { font-size:.84rem; padding:10px 12px; border-radius:7px; margin-top:12px; display:none; }
+  .msg-ok { background:var(--green-dim); color:var(--green); display:block; }
+  .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
+  .nota { font-size:.8rem; color:var(--text2); }
+  .aviso-item { background:var(--amber-dim); color:#92400E; font-size:.83rem; padding:9px 12px;
+                border-radius:7px; margin-bottom:8px; }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .vazio { padding:26px; text-align:center; color:var(--text2); font-size:.86rem; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .chip { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:7px 13px;
+          font-size:.8rem; cursor:pointer; display:flex; align-items:center; gap:7px; font-family:inherit; color:var(--text); }
+  .chip:hover { border-color:var(--blue); }
+  .chip.on { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .chip b { font-variant-numeric:tabular-nums; }
+  /* O painel do total: é o número que a aba existe para produzir, e ele vem
+     SEMPRE acompanhado da cobertura -- total sem cobertura é meia verdade. */
+  .totais { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end; }
+  .totais .grande { font-size:1.8rem; font-weight:800; font-variant-numeric:tabular-nums; }
+  .totais .ao-lado { font-size:.82rem; color:var(--text2); line-height:1.5; }
+  .barra-cob { height:7px; background:var(--bg2); border-radius:4px; overflow:hidden; margin-top:7px; min-width:220px; }
+  .barra-cob > i { display:block; height:100%; background:var(--green); }
+  /* Gaveta: o contrato abre ao lado, sem trocar de página. */
+  .fundo { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; z-index:40; }
+  .fundo.on { display:block; }
+  .gaveta { position:fixed; top:0; right:0; height:100vh; width:min(880px,96vw); background:var(--bg2);
+            border-left:1px solid var(--border); z-index:50; transform:translateX(100%);
+            transition:transform .18s ease; display:flex; flex-direction:column; }
+  .gaveta.on { transform:translateX(0); }
+  .gaveta-topo { padding:16px 20px; background:var(--card); border-bottom:1px solid var(--border);
+                 display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .gaveta-corpo { padding:20px; overflow-y:auto; flex:1; }
+  .fechar { background:none; border:none; font-size:1.3rem; cursor:pointer; color:var(--text2); line-height:1; }
+  .modal { position:fixed; inset:0; z-index:60; display:none; padding:24px; overflow-y:auto; }
+  .modal.on { display:block; }
+  .modal-caixa { background:var(--bg2); border-radius:14px; max-width:860px; margin:0 auto;
+                 border:1px solid var(--border); }
+  .modal-topo { padding:16px 20px; background:var(--card); border-radius:14px 14px 0 0;
+                border-bottom:1px solid var(--border); display:flex; justify-content:space-between;
+                align-items:center; gap:12px; position:sticky; top:0; z-index:2; }
+  .modal-corpo { padding:20px; }
+  @media (max-width:760px) { .main { padding:18px 16px; } .modal { padding:0; } .modal-caixa { border-radius:0; } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <h1>Contas a Receber</h1>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-linha" onclick="exportarGrid()"><i class="bi bi-filetype-csv"></i> Exportar contratos</button>
+        <button class="btn btn-linha" onclick="exportarPrefatura()"><i class="bi bi-filetype-csv"></i> Exportar pré-fatura</button>
+        <button class="btn btn-primary" onclick="abrirLote()"><i class="bi bi-tags"></i> Lançar preço em lote</button>
+      </div>
+    </div>
+
+    <!-- 🚨 `M12`: a tela diz o que ela FAZ e o que ela NÃO faz. Boleto, nota
+         fiscal, vencimento, multa e juros não existem aqui, e por isso não
+         aparecem nem como botão desligado. Promessa de data futura não entra
+         em texto de tela. -->
+    <p class="sub">Um <strong>contrato</strong> por linha, e o que ele cobra na competência escolhida.<br>
+       <strong>Esta tela não emite boleto nem nota fiscal, e não escreve no Harmonit.</strong>
+       <strong>Vencimento, multa e juros não existem nesta base</strong> — a pré-fatura responde “o que cobrar no
+       mês”, e não “quando vence”.</p>
+
+    <div class="card">
+      <div class="linha">
+        <div class="campo" style="max-width:180px">
+          <label for="competencia">Competência</label>
+          <input type="month" id="competencia" onchange="recarregarTudo()">
+        </div>
+        <div class="campo">
+          <label for="busca">Buscar contrato</label>
+          <input type="text" id="busca" placeholder="número do termo ou CNPJ"
+                 onkeydown="if(event.key==='Enter') carregarGrid()">
+        </div>
+        <div class="campo" style="max-width:200px">
+          <label for="filtroSituacao">Situação</label>
+          <select id="filtroSituacao" onchange="carregarGrid()">
+            <option value="">todas</option>
+            <option value="ATIVO">ATIVO</option>
+            <option value="INATIVO">INATIVO</option>
+          </select>
+        </div>
+        <div><button class="btn btn-linha" onclick="carregarGrid()"><i class="bi bi-search"></i> Buscar</button></div>
+      </div>
+      <!-- A busca ampla dele (nome, CNPJ, placa, termo, ID em uso) responde
+           aqui embaixo, dizendo POR ONDE achou. -->
+      <div class="linha" style="margin-top:14px">
+        <div class="campo">
+          <label for="buscaAmpla">Busca ampla — nome, CNPJ, placa, número do termo ou ID em uso</label>
+          <input type="text" id="buscaAmpla" placeholder="ex.: 2HM, WQ0P6GLD000108, ABC1D23, 8786"
+                 onkeydown="if(event.key==='Enter') buscarAmplo()">
+        </div>
+        <div><button class="btn btn-linha" onclick="buscarAmplo()"><i class="bi bi-binoculars"></i> Procurar</button></div>
+      </div>
+      <div id="respostaBusca" class="nota" style="margin-top:10px"></div>
+      <div id="msg" class="msg"></div>
+    </div>
+
+    <div class="card" id="cardTotais"><div class="nota">Carregando…</div></div>
+
+    <div class="chips" id="chips"></div>
+
+    <div class="card tabela" id="cardGrid"><div class="vazio">Carregando…</div></div>
+
+    <div class="card">
+      <h2>Fila de trabalho: contratos com placa cobrável e sem preço</h2>
+      <div id="cardFila"><div class="nota">Carregando…</div></div>
+    </div>
+  </main>
+</div>
+
+<div class="fundo" id="fundo" onclick="fecharGaveta()"></div>
+<aside class="gaveta" id="gaveta">
+  <div class="gaveta-topo">
+    <div><h2 id="gavetaTitulo">Contrato</h2><div class="nota" id="gavetaSub"></div></div>
+    <button class="fechar" onclick="fecharGaveta()" title="Fechar">&times;</button>
+  </div>
+  <div class="gaveta-corpo" id="gavetaCorpo"></div>
+</aside>
+
+<div class="modal" id="modalLote">
+  <div class="modal-caixa">
+    <div class="modal-topo">
+      <h2>Lançar preço em lote</h2>
+      <button class="fechar" onclick="fecharLote()" title="Fechar">&times;</button>
+    </div>
+    <div class="modal-corpo" id="loteCorpo"></div>
+  </div>
+</div>
+
+<script src="/painel/static/barra_status.js"></script>
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+// 🚨 O ARGUMENTO É A PERMISSÃO, não a rota: é `permissoes` que a trava do
+// sidebar lê. Passar a rota manda para fora quem tem a aba.
+montarSidebar('contas_receber');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showMsg(t, erro) { const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
+
+const SIT_TAG = { 'ATIVO': ['t-ativa','ATIVO'], 'INATIVO': ['t-fora','INATIVO'] };
+const PLACA_TAG = {
+  'ATIVA':           ['t-ativa','Ativa'],
+  'EM_AVISO_PREVIO': ['t-aviso','Em aviso prévio'],
+  'SUBSTITUIDA':     ['t-info','Substituída'],
+  'RESCINDIDA':      ['t-fora','Rescindida'],
+};
+
+let ultimoGrid = null, filtroDivergencia = false, contratoAberto = null;
+
+function comp() {
+  const v = (document.getElementById('competencia').value || '').trim();
+  return v;
+}
+
+// ── O número de cima: total E cobertura, sempre juntos ─────────────────────
+function pintarTotais(pre) {
+  const t = pre.totais;
+  const cob = t.cobertura === null || t.cobertura === undefined ? null : Math.round(t.cobertura * 100);
+  // 🚨 TOTAL NULO NÃO VIRA "R$ 0,00". Zero afirma que não há nada a cobrar;
+  // nulo com motivo diz a verdade, que é "nenhuma placa tem preço lançado".
+  const valor = t.total ? ('R$ ' + t.total) : '—';
+  const html = `
+    <div class="totais">
+      <div>
+        <label>Mensalidade da competência ${esc(pre.competencia)}</label>
+        <div class="grande">${esc(valor)}</div>
+      </div>
+      <div class="ao-lado">
+        ${t.total ? '' : '<strong>Nenhuma placa cobrável tem preço lançado.</strong><br>'}
+        <strong>${t.com_valor}</strong> de <strong>${t.placas}</strong> placas cobráveis têm preço
+        ${cob === null ? '' : `(<strong>${cob}%</strong> da carteira)`}<br>
+        ${t.contratos} contrato(s) · ${t.clientes} cliente(s)
+        ${t.entraram_no_mes || t.sairam_no_mes
+          ? `<br>${t.entraram_no_mes} entraram e ${t.sairam_no_mes} saíram no meio do mês — cobradas cheias, sem pro rata`
+          : ''}
+        <div class="barra-cob"><i style="width:${cob === null ? 0 : cob}%"></i></div>
+      </div>
+    </div>
+    <!-- M12: a parte variável se declara desligada, com o motivo, em vez de a
+         soma da mensalidade passar por total. -->
+    <div class="aviso-item" style="margin-top:14px"><strong>Este total é só mensalidade.</strong>
+      ${esc(pre.variavel.porque)}.</div>
+    ${pre.sem_termo.length
+      ? `<div class="aviso-item"><strong>${pre.sem_termo.length} placa(s) cobráveis apontam um termo que não existe
+         nesta base</strong> — elas aparecem no CSV da pré-fatura, não somem.</div>` : ''}`;
+  document.getElementById('cardTotais').innerHTML = html;
+}
+
+function pintarChips(d) {
+  const t = d.totais;
+  const c = [
+    ['', 'Contratos', t.contratos],
+    ['ATIVO', 'Ativos', t.ativos],
+    ['INATIVO', 'Inativos', t.inativos],
+  ];
+  const sit = document.getElementById('filtroSituacao').value;
+  let html = c.map(([v, rot, n]) =>
+    `<button class="chip ${sit === v && !filtroDivergencia ? 'on' : ''}" onclick="porSituacao('${v}')">
+       ${esc(rot)} <b>${n}</b></button>`).join('');
+  // 🚨 A DIVERGÊNCIA É O PRODUTO DA ABA: contrato cancelado aqui com placa
+  // rodando na CTR, ou termo sem assinatura com placa sustentada, é serviço
+  // entregue e provavelmente não cobrado.
+  html += `<button class="chip ${filtroDivergencia ? 'on' : ''}" onclick="porDivergencia()">
+             Divergências <b>${t.divergencias}</b></button>`;
+  html += `<button class="chip" onclick="porSemPreco()">Placas sem preço <b>${t.placas_sem_valor}</b></button>`;
+  document.getElementById('chips').innerHTML = html;
+}
+
+function porSituacao(v) {
+  filtroDivergencia = false;
+  document.getElementById('filtroSituacao').value = v;
+  carregarGrid();
+}
+function porDivergencia() {
+  filtroDivergencia = !filtroDivergencia;
+  document.getElementById('filtroSituacao').value = '';
+  carregarGrid();
+}
+function porSemPreco() {
+  document.getElementById('cardFila').scrollIntoView({ behavior: 'smooth' });
+}
+
+function pintarGrid(d) {
+  if (!d.contratos.length) {
+    document.getElementById('cardGrid').innerHTML = `<div class="vazio">Nenhum contrato com este filtro.</div>`;
+    return;
+  }
+  const linhas = d.contratos.map(l => {
+    const [cls, rot] = SIT_TAG[l.situacao] || ['t-info', l.situacao || '—'];
+    return `<tr>
+      <td><strong>${esc(l.numero || '—')}</strong><div class="nota">${esc(l.empresa || '')}</div></td>
+      <td>${esc(l.nome || '—')}<div class="nota mono">${esc(l.cnpj)}</div></td>
+      <td><span class="tag ${cls}">${esc(rot)}</span><div class="nota">${esc(l.motivo || '')}</div></td>
+      <td class="num">${l.placas_ativas == null ? '—' : l.placas_ativas}</td>
+      <td class="num">${l.placas_sem_valor ? `<strong style="color:var(--amber)">${l.placas_sem_valor}</strong>` : '0'}</td>
+      <td class="num">${l.valor_mensal_total ? esc('R$ ' + l.valor_mensal_total) : '<span class="nota">—</span>'}</td>
+      <td>${l.divergencia ? `<span class="tag t-fora">sim</span><div class="nota">${esc(l.divergencia)}</div>` : '<span class="nota">—</span>'}</td>
+      <td><button class="btn btn-mini" onclick="abrirContrato(${l.termo_id})">Abrir</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('cardGrid').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Termo</th><th>Cliente</th><th>Situação</th><th class="num">Placas</th>
+        <th class="num">Sem preço</th><th class="num">Mensalidade</th><th>Divergência</th><th></th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+}
+
+async function carregarGrid() {
+  const p = new URLSearchParams();
+  const c = comp(); if (c) p.set('competencia', c);
+  const q = (document.getElementById('busca').value || '').trim();
+  if (q) p.set('q', q);
+  const sit = document.getElementById('filtroSituacao').value;
+  if (sit) p.set('situacao', sit);
+  if (filtroDivergencia) p.set('divergencia', 'true');
+  document.getElementById('cardGrid').innerHTML = `<div class="vazio">Carregando…</div>`;
+  try {
+    const r = await fetch('/painel/api/car/clientes?' + p.toString(), { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    ultimoGrid = d;
+    pintarChips(d);
+    pintarGrid(d);
+    // ⚠️ A HORA DO CACHE VAI PARA A TELA. Status derivado sem dizer de quando é
+    // seria número sem prazo -- e o aviso prévio vence pelo calendário, sem
+    // nenhum evento novo para disparar a conta.
+    const cache = d.cache || {};
+    showMsg(`${d.totais.contratos} contrato(s) na lista.`
+      + (cache.refeito_agora
+          ? ` A situação foi recalculada agora (${cache.refeito_agora.termos} termos) porque ${cache.refeito_agora.porque}.`
+          : (cache.calculado_em ? ` Situação calculada em ${cache.calculado_em.slice(0,16).replace('T',' ')} UTC.` : '')),
+      false);
+  } catch (e) {
+    document.getElementById('cardGrid').innerHTML = `<div class="vazio">Não deu para carregar.</div>`;
+    showMsg('Erro: ' + e.message, true);
+  }
+}
+
+async function carregarPrefatura() {
+  const p = new URLSearchParams();
+  const c = comp(); if (c) p.set('competencia', c);
+  try {
+    const r = await fetch('/painel/api/car/prefatura?' + p.toString(), { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    pintarTotais(d);
+  } catch (e) {
+    document.getElementById('cardTotais').innerHTML = `<div class="nota">Não deu para somar: ${esc(e.message)}</div>`;
+  }
+}
+
+let filaAtual = [];
+async function carregarFila() {
+  const p = new URLSearchParams();
+  const c = comp(); if (c) p.set('competencia', c);
+  try {
+    const r = await fetch('/painel/api/car/fila-sem-valor?' + p.toString(), { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    filaAtual = d.fila;
+    if (!d.fila.length) {
+      document.getElementById('cardFila').innerHTML =
+        `<div class="nota">Nenhum contrato com placa cobrável sem preço nesta competência.</div>`;
+      return;
+    }
+    const linhas = d.fila.slice(0, 50).map(f => `<tr>
+      <td><strong>${esc(f.numero || '—')}</strong><div class="nota">${esc(f.empresa || '')}</div></td>
+      <td>${esc(f.nome || '—')}<div class="nota mono">${esc(f.cnpj)}</div></td>
+      <td>${f.assinado ? '<span class="tag t-ativa">assinado</span>' : '<span class="tag t-fora">sem assinatura</span>'}</td>
+      <td class="num">${f.placas}</td>
+      <td class="num"><strong>${f.sem_valor}</strong></td>
+      <td><button class="btn btn-mini" onclick="abrirContrato(${f.termo_id})">Abrir</button></td>
+    </tr>`).join('');
+    document.getElementById('cardFila').innerHTML = `
+      <table>
+        <thead><tr><th>Termo</th><th>Cliente</th><th>Documento</th>
+          <th class="num">Placas</th><th class="num">Sem preço</th><th></th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+      ${d.fila.length > 50 ? `<div class="nota" style="padding:10px 12px">Mostrando 50 de ${d.fila.length}.</div>` : ''}`;
+  } catch (e) {
+    document.getElementById('cardFila').innerHTML = `<div class="nota">Não deu para carregar: ${esc(e.message)}</div>`;
+  }
+}
+
+function recarregarTudo() { carregarPrefatura(); carregarGrid(); carregarFila(); }
+
+// ── Busca ampla: responde SEMPRE dizendo por onde achou ────────────────────
+async function buscarAmplo() {
+  const q = (document.getElementById('buscaAmpla').value || '').trim();
+  const alvo = document.getElementById('respostaBusca');
+  if (!q) { alvo.textContent = ''; return; }
+  alvo.textContent = 'Procurando…';
+  try {
+    const r = await fetch('/painel/api/car/busca?q=' + encodeURIComponent(q), { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    let txt = `<strong>${d.achou_por ? 'Achou por ' + esc(d.achou_por) : 'Não achei'}</strong> — ${esc(d.como || '')}`;
+    if (d.cnpjs && d.cnpjs.length) {
+      txt += `<br>${d.cnpjs.length} cliente(s): ` + d.cnpjs.slice(0, 20).map(x =>
+        `<a href="#" onclick="verCliente('${esc(x)}');return false">${esc(x)}</a>`).join(' · ');
+    }
+    if (d.termos && d.termos.length) {
+      txt += `<br>${d.termos.length} termo(s): ` + d.termos.slice(0, 20).map(t =>
+        `<a href="#" onclick="abrirContrato(${t.id || t.termo_id});return false">${esc(t.numero || t.id)}</a>`).join(' · ');
+    }
+    // ⚠️ A IDADE DO CACHE DA WESO VAI PARA A TELA quando a busca passou por ele:
+    // série de rastreador achada num cache de ontem é outra resposta.
+    if (d.cache) txt += `<br><span class="nota">Cache da WESO: ${esc(d.cache.atualizado_em || '—')}</span>`;
+    alvo.innerHTML = txt;
+  } catch (e) {
+    alvo.textContent = 'Erro: ' + e.message;
+  }
+}
+
+function verCliente(cnpj) {
+  document.getElementById('busca').value = cnpj;
+  filtroDivergencia = false;
+  document.getElementById('filtroSituacao').value = '';
+  carregarGrid();
+}
+
+// ── A gaveta do contrato: as linhas do mês E a linha do tempo do preço ─────
+function fecharGaveta() {
+  document.getElementById('gaveta').classList.remove('on');
+  document.getElementById('fundo').classList.remove('on');
+  contratoAberto = null;
+}
+
+async function abrirContrato(termoId) {
+  contratoAberto = termoId;
+  document.getElementById('gaveta').classList.add('on');
+  document.getElementById('fundo').classList.add('on');
+  document.getElementById('gavetaCorpo').innerHTML = `<div class="vazio">Carregando…</div>`;
+  const p = new URLSearchParams();
+  const c = comp(); if (c) p.set('competencia', c);
+  try {
+    const r = await fetch(`/painel/api/car/termo/${termoId}?` + p.toString(), { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    pintarContrato(d);
+  } catch (e) {
+    document.getElementById('gavetaCorpo').innerHTML = `<div class="vazio">Não deu para abrir: ${esc(e.message)}</div>`;
+  }
+}
+
+function pintarContrato(d) {
+  const ct = d.contrato;
+  document.getElementById('gavetaTitulo').textContent = 'Termo ' + ((ct && ct.numero) || d.termo_id);
+  document.getElementById('gavetaSub').textContent =
+    (ct && ct.cliente ? (ct.cliente.nome || ct.cliente.cnpj) : d.cnpj) + ' · competência ' + d.competencia;
+
+  let corpo = '';
+  if (!ct) {
+    // 🚨 `M12`: contrato que não entra na pré-fatura do mês DIZ por quê, em vez
+    // de a gaveta abrir vazia e o operador achar que a tela quebrou.
+    corpo += `<div class="card"><div class="aviso-item" style="margin:0">${esc(d.porque_sem_linhas)}</div></div>`;
+  } else {
+    const [cls, rot] = SIT_TAG[ct.situacao] || ['t-info', ct.situacao];
+    corpo += `<div class="card">
+      <div class="linha" style="justify-content:space-between">
+        <div><label>Situação na competência</label><span class="tag ${cls}">${esc(rot)}</span>
+          <div class="nota">${esc(ct.motivo || '')}</div></div>
+        <div><label>Documento</label>${ct.assinado
+          ? '<span class="tag t-ativa">assinado</span>'
+          : '<span class="tag t-fora">sem assinatura</span>'}</div>
+        <div><label>Placas cobráveis</label><strong>${ct.placas}</strong>
+          <div class="nota">${ct.com_valor} com preço · ${ct.sem_valor} sem</div></div>
+      </div>
+      ${ct.divergencia ? `<div class="aviso-item" style="margin:14px 0 0"><strong>Divergência:</strong> ${esc(ct.divergencia)}</div>` : ''}
+    </div>`;
+
+    const linhas = ct.linhas.map(l => {
+      const [pc, pr] = PLACA_TAG[l.situacao] || ['t-info', l.situacao || '—'];
+      return `<tr>
+        <td class="mono"><strong>${esc(l.placa)}</strong></td>
+        <td><span class="tag ${pc}">${esc(pr)}</span>
+          ${l.entrou_no_mes ? '<div class="nota">entrou no meio do mês</div>' : ''}
+          ${l.saiu_no_mes ? '<div class="nota">saiu no meio do mês</div>' : ''}</td>
+        <td class="num">${l.valor ? esc('R$ ' + l.valor) : '<span class="nota">sem preço</span>'}</td>
+        <td class="nota">${esc(l.fonte_do_valor || '')}${l.motivo ? '<br>' + esc(l.motivo) : ''}</td>
+      </tr>`;
+    }).join('');
+    corpo += `<div class="card tabela"><table>
+      <thead><tr><th>Placa</th><th>Situação</th><th class="num">Valor no mês</th><th>De onde vem</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div>`;
+  }
+
+  // ── As ações. Cada uma exige motivo, e o motivo vai para o evento. ──────
+  corpo += `<div class="card">
+    <h3>Mudar o que este contrato cobra</h3>
+    <div class="linha">
+      <div class="campo" style="max-width:160px"><label for="acValor">Valor mensal</label>
+        <input type="text" id="acValor" placeholder="199,90"></div>
+      <div class="campo"><label for="acMotivo">Motivo (obrigatório)</label>
+        <input type="text" id="acMotivo" placeholder="por que este valor muda"></div>
+      <div class="campo" style="max-width:150px"><label for="acPlaca">Só uma placa (opcional)</label>
+        <input type="text" id="acPlaca" placeholder="em branco = todas"></div>
+    </div>
+    <div class="linha" style="margin-top:14px">
+      <button class="btn btn-primary" onclick="acao('preco')"><i class="bi bi-tag"></i> Lançar preço</button>
+      <button class="btn btn-linha" onclick="acao('excecao')"><i class="bi bi-percent"></i> Exceção só deste mês</button>
+      <button class="btn btn-linha" onclick="acao('renovar')"><i class="bi bi-arrow-repeat"></i> Renovar vigência</button>
+      <button class="btn btn-perigo" onclick="acao('cancelar')"><i class="bi bi-x-octagon"></i> Cancelar cobrança</button>
+    </div>
+    <p class="nota" style="margin-top:12px"><strong>Cancelar não mexe em placa</strong> — interrompe o
+       faturamento.</p>
+    <div id="msgAcao" class="msg"></div>
+  </div>`;
+
+  const hist = d.historico_preco || [];
+  corpo += `<div class="card">
+    <h3>Linha do tempo do preço</h3>
+    ${hist.length ? `<table>
+      <thead><tr><th>Competência</th><th>Ação</th><th class="num">Valor</th><th>Placa</th>
+        <th>Quem / quando</th><th>Motivo</th><th></th></tr></thead>
+      <tbody>${hist.map(e => `<tr style="${e.anulado ? 'opacity:.55' : ''}">
+        <td class="mono">${esc(e.competencia)}</td>
+        <td>${esc(e.acao)}${e.anulado ? ' <span class="tag t-fora">anulado</span>' : ''}</td>
+        <td class="num">${e.valor_mensal ? esc('R$ ' + e.valor_mensal) : '<span class="nota">—</span>'}</td>
+        <td class="mono">${e.placa_chave ? esc(e.placa_chave) : '<span class="nota">todas</span>'}</td>
+        <td>${esc(e.por || '')}<div class="nota">${esc((e.criado_em || '').slice(0,16).replace('T',' '))}</div></td>
+        <td class="nota">${esc(e.motivo || '')}${e.fonte ? `<div class="nota">fonte: ${esc(e.fonte)}</div>` : ''}</td>
+        <td>${e.anulado ? '' : `<button class="btn btn-mini" onclick="anular(${e.id})">Anular</button>`}</td>
+      </tr>`).join('')}</tbody></table>`
+      : `<div class="nota">Nenhum preço lançado neste contrato ainda.</div>`}
+  </div>`;
+
+  document.getElementById('gavetaCorpo').innerHTML = corpo;
+}
+
+function msgAcao(t, erro) {
+  const m = document.getElementById('msgAcao');
+  if (m) { m.textContent = t; m.className = 'msg ' + (erro ? 'msg-erro' : 'msg-ok'); }
+}
+
+async function acao(qual) {
+  if (!contratoAberto) return;
+  const corpo = {
+    competencia: comp() || undefined,
+    valor: (document.getElementById('acValor').value || '').trim() || undefined,
+    motivo: (document.getElementById('acMotivo').value || '').trim() || undefined,
+    placa_chave: (document.getElementById('acPlaca').value || '').trim() || undefined,
+  };
+  // 🚨 CANCELAR CONFIRMA, e o texto diz o efeito em vez de perguntar "tem
+  // certeza?": o que para é o FATURAMENTO, e as placas continuam onde estão.
+  if (qual === 'cancelar' && !window.confirm(
+      'Cancelar a cobrança deste contrato a partir de ' + (comp() || 'agora') +
+      '?\n\nAs placas NÃO são mexidas.')) return;
+  msgAcao('Gravando…', false);
+  try {
+    const r = await fetch(`/painel/api/car/termo/${contratoAberto}/${qual}`, {
+      method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    msgAcao('Gravado como evento ' + d.evento_id + ' por ' + d.por + '.', false);
+    abrirContrato(contratoAberto);
+    carregarPrefatura(); carregarFila();
+  } catch (e) { msgAcao('Erro: ' + e.message, true); }
+}
+
+async function anular(eventoId) {
+  const motivo = window.prompt('Por que este evento está sendo anulado?\n\n' +
+    'O evento NÃO é apagado: fica marcado como anulado.');
+  if (motivo === null) return;
+  try {
+    const r = await fetch(`/painel/api/car/evento/${eventoId}/anular`, {
+      method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motivo }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    msgAcao('Anulado pelo evento ' + d.evento_id + '.', false);
+    abrirContrato(contratoAberto);
+    carregarPrefatura(); carregarFila();
+  } catch (e) { msgAcao('Erro: ' + e.message, true); }
+}
+
+// ── O lote: é o que tira a carteira de zero ────────────────────────────────
+function abrirLote() {
+  document.getElementById('modalLote').classList.add('on');
+  const fila = filaAtual || [];
+  document.getElementById('loteCorpo').innerHTML = `
+    <p class="nota" style="margin-bottom:14px">Lança <strong>um preço por contrato</strong>, valendo para todas as
+       placas dele.</p>
+    <div class="linha">
+      <div class="campo" style="max-width:160px"><label for="loteValor">Valor mensal</label>
+        <input type="text" id="loteValor" placeholder="199,90"></div>
+      <div class="campo"><label for="loteMotivo">Motivo (obrigatório)</label>
+        <input type="text" id="loteMotivo" placeholder="ex.: carga inicial do preço conforme termo"></div>
+      <div class="campo" style="max-width:150px"><label for="loteQuantos">Quantos da fila</label>
+        <input type="text" id="loteQuantos" value="${Math.min(20, fila.length)}"></div>
+    </div>
+    <p class="nota" style="margin-top:12px">A fila tem <strong>${fila.length}</strong> contrato(s) com placa cobrável
+       e sem preço. O lote pega os primeiros da lista.</p>
+    <div style="margin-top:14px; display:flex; gap:8px">
+      <button class="btn btn-primary" onclick="rodarLote()"><i class="bi bi-tags"></i> Lançar</button>
+      <button class="btn btn-linha" onclick="fecharLote()">Cancelar</button>
+    </div>
+    <div id="msgLote" class="msg"></div>`;
+}
+function fecharLote() { document.getElementById('modalLote').classList.remove('on'); }
+
+async function rodarLote() {
+  const m = document.getElementById('msgLote');
+  const valor = (document.getElementById('loteValor').value || '').trim();
+  const motivo = (document.getElementById('loteMotivo').value || '').trim();
+  const quantos = parseInt(document.getElementById('loteQuantos').value, 10) || 0;
+  const termos = (filaAtual || []).slice(0, quantos).map(f => f.termo_id);
+  if (!termos.length) { m.textContent = 'Nenhum contrato selecionado.'; m.className = 'msg msg-erro'; return; }
+  if (!window.confirm(`Lançar R$ ${valor} em ${termos.length} contrato(s)?\n\n` +
+      'Cada um recebe um preço que vale para todas as placas dele.')) return;
+  m.textContent = 'Lançando…'; m.className = 'msg msg-ok';
+  try {
+    const r = await fetch('/painel/api/car/lote/preco', {
+      method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ termos, valor, motivo, competencia: comp() || undefined }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    m.innerHTML = `<strong>${d.lancados} lançado(s)</strong>, ${d.repetidos} já tinham este mesmo preço,
+      ${d.recusados.length} recusado(s).`
+      + (d.recusados.length ? '<br>' + d.recusados.slice(0, 10).map(x =>
+          `termo ${esc(x.termo_id)}: ${esc(x.motivo)}`).join('<br>') : '');
+    m.className = 'msg msg-ok';
+    recarregarTudo();
+  } catch (e) { m.textContent = 'Erro: ' + e.message; m.className = 'msg msg-erro'; }
+}
+
+function urlComFiltro(base) {
+  const p = new URLSearchParams();
+  const c = comp(); if (c) p.set('competencia', c);
+  const q = (document.getElementById('busca').value || '').trim();
+  if (q) p.set('q', q);
+  const sit = document.getElementById('filtroSituacao').value;
+  if (sit) p.set('situacao', sit);
+  if (filtroDivergencia) p.set('divergencia', 'true');
+  return base + '?' + p.toString();
+}
+
+// ⚠️ O CSV PASSA PELO TOKEN, como no resto do painel: `window.open` numa rota
+// com `requer_aba` baixaria um 401 em arquivo.
+async function baixar(url, nome) {
+  try {
+    const r = await fetch(url, { headers: auth() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = nome; a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { showMsg('Não deu para exportar: ' + e.message, true); }
+}
+function exportarGrid() { baixar(urlComFiltro('/painel/api/car/clientes.csv'), 'car_contratos.csv'); }
+function exportarPrefatura() {
+  const p = new URLSearchParams(); const c = comp(); if (c) p.set('competencia', c);
+  baixar('/painel/api/car/prefatura.csv?' + p.toString(), 'prefatura.csv');
+}
+
+// Abre na competência de hoje: pré-fatura sem mês seria pré-fatura de mês nenhum.
+(function iniciar() {
+  const hoje = new Date();
+  document.getElementById('competencia').value =
+    hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  recarregarTudo();
+})();
+</script>
+</body>
+</html>

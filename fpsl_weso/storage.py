@@ -332,6 +332,16 @@ def init_db():
         contratos_tabelas.criar(conn)
         contratos_tabelas.migrar(conn)
 
+        # 🆕 28/10: as 3 tabelas das Contas a Receber (`CAR_1.1`) -- `car_evento`,
+        # `car_contrato` e `car_leitura`. Mesmo motivo do bloco de cima: a DDL
+        # mora em `painel/car_tabelas.py` e o diff neste arquivo, que o painel
+        # inteiro lê, são estas duas chamadas.
+        # 🚨 A CAR **lê** as 8 tabelas `contrato_*` e não altera nenhuma delas:
+        # é o que o `teste_car_tabelas` mede, não o que ele promete.
+        from .painel import car_tabelas
+        car_tabelas.criar(conn)
+        car_tabelas.migrar(conn)
+
         # 🆕 21/10: o NOME de cada tipo de OS, para o cabecalho da mensagem do
         # agendamento (ponta 1 do plano). A rotina `sync_tipos_os` a preenche
         # 1x/dia. 🚨 DICIONARIO, NAO AUTORIDADE: 173 das 547 OS tem `tipo`
