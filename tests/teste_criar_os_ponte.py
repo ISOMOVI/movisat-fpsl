@@ -30,9 +30,19 @@ sys.path.insert(0, "/home/claude/fpsl_weso")
 
 from fpsl_weso.routers import os_ponte  # noqa: E402
 
+# 🚨 O CLIENTE DOS TESTES E A VELASCO (998063), E SO ELA. Regra dele, 29/10:
+# *"nao pode usar outro CNPJ alem da VELASCO para teste, pois os tickets nascem
+# e tem ligacoes. OS com outros clientes podem ser mal interpretadas pela OP"*.
+#
+# ⚠️ Aqui o id vive em DUBLE e nenhuma escrita chega ao ERP -- mas e de um teste
+# que se copia o numero para um script que escreve, e foi exatamente o que eu
+# fiz em 29/10: a OS 17056 nasceu na DCBM porque o numero dela estava a mao.
+CLIENTE_SANDBOX = 998063
+
+
 
 def _entrada(**troca):
-    base = dict(cliente_id=68546, tipo_id=1782, problema_id=12760,
+    base = dict(cliente_id=998063, tipo_id=1782, problema_id=12760,
                 situacao_id=38, prioridade_id=382,
                 descricao="chamado de teste", produto_servico_id=670990)
     base.update(troca)
@@ -56,7 +66,7 @@ def teste_o_corpo_leva_os_ids_que_ele_decidiu():
     assert corpo["problemaId"] == 12760
     assert corpo["tipoId"] == 1782
     assert corpo["produtoServicoId"] == 670990
-    assert corpo["clienteId"] == 68546
+    assert corpo["clienteId"] == 998063
 
 
 def teste_status_e_dois_porque_o_dado_diz_isso():
@@ -180,7 +190,7 @@ def teste_a_prova_e_a_releitura(monkeypatch):
     async def ler(caminho, params=None):
         return {"data": {"id": 927100, "numeroOrdem": 17101, "tipo": 1782,
                          "problema": 12760, "situacaoId": 38,
-                         "prioridade": 382, "parceiro": 68546}}
+                         "prioridade": 382, "parceiro": 998063}}
 
     monkeypatch.setattr(os_ponte, "harmonit_post", postar)
     monkeypatch.setattr(os_ponte, "harmonit_get", ler)
@@ -204,7 +214,7 @@ def teste_a_releitura_acusa_divergencia(monkeypatch):
         # estão com situação 0.
         return {"data": {"id": 927100, "tipo": 1782, "problema": 12760,
                          "situacaoId": 0, "prioridade": 382,
-                         "parceiro": 68546}}
+                         "parceiro": 998063}}
 
     monkeypatch.setattr(os_ponte, "harmonit_post", postar)
     monkeypatch.setattr(os_ponte, "harmonit_get", ler)

@@ -16,7 +16,7 @@ em ERP de produção é sujeira que ninguém reconhece seis meses depois. O núm
 ⚠️ O NÚMERO DA OS É CONSUMIDO DE QUALQUER FORMA: remover a OS não devolve o
 número à sequência. É o custo desta prova, e é uma vez.
 
-Uso:  ./venv/bin/python provar_criacao_os.py <clienteId>
+Uso:  ./venv/bin/python provar_criacao_os.py 998063   (a Velasco, a UNICA)
       ./venv/bin/python provar_criacao_os.py <clienteId> --nao-apagar
 """
 import asyncio
@@ -34,6 +34,28 @@ DESCRICAO = ("ZZ TESTE API - APAGAR. Prova de ponta a ponta do Bloco A "
              "deve ser removida em seguida.")
 
 
+# 🚨 A SANDBOX E A VELASCO, E SO ELA -- regra dele, 29/10: *"nao pode usar
+# outro CNPJ alem da VELASCO para teste, pois os tickets nascem e tem ligacoes.
+# OS com outros clientes podem ser mal interpretadas pela OP"*.
+#
+# ⚠️ ISTO E UMA TRAVA, NAO UM AVISO, porque eu ja errei: a OS 17056 foi criada
+# no cliente 68546 (DCBM) em 29/10 para provar a criacao. Foi apagada no mesmo
+# minuto, mas entre a criacao e o delete ela existiu na fila que a Operacao le
+# -- e ninguem ali sabia que era teste.
+CLIENTE_SANDBOX = 998063   # Velasco Leite Pastelaria ME
+NOME_SANDBOX = "Velasco Leite Pastelaria ME"
+
+
+def conferir_sandbox(cliente_id: int) -> None:
+    """Recusa qualquer cliente que nao seja a sandbox. Ver o bloco acima."""
+    if cliente_id != CLIENTE_SANDBOX:
+        raise SystemExit(
+            f"*** RECUSADO: cliente {cliente_id}.\n"
+            f"*** A sandbox e a {NOME_SANDBOX} ({CLIENTE_SANDBOX}), e so ela.\n"
+            f"*** Regra dele: OS nascida em cliente de verdade entra na fila\n"
+            f"*** que a Operacao le, e ninguem ali sabe que e teste.")
+
+
 def _dados(r):
     d = r.get("data") if isinstance(r, dict) and "data" in r else r
     if isinstance(d, list):
@@ -42,6 +64,8 @@ def _dados(r):
 
 
 async def main(cliente_id: int, apagar: bool) -> int:
+    # 🚨 ANTES DE QUALQUER CHAMADA AO ERP.
+    conferir_sandbox(cliente_id)
     await start_harmonit_client()
     try:
         entrada = os_ponte.CriarOS(

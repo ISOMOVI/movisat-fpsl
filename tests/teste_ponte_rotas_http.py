@@ -47,6 +47,16 @@ from fastapi.testclient import TestClient  # noqa: E402
 from fpsl_weso.config import settings  # noqa: E402
 from fpsl_weso.routers import os_ponte  # noqa: E402
 
+# 🚨 O CLIENTE DOS TESTES E A VELASCO (998063), E SO ELA. Regra dele, 29/10:
+# *"nao pode usar outro CNPJ alem da VELASCO para teste, pois os tickets nascem
+# e tem ligacoes. OS com outros clientes podem ser mal interpretadas pela OP"*.
+#
+# ⚠️ Aqui o id vive em DUBLE e nenhuma escrita chega ao ERP -- mas e de um teste
+# que se copia o numero para um script que escreve, e foi exatamente o que eu
+# fiz em 29/10: a OS 17056 nasceu na DCBM porque o numero dela estava a mao.
+CLIENTE_SANDBOX = 998063
+
+
 CHAVE = "zz-chave-de-teste-da-ponte"
 
 # As OS do banco de mentira. 🚨 A `data_previsao` vai no formato do Harmonit
@@ -54,14 +64,14 @@ CHAVE = "zz-chave-de-teste-da-ponte"
 # saber recortar, e `date()` devolveria zero linha.
 OS_DE_MENTIRA = [
     # numero, situacao, status_str, cliente, previsao, excluida
-    (90001, 38, "Nova", 68546, "25/10/2026 09:00:00", 0),
-    (90002, 1316, "Iniciada", 68546, "26/10/2026 09:00:00", 0),
+    (90001, 38, "Nova", 998063, "25/10/2026 09:00:00", 0),
+    (90002, 1316, "Iniciada", 998063, "26/10/2026 09:00:00", 0),
     (90003, 15746, "Finalizado", 54406, "27/10/2026 09:00:00", 0),
     (90004, 0, "Nova", 54406, "28/10/2026 09:00:00", 0),
     # ⚠️ ANTES do corte: tem de ficar de fora.
-    (90005, 38, "Nova", 68546, "10/10/2026 09:00:00", 0),
+    (90005, 38, "Nova", 998063, "10/10/2026 09:00:00", 0),
     # 🚨 EXCLUÍDA: nunca entra, com interruptor ou sem.
-    (90006, 38, "Nova", 68546, "27/10/2026 09:00:00", 1),
+    (90006, 38, "Nova", 998063, "27/10/2026 09:00:00", 1),
 ]
 
 
@@ -220,7 +230,7 @@ class TestPorSituacao:
 # POST /api/os/criar
 # ============================================================================
 class TestCriar:
-    CORPO = {"cliente_id": 68546, "tipo_id": 1782, "problema_id": 12760,
+    CORPO = {"cliente_id": 998063, "tipo_id": 1782, "problema_id": 12760,
              "situacao_id": 38, "prioridade_id": 382,
              "descricao": "zz teste de rota", "produto_servico_id": 670990}
 
@@ -242,7 +252,7 @@ class TestCriar:
         async def ler(caminho, params=None):
             return {"data": {"id": 990100, "numeroOrdem": 90100, "tipo": 1782,
                              "problema": 12760, "situacaoId": 38,
-                             "prioridade": 382, "parceiro": 68546}}
+                             "prioridade": 382, "parceiro": 998063}}
 
         monkeypatch.setattr(os_ponte, "harmonit_post", postar)
         monkeypatch.setattr(os_ponte, "harmonit_get", ler)
@@ -250,7 +260,7 @@ class TestCriar:
         assert r.status_code == 200, r.text
         assert r.json() == {"ok": True, "criada": True, "numero_os": 90100,
                             "os_id": 990100, "situacao_id": 38,
-                            "cliente_id": 68546, "divergencias": None}
+                            "cliente_id": 998063, "divergencias": None}
 
     @pytest.mark.parametrize("falta", ["cliente_id", "tipo_id", "problema_id",
                                        "situacao_id", "prioridade_id",
