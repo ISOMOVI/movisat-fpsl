@@ -71,6 +71,7 @@ extenso (*"os dois .env estão iguais?"*).
 | `POST /agendar-tecnico` | cria o compromisso na OS | 21/10 |
 | `POST /endereco` | **a OS inteira**, com só o endereço trocado | 21/10 |
 | `POST /criar` | **cria a OS de análise do chamado** | **29/10** |
+| `POST /situacao` | **move a OS de etapa** — escreve `situacaoId` | **29/10** |
 
 ---
 
@@ -152,6 +153,48 @@ o `movizap/paineis.py`. Há trava para a cópia não apodrecer calada; se
 divergirem, quem manda é o MoviZap, e o sintoma é `tem_coluna` errado — não card
 perdido, porque quem monta o quadro reconfere pela tupla dele.
 
+
+---
+
+## 4b. `POST /situacao` — mover a OS de etapa (Bloco D)
+
+🔵 É o motivo que ele deu para o painel existir (22/10): *"hoje ainda não usamos
+a situação da OS, por isso o painel e consulta para atualizar a situação no
+painel"*. E a ordem é **livre**, por decisão dele em 29/10: *"que tal de caminho
+proibido é esse??"* — **esta rota não valida transição**, e o Harmonit também
+não (medido: de "Serviço Realizado" para "Agendamento" e ele aceitou).
+
+| campo | o que faz |
+|---|---|
+| `numero_os` · `situacao_id` | obrigatórios |
+| `situacao_esperada` | 🚨 **a trava de concorrência**: a situação que a TELA tinha. Se o ERP já estiver em outra, a rota **recusa** com `conflito: true` e **não escreve**. ⚠️ Nulo é legítimo (a OS não tinha situação) |
+| `conferir_antes` | `true`. Desligar é escrever por cima do que outra pessoa fez |
+
+**Resposta:** `{ok, gravou, numero_os, de, para, mudou, fora_da_situacao}`.
+
+🚨 **`gravou` TEM TRÊS VALORES**, e o terceiro foi um defeito meu pego na prova
+de ponta a ponta:
+
+| `gravou` | significa |
+|---|---|
+| `true` | a releitura confirmou a situação nova |
+| `false` | não gravou — e a mensagem diz se **pode tentar de novo** |
+| **`null`** | **a escrita foi ENVIADA e aceita, e a releitura falhou**: não se sabe se mudou. Confira à mão e **não tente de novo às cegas** |
+
+⚠️ **As duas leituras estavam sem guarda até 29/10 à noite.** A prova falhou
+duas vezes com um 502 do Harmonit vindo de uma leitura sem `try`, e a chamada
+direta da mesma função moveu a OS no mesmo minuto. Nas duas vezes a OS **não**
+moveu (conferido no ERP) — o `gravou: false` foi honesto **por sorte, não por
+desenho**.
+
+🚨 **E ESTA ROTA ATUALIZA O CACHE**, diferente da do endereço: o card vem da
+`os_historico`, varrida a cada 5 min. Sem isso, movido o card ele **voltaria
+para a coluna antiga** por até 5 minutos e a pessoa moveria de novo. ⚠️ O cache
+só é escrito **depois** de a releitura confirmar.
+
+⚠️ **O registro de quem moveu fica do lado do MoviZap** (`os_passagem`, migração
+083), não aqui: 🔵 *"deve ter o log de quem faz o que SEMPRE"*, e quem conhece o
+atendente é o MoviZap. Esta rota não sabe quem está movendo — de propósito.
 ---
 
 ## 5. 🚨 A armadilha central da escrita: os nomes não batem

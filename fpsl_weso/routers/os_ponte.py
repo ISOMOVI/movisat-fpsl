@@ -930,9 +930,25 @@ async def gravar_endereco_da_os(entrada: EnderecoDaOS):
         return {"ok": False, "numero_os": entrada.numero_os,
                 "motivo": f"{type(e).__name__}: {e}"}
 
-    depois = _uma_os(await harmonit_get(
-        "/OrdemServico/ObterOrdemServicoPorNumero",
-        params={"numeroOs": entrada.numero_os}))
+    # 🚨 AQUI E O CASO PERIGOSO, e e o irmao exato do `criada: null` da criacao
+    # de OS: a escrita JA FOI ENVIADA e aceita. Se a releitura falhar, nao se
+    # sabe se a situacao mudou -- e `gravou: False` seria mentira tanto quanto
+    # `gravou: True`. Entao: `gravou: None`, e a mensagem manda conferir a mao.
+    try:
+        depois = _uma_os(await harmonit_get(
+            "/OrdemServico/ObterOrdemServicoPorNumero",
+            params={"numeroOs": entrada.numero_os}))
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        log.error("a situacao da OS %s foi ENVIADA e a releitura falhou: %s",
+                  entrada.numero_os, e)
+        return {
+            "ok": False, "gravou": None, "numero_os": entrada.numero_os,
+            "de": de, "para": entrada.situacao_id,
+            "motivo": (f"a escrita da situacao foi ENVIADA e aceita, e a "
+                       f"releitura falhou ({type(e).__name__}): NAO SE SABE se "
+                       f"a OS {entrada.numero_os} mudou. Confira a mao e NAO "
+                       f"tente de novo as cegas"),
+        }
     mudou = _diferencas(antes, depois)
     fora = {k: v for k, v in mudou.items() if k not in CAMPOS_DO_ENDERECO}
     if fora:
@@ -1370,3 +1386,168 @@ def _tecnicos_da_os(tecnicos_json: str | None) -> list[dict]:
         if t.get("agendamentoId") and not atual["agendamento_id"]:
             atual["agendamento_id"] = t.get("agendamentoId")
     return list(por_usuario.values())
+
+
+# ---------------------------------------------------------------------------
+# ESCREVER A SITUAÇÃO DA OS — Bloco D do pipeline da operação (29/10)
+# ---------------------------------------------------------------------------
+#
+# 🔵 É o motivo que ele deu para o painel existir (22/10): *"hoje ainda não
+# usamos a situação da OS, por isso o painel e consulta para atualizar a
+# situação no painel"*.
+#
+# 🔵 E a ordem é LIVRE, por decisão dele em 29/10: *"que tal de caminho proibido
+# é esse??"* — não existe caminho proibido. ⚠️ A pergunta era minha, não dele, e
+# fica registrado que ela foi descartada: **esta rota não valida transição**. O
+# Harmonit também não (medido: de "Serviço Realizado" para "Agendamento" e ele
+# aceitou).
+#
+# 🚨 NÃO EXISTE "ALTERAR SÓ A SITUAÇÃO". Como no endereço (21/10), a única
+# escrita é `SalvarOrdemServico`, que grava a OS INTEIRA — então aqui a OS é
+# lida, remontada campo a campo pelo `_corpo_de_escrita`, gravada e **relida**.
+# Provado em 29/10 na OS 16991: a releitura dos 40 campos/listas acusa **só** o
+# `situacaoId`.
+#
+# 🚨 E ESTA ROTA ATUALIZA O CACHE, diferente da do endereço. O card vem da
+# `os_historico`, varrida a cada 5 min: sem isto, movido o card ele **voltaria
+# para a coluna antiga** na próxima abertura do painel por até 5 minutos — e a
+# pessoa concluiria que não gravou e moveria de novo.
+
+
+class SituacaoDaOS(BaseModel):
+    numero_os: int = Field(..., ge=1)
+    situacao_id: int = Field(..., ge=0)
+    # 🚨 A TRAVA DE CONCORRÊNCIA: a situação que a TELA tinha quando carregou o
+    # card. A rota relê e, se o ERP já estiver em outra, **recusa**. 🔵 Ele
+    # considerou o risco pequeno (*"cada 1 atua em uma área especifica do
+    # fluxo"*) e pediu a trava mesmo assim (*"mas pode ter sim"*).
+    #
+    # ⚠️ NULO É LEGÍTIMO e quer dizer "a OS não tinha situação quando eu li" —
+    # não "não confira". Quem não quiser conferir manda `conferir_antes: false`.
+    situacao_esperada: int | None = None
+    conferir_antes: bool = True
+
+
+@router.post("/situacao")
+async def gravar_situacao_da_os(entrada: SituacaoDaOS):
+    """Grava a situação da OS no Harmonit. 🚨 A prova é RELER e COMPARAR.
+
+    Devolve `{"ok", "numero_os", "de", "para", "mudou", "fora_da_situacao"}`.
+
+    🚨 `fora_da_situacao` É O QUE IMPORTA quando vem preenchido: esta escrita
+    tocou algum campo que não é a situação, e aí `ok` é falso **mesmo com a
+    situação gravada** — o remapeamento está errado em algum campo. Não dá para
+    desfazer; o que dá é não descobrir seis meses depois.
+    """
+    # 🚨 A LEITURA DE ANTES TAMBEM FALHA, e ela estava sem guarda: um 502 do
+    # Harmonit aqui estourava a rota, e quem chamava recebia "o FPSL respondeu
+    # 502" -- que nao diz nada sobre a escrita. Aqui e SEGURO (nada foi escrito
+    # ainda), e por isso a resposta pode ser clara: nao gravou, e pode tentar
+    # de novo.
+    try:
+        antes = _uma_os(await harmonit_get(
+            "/OrdemServico/ObterOrdemServicoPorNumero",
+            params={"numeroOs": entrada.numero_os}))
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        log.warning("nao deu para ler a OS %s antes de mover: %s",
+                    entrada.numero_os, e)
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "de": None, "para": entrada.situacao_id,
+                "motivo": (f"nao deu para ler a OS {entrada.numero_os} no "
+                           f"Harmonit antes de mover ({type(e).__name__}) -- "
+                           f"nada foi escrito, pode tentar de novo")}
+    if not antes:
+        raise HTTPException(
+            status_code=404,
+            detail=f"OS {entrada.numero_os} nao encontrada no Harmonit")
+
+    de = antes.get("situacaoId")
+
+    # 🚨 A TRAVA DE CONCORRÊNCIA, antes de qualquer escrita.
+    if entrada.conferir_antes and de != entrada.situacao_esperada:
+        return {
+            "ok": False, "gravou": False, "numero_os": entrada.numero_os,
+            "de": de, "para": entrada.situacao_id,
+            "motivo": (f"a OS {entrada.numero_os} esta na situacao {de} no "
+                       f"Harmonit, e a tela carregou "
+                       f"{entrada.situacao_esperada}. Alguem mudou no meio -- "
+                       f"recarregue o painel antes de mover"),
+            "conflito": True,
+        }
+
+    # ⚠️ Mover para onde já está não é erro, e também não é escrita: gravar a
+    # OS inteira por nada é risco sem ganho.
+    if de == entrada.situacao_id:
+        return {"ok": True, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.situacao_id,
+                "motivo": "a OS ja estava nesta situacao"}
+
+    cliente_id = _cliente_da_os(entrada.numero_os) or antes.get("parceiro")
+    if not cliente_id:
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.situacao_id,
+                "motivo": "nao sei o cliente desta OS, e gravar sem ele a "
+                          "desvincularia do cadastro"}
+
+    # 🚨 O MESMO MONTADOR DO ENDEREÇO, sem campo de endereço para trocar: o
+    # `novo` vem vazio, então ele remonta o endereço como está. Dois montadores
+    # do mesmo corpo seriam duas verdades.
+    corpo = _corpo_de_escrita(antes, cliente_id, {})
+    corpo["situacaoId"] = entrada.situacao_id
+
+    try:
+        await harmonit_post("/OrdemServico/SalvarOrdemServico", corpo)
+    except HTTPException as e:
+        log.warning("SalvarOrdemServico recusou a situacao da OS %s: %s",
+                    entrada.numero_os, e.detail)
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.situacao_id, "motivo": str(e.detail)}
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        log.warning("SalvarOrdemServico falhou na situacao da OS %s: %s",
+                    entrada.numero_os, e)
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.situacao_id,
+                "motivo": f"{type(e).__name__}: {e}"}
+
+    depois = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": entrada.numero_os}))
+    mudou = _diferencas(antes, depois)
+    fora = {k: v for k, v in mudou.items() if k != "situacaoId"}
+    if fora:
+        log.error("a escrita de situacao mudou campos fora dela na OS %s: %s",
+                  entrada.numero_os, fora)
+
+    gravou = (depois or {}).get("situacaoId") == entrada.situacao_id
+
+    # 🚨 O CACHE, para o card não voltar para a coluna antiga. Ver o cabeçalho.
+    # ⚠️ Só depois de a releitura confirmar: gravar no cache o que o ERP não
+    # confirmou faria a tela mentir por 5 minutos no sentido contrário.
+    if gravou and depois:
+        try:
+            await storage.salvar_os_historico(
+                numero_os=entrada.numero_os,
+                tipo=depois.get("tipo"), problema=depois.get("problema"),
+                produto_id=depois.get("produtoId"),
+                cliente_id=depois.get("parceiro") or cliente_id,
+                data_previsao=depois.get("dataPrevisao"),
+                oficinas=depois.get("oficina") or [],
+                status=depois.get("status"), status_str=depois.get("statusStr"),
+                materiais=depois.get("materiais"),
+                situacao_id=depois.get("situacaoId"),
+                os_id=depois.get("id"), tecnicos=depois.get("tecnico"))
+        except Exception as e:  # noqa: BLE001
+            # ⚠️ NÃO derruba a resposta: a escrita no ERP já aconteceu e é o
+            # que importa. O cache se corrige na varredura dos 5 min.
+            log.warning("a situacao da OS %s foi gravada e o cache nao "
+                        "atualizou: %s", entrada.numero_os, e)
+
+    return {
+        "ok": bool(gravou) and not fora,
+        "gravou": bool(gravou),
+        "numero_os": entrada.numero_os,
+        "de": de,
+        "para": (depois or {}).get("situacaoId"),
+        "mudou": mudou,
+        "fora_da_situacao": fora or None,
+    }
