@@ -1551,3 +1551,87 @@ async def gravar_situacao_da_os(entrada: SituacaoDaOS):
         "mudou": mudou,
         "fora_da_situacao": fora or None,
     }
+
+
+# ---------------------------------------------------------------------------
+# A FICHA DA OS — Bloco E do pipeline da operação (29/10)
+# ---------------------------------------------------------------------------
+#
+# 🔵 Ele, vendo o card aberto sem os resumos: *"onde estão os temas do card,
+# após clicar?"* — os quatro do mockup: **Descrição da OS**, **Solução
+# técnica**, **Dados do chamado** e **Agendamento**.
+#
+# 🚨 POR QUE ISTO É UMA ROTA PRÓPRIA, e não vem no quadro: `descricao` e
+# `solucaoTecnica` **não estão no cache** (`os_historico` guarda tipo, problema,
+# produto, cliente, previsão, status, situação, oficinas, materiais e técnicos —
+# e nenhum dos dois textos). Então vêm **ao vivo do ERP**, e por isso é
+# **1 chamada por card aberto** — nunca na montagem do quadro, que teria 11.
+#
+# ⚠️ O AGENDAMENTO sai do `tecnico` da própria OS: é lá que vive o
+# `agendamentoId`. 🔵 No desenho dele o painel do agendamento *"nasce
+# desabilitado e acende em Serviço Agendado"* — quem decide isso é a tela, e
+# esta rota só diz o que existe.
+
+
+@router.get("/ficha")
+async def ficha_da_os(numero_os: int = Query(..., ge=1)):
+    """A OS ao vivo, para o card aberto. 🚨 Os dois textos só existem aqui.
+
+    Devolve `{numero_os, descricao, solucao_tecnica, previsao, prioridade,
+    tipo, tipo_nome, problema, situacao_id, status_str, endereco, placas,
+    tecnicos, materiais, checklist, oficina}`.
+
+    ⚠️ **TEXTO VAZIO É RESPOSTA, NÃO FALHA.** A `solucaoTecnica` é nula ou
+    vazia na maioria das OS, e o card tem de dizer *"sem solução técnica
+    escrita"* em vez de mostrar uma caixa em branco que parece defeito.
+
+    🚨 **E A FALHA DO ERP NÃO VIRA FICHA VAZIA:** se a leitura não responder,
+    esta rota **estoura** — quem chama mostra *"não deu para ler a OS agora"*.
+    Uma ficha vazia seria indistinguível de uma OS sem dados, e o operador
+    concluiria que não há o que ver.
+    """
+    lida = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": numero_os}))
+    if not lida:
+        raise HTTPException(
+            status_code=404,
+            detail=f"OS {numero_os} nao encontrada no Harmonit")
+
+    with storage._connect() as conn:
+        nomes_de_tipo = storage.nomes_dos_tipos_os(conn)
+
+    # ⚠️ As listas vêm da própria OS e **não** entram em escrita nenhuma —
+    # cada uma tem rota própria no Harmonit e sobrevive a um save da OS.
+    tecnicos = _tecnicos_da_os(json.dumps(lida.get("tecnico") or []))
+    agendados = [t for t in tecnicos if t.get("agendamento_id")]
+
+    return {
+        "numero_os": numero_os,
+        "os_id": lida.get("id"),
+        # 🚨 Os dois textos, que é o motivo desta rota existir.
+        "descricao": (lida.get("descricao") or "").strip() or None,
+        "solucao_tecnica": (lida.get("solucaoTecnica") or "").strip() or None,
+        "previsao": lida.get("dataPrevisao"),
+        "prioridade": lida.get("prioridade"),
+        "tipo": lida.get("tipo"),
+        "tipo_nome": nomes_de_tipo.get(lida.get("tipo")),
+        "problema": lida.get("problema"),
+        "produto_descricao": lida.get("produtoDescricao"),
+        "situacao_id": lida.get("situacaoId"),
+        "status_str": lida.get("statusStr"),
+        "cliente_id": lida.get("parceiro"),
+        "cliente_telefone": lida.get("parceiroTelefone"),
+        # Os sete campos, como a rota `/endereco` os devolve.
+        "endereco": {c: (lida.get(c) or None) for c in CAMPOS_DO_ENDERECO},
+        "tem_endereco": bool(lida.get("endereco")),
+        "placas": _placas(json.dumps(lida.get("oficina") or [])),
+        "tecnicos": tecnicos,
+        # 🔵 O painel do agendamento *"acende em Serviço Agendado"*; aqui só se
+        # diz se existe compromisso, e a tela decide.
+        "tem_agendamento": bool(agendados),
+        "agendamentos": agendados,
+        "n_materiais": len(lida.get("materiais") or []),
+        "n_checklist": len(lida.get("checkList") or []),
+        "n_oficina": len(lida.get("oficina") or []),
+    }
