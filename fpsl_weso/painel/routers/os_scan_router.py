@@ -88,6 +88,10 @@ async def varrer_os(desde: int | None = None, limite_buracos: int = LIMITE_BURAC
                 materiais=d.get("materiais"), situacao_id=d.get("situacaoId"),
                 os_id=d.get("id"),
                 tecnicos=d.get("tecnico"),
+                # 🔵 A prioridade entra no cache em 29/10: o card
+                # fechado precisa dela, e a varredura ja lia a OS
+                # inteira -- tinha o dado na mao e nao o gravava.
+                prioridade=d.get("prioridade"),
             )
             if nova:
                 novas += 1
@@ -128,6 +132,10 @@ async def resync_os(janela: int = RESYNC_JANELA) -> dict:
                 materiais=d.get("materiais"), situacao_id=d.get("situacaoId"),
                 os_id=d.get("id"),
                 tecnicos=d.get("tecnico"),
+                # 🔵 A prioridade entra no cache em 29/10: o card
+                # fechado precisa dela, e a varredura ja lia a OS
+                # inteira -- tinha o dado na mao e nao o gravava.
+                prioridade=d.get("prioridade"),
             )
             reencontradas += 1
         return {"janela": len(numeros), "reencontradas": reencontradas, "excluidas": excluidas, "erros": erros}

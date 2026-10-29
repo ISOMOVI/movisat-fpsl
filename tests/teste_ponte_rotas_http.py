@@ -86,7 +86,10 @@ def banco_de_mentira():
             visto_em TEXT NOT NULL, atualizado_em TEXT NOT NULL,
             excluida INTEGER NOT NULL DEFAULT 0, status INTEGER,
             status_str TEXT, materiais_json TEXT, situacao_id INTEGER,
-            os_id INTEGER, tecnicos_json TEXT)""")
+            os_id INTEGER, tecnicos_json TEXT,
+            -- 🔵 A prioridade entrou no cache em 29/10: o card fechado precisa
+            -- dela, e a varredura ja lia a OS inteira.
+            prioridade INTEGER)""")
     conn.execute("CREATE TABLE tipos_os (tipo_id INTEGER PRIMARY KEY, nome TEXT)")
     conn.executemany("INSERT INTO tipos_os VALUES (?, ?)",
                      [(1783, "Solicitação de Cliente"), (76, "Instalação rastreador")])
@@ -95,12 +98,12 @@ def banco_de_mentira():
             """INSERT INTO os_historico
                    (numero_os, situacao_id, status_str, cliente_id,
                     data_previsao, excluida, tipo, os_id, visto_em,
-                    atualizado_em, oficinas_json, tecnicos_json)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    atualizado_em, oficinas_json, tecnicos_json, prioridade)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (numero, situacao, status, cliente, previsao, excluida, 1783,
              900000 + numero, "2026-10-29T18:00:00Z", "2026-10-29T18:00:00Z",
              '[{"veiculoPlaca": "ABC1D23", "veiculoNome": "zz"}]',
-             '[{"usuarioId": 14316, "nome": "zz Tecnico"}]'))
+             '[{"usuarioId": 14316, "nome": "zz Tecnico"}]', 382))
     conn.commit()
     conn.close()
     yield

@@ -1245,7 +1245,8 @@ async def os_por_situacao(
     sql = [
         "SELECT numero_os, os_id, situacao_id, tipo, problema, produto_id,",
         "       cliente_id, data_previsao, status, status_str, n_oficinas,",
-        "       oficinas_json, tecnicos_json, visto_em, atualizado_em",
+        "       oficinas_json, tecnicos_json, visto_em, atualizado_em,",
+        "       prioridade",
         "  FROM os_historico",
         " WHERE coalesce(excluida, 0) = 0",
         f"   AND {_PREVISAO_ISO} >= ?",
@@ -1269,7 +1270,7 @@ async def os_por_situacao(
     saida = []
     for (numero, os_id, situacao, tipo, problema, produto, cliente, previsao,
          status, status_str, n_oficinas, oficinas, tecnicos, visto,
-         atualizado) in linhas:
+         atualizado, prioridade) in linhas:
         saida.append({
             "numero_os": numero,
             "os_id": os_id,
@@ -1281,6 +1282,11 @@ async def os_por_situacao(
             "situacao_zero": situacao == 0,
             "tem_coluna": situacao in conhecidas,
             "tipo": tipo,
+            # 🔵 *"a prioridade vem escrita porque ela nasce Normal e mudar é
+            # exceção, e exceção precisa estar visível sem abrir"*.
+            # ⚠️ NULA nas OS que a varredura ainda não releu desde 29/10 -- e
+            # nulo quer dizer "não lida", não "sem prioridade".
+            "prioridade": prioridade,
             # ⚠️ Nulo só se o tipo não estiver no catálogo de 28. Desde 29/10
             # isso não acontece em nenhuma das 574 OS da base — mas continua
             # podendo acontecer com tipo criado depois da última varredura.
@@ -1634,4 +1640,121 @@ async def ficha_da_os(numero_os: int = Query(..., ge=1)):
         "n_materiais": len(lida.get("materiais") or []),
         "n_checklist": len(lida.get("checkList") or []),
         "n_oficina": len(lida.get("oficina") or []),
+    }
+
+
+# ---------------------------------------------------------------------------
+# A PRIORIDADE DA OS — Bloco F, fase 1 (29/10)
+# ---------------------------------------------------------------------------
+#
+# 🔵 Plano dele: *"prioridade escrita no card fechado (nasce Normal; mudar é
+# exceção, e exceção precisa ser visível sem abrir) e editável no aberto.
+# ⚠️ Mudar prioridade escreve a OS inteira"*.
+#
+# 🚨 AS QUATRO SÃO CONSTANTES, e não há rota de leitura confiável: a
+# `/Prioridade/ObterPrioridades` responde "não estruturada" (502 pelo nosso
+# cliente), e os 4 ids vêm do `templates_config.py`, validados por escrita real
+# em 24/07. A lista é tratada como constante -- medido, não suposto.
+PRIORIDADES = {381: "Baixa", 382: "Normal", 383: "Alta", 384: "Urgente"}
+
+
+class PrioridadeDaOS(BaseModel):
+    numero_os: int = Field(..., ge=1)
+    prioridade_id: int = Field(..., ge=1)
+    # 🚨 A mesma trava de concorrência da situação: a prioridade que a TELA
+    # tinha. Ver a rota `/situacao`.
+    prioridade_esperada: int | None = None
+    conferir_antes: bool = True
+
+
+@router.post("/prioridade")
+async def gravar_prioridade_da_os(entrada: PrioridadeDaOS):
+    """Grava a prioridade da OS no Harmonit. 🚨 A prova é RELER e COMPARAR.
+
+    ⚠️ **ID FORA DAS QUATRO É RECUSADO AQUI**, e não é capricho: a lista não
+    tem rota de leitura confiável, então um id inventado entraria no ERP sem
+    ninguém conseguir conferir depois o que ele significa.
+    """
+    if entrada.prioridade_id not in PRIORIDADES:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"prioridade {entrada.prioridade_id} nao existe. As quatro "
+                    f"sao: {PRIORIDADES}"))
+
+    try:
+        antes = _uma_os(await harmonit_get(
+            "/OrdemServico/ObterOrdemServicoPorNumero",
+            params={"numeroOs": entrada.numero_os}))
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        log.warning("nao deu para ler a OS %s antes da prioridade: %s",
+                    entrada.numero_os, e)
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "motivo": (f"nao deu para ler a OS no Harmonit "
+                           f"({type(e).__name__}) -- nada foi escrito")}
+    if not antes:
+        raise HTTPException(
+            status_code=404,
+            detail=f"OS {entrada.numero_os} nao encontrada no Harmonit")
+
+    de = antes.get("prioridade")
+    if entrada.conferir_antes and de != entrada.prioridade_esperada:
+        return {"ok": False, "gravou": False, "conflito": True,
+                "numero_os": entrada.numero_os, "de": de,
+                "para": entrada.prioridade_id,
+                "motivo": (f"a OS esta com prioridade {de} no Harmonit, e a "
+                           f"tela carregou {entrada.prioridade_esperada}. "
+                           f"Recarregue o painel antes de mudar")}
+    if de == entrada.prioridade_id:
+        return {"ok": True, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": de,
+                "motivo": "a OS ja estava nesta prioridade"}
+
+    cliente_id = _cliente_da_os(entrada.numero_os) or antes.get("parceiro")
+    if not cliente_id:
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "motivo": "nao sei o cliente desta OS, e gravar sem ele a "
+                          "desvincularia do cadastro"}
+
+    corpo = _corpo_de_escrita(antes, cliente_id, {})
+    corpo["prioridadeId"] = entrada.prioridade_id
+
+    try:
+        await harmonit_post("/OrdemServico/SalvarOrdemServico", corpo)
+    except HTTPException as e:
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.prioridade_id,
+                "motivo": str(e.detail)}
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.prioridade_id,
+                "motivo": f"{type(e).__name__}: {e}"}
+
+    # 🚨 O MESMO CASO FEIO da situação: escrita enviada e releitura falhando =
+    # `gravou: None`, não `False`.
+    try:
+        depois = _uma_os(await harmonit_get(
+            "/OrdemServico/ObterOrdemServicoPorNumero",
+            params={"numeroOs": entrada.numero_os}))
+    except Exception as e:  # noqa: BLE001
+        log.error("a prioridade da OS %s foi ENVIADA e a releitura falhou: %s",
+                  entrada.numero_os, e)
+        return {"ok": False, "gravou": None, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.prioridade_id,
+                "motivo": ("a escrita foi ENVIADA e a releitura falhou: NAO SE "
+                           "SABE se mudou. Confira a mao e NAO tente de novo")}
+
+    mudou = _diferencas(antes, depois)
+    fora = {k: v for k, v in mudou.items() if k != "prioridade"}
+    if fora:
+        log.error("a escrita de prioridade mudou campos fora dela na OS %s: %s",
+                  entrada.numero_os, fora)
+    gravou = (depois or {}).get("prioridade") == entrada.prioridade_id
+    return {
+        "ok": bool(gravou) and not fora,
+        "gravou": bool(gravou),
+        "numero_os": entrada.numero_os,
+        "de": de,
+        "para": (depois or {}).get("prioridade"),
+        "mudou": mudou,
+        "fora_da_prioridade": fora or None,
     }

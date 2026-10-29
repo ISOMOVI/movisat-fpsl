@@ -548,7 +548,8 @@ async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, client
                               materiais: list | None = None,
                               situacao_id: int | None = None,
                               os_id: int | None = None,
-                              tecnicos: list | None = None) -> bool:
+                              tecnicos: list | None = None,
+                              prioridade: int | None = None) -> bool:
     """Grava/atualiza uma OS no histórico. Retorna True se era NOVA (não existia).
 
     🔵 29/09: `status`/`status_str` são opcionais, de propósito -- os dois
@@ -565,7 +566,8 @@ async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, client
         agora = datetime.now(timezone.utc).isoformat()
         with _connect() as conn:
             anterior = conn.execute(
-                "SELECT visto_em, materiais_json, situacao_id, os_id, tecnicos_json FROM os_historico "
+                "SELECT visto_em, materiais_json, situacao_id, os_id, tecnicos_json, "
+                "prioridade FROM os_historico "
                 "WHERE numero_os = ?", (numero_os,)
             ).fetchone()
             existe = anterior is not None
@@ -576,15 +578,20 @@ async def salvar_os_historico(numero_os: int, tipo, problema, produto_id, client
             oid = os_id if os_id is not None else (anterior[3] if existe else None)
             tec_json = (json.dumps(tecnicos, ensure_ascii=False)
                         if tecnicos is not None else (anterior[4] if existe else None))
+            # ⚠️ A mesma protecao dos vizinhos: quem nao tem o dado nao
+            # sobrescreve quem tem. 🚨 E `NULL` aqui quer dizer "a varredura
+            # ainda nao releu", nao "sem prioridade".
+            prio = (prioridade if prioridade is not None
+                    else (anterior[5] if existe else None))
             conn.execute(
                 "INSERT OR REPLACE INTO os_historico "
                 "(numero_os, tipo, problema, produto_id, cliente_id, data_previsao, "
                 " oficinas_json, n_oficinas, visto_em, atualizado_em, status, status_str, "
-                " materiais_json, situacao_id, os_id, tecnicos_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " materiais_json, situacao_id, os_id, tecnicos_json, prioridade) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (numero_os, tipo, problema, produto_id, cliente_id, data_previsao,
                  json.dumps(oficinas or [], ensure_ascii=False), len(oficinas or []), visto, agora,
-                 status, status_str, mat_json, sit, oid, tec_json),
+                 status, status_str, mat_json, sit, oid, tec_json, prio),
             )
         return not existe
     return await asyncio.get_running_loop().run_in_executor(None, _run)
