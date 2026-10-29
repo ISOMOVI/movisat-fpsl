@@ -8,15 +8,29 @@ cadastro, nao em operacao -- consultar o Harmonit no meio da montagem da
 mensagem poria a tela do operador na frente de uma rota lenta, e o nome do
 tipo nao vale uma espera.
 
-🚨 O QUE A MEDICAO DE 21/10 DIZ, e que desenha esta rotina:
-  · a rota devolve **5 tipos** (`Contrato` 2, `Demanda Interna` 1782,
-    `Solicitacao de Cliente` 1783, `Ordem de Servico` 1784, `Teste ou
-    Treinamento` 1785), como **lista crua**, nao embrulhada em `data`;
-  · eles cobrem **374 das 547** OS nao excluidas;
-  · as outras **173** estao em NOVE ids fora da lista (57, 76, 73, 72, 55, 77,
-    75, 576, 814) -- tipos que o Harmonit removeu ou renomeou. O
-    `os_router._resolver_cabecalho_por_nome` ja registrava isso desde 14/08
-    para o `tipo = 55`: *"id fixo em codigo apodrece em silencio"*.
+🚨 29/10: ESTA ROTINA LIA A ROTA ERRADA, E ERA A CAUSA DOS 173 SEM NOME.
+O Harmonit tem DUAS rotas de tipo de OS, e a diferenca nao esta no nome delas:
+  · `ObterListaTipoOrdemServico` devolve **5** -- os selecionaveis em tela;
+  · `ObterTiposOrdemServico` devolve **28** -- o catalogo inteiro.
+
+A rotina usava a primeira. Entao o dicionario tinha 5 nomes, cobria **374 das
+547** OS, e as outras **173** vinham com `tipo_nome` nulo -- o que fazia a
+mensagem do agendamento OMITIR o segmento do tipo em uma de cada tres OS.
+
+🚨 E A EXPLICACAO QUE EU HAVIA ESCRITO AQUI ESTAVA ERRADA. Dizia que os nove
+ids de fora (57, 76, 73, 72, 55, 77, 75, 576, 814) eram *"tipos que o Harmonit
+removeu ou renomeou"*. **Nao foram removidos: estao todos no catalogo de 28** --
+`57` Retirada · `76` Instalacao rastreador · `77` Upgrade · `72`
+Substituicao/Instalacao · `73` Substituicao/Retirada · `55` Manutencao · `75`
+Entrega de Equipamentos · `576` Ressarcimento · `814` Trans.
+Titularidade/Retirada. Eu inferi "removido" de uma ausencia que era so da rota
+curta, e a inferencia virou comentario -- o mesmo erro de metodo que ele
+apontou em 29/10: *"voce quem decidiu algo sem perguntar"*. **Ausencia numa
+lista nao prova ausencia no cadastro.**
+
+⚠️ ISTO MUDA O QUE O CLIENTE LE: a mensagem do agendamento passa a trazer o
+tipo nas OS que antes o omitiam. A regra *"nulo omite o segmento"* nao mudou --
+nulo e que ficou raro.
 
 ⚠️ POR ISSO ESTA TABELA NAO E AUTORIDADE SOBRE "QUE TIPOS EXISTEM": ela e o
 dicionario do que o Harmonit sabe nomear HOJE. Quem pergunta o nome de um
@@ -39,16 +53,22 @@ log = logging.getLogger("fpsl.sync_tipos_os")
 
 INTERVALO_SEG = 86_400  # 1x/dia, como o `sync_tecnicos`
 
-ROTA = "/TipoOrdemServico/ObterListaTipoOrdemServico"
+# 🚨 O CATALOGO INTEIRO (28), nao a lista curta (5). Ver o topo.
+ROTA = "/TipoOrdemServico/ObterTiposOrdemServico"
+
+# ⚠️ A rota do catalogo pagina; o `take` tem de caber o catalogo
+# inteiro, senao o dicionario volta a ficar incompleto -- em
+# silencio, que e o jeito ruim.
+PARAMS = {"skip": 0, "take": 500}
 
 
 def _lista(bruto) -> list[dict]:
     """A lista de tipos, de qualquer um dos dois formatos.
 
-    ⚠️ Medido em 21/10: esta rota devolve lista crua. O embrulho `{"data": [...]}`
-    aparece em OUTRAS rotas do Harmonit, e tratar os dois aqui custa tres
-    linhas -- a alternativa e a rotina parar de achar tipo nenhum no dia em
-    que eles padronizarem o retorno.
+    ⚠️ Medido em 21/10: a rota CURTA devolvia lista crua. A do catalogo, que
+    passou a ser usada em 29/10, devolve embrulhada em `data` -- e e por isso
+    que tratar os dois formatos aqui ja valia a pena antes de valer.
+    Conferido nas duas em 29/10.
     """
     if isinstance(bruto, dict):
         bruto = bruto.get("data")
@@ -59,7 +79,7 @@ def _lista(bruto) -> list[dict]:
 
 async def sync_tipos_os() -> dict:
     """Consulta o Harmonit e atualiza a tabela `tipos_os`."""
-    tipos = _lista(await harmonit_get(ROTA))
+    tipos = _lista(await harmonit_get(ROTA, params=PARAMS))
     if not tipos:
         # 🚨 Nao e erro, e nao apaga nada: ver a advertencia do topo.
         log.warning("sync_tipos_os: a lista de tipos veio vazia, nada a gravar")

@@ -1,4 +1,8 @@
-"""A ponte de leitura de OS para o MoviZap — 21/10. SOMENTE LEITURA.
+"""A ponte de OS entre o FPSL e o MoviZap — 21/10.
+
+⚠️ NÃO É MAIS "somente leitura", e a linha que dizia isso ficou oito dias
+velha: a escrita de endereço entrou em 21/10 e a criação de OS em 29/10. São
+duas rotas que GRAVAM NO ERP, as duas no fim deste arquivo.
 
 🔵 Decisão 8 dele (19/10): *"o FPSL expõe endpoint de OS e o MoviZap consome
 pelo `FPSL_BASE_URL`"*. As OS vivem aqui, em SQLite (`os_historico`, varrida do
@@ -159,6 +163,109 @@ async def os_por_cliente(
             for n, tipo, problema, status, situacao, previsao, oficinas in linhas
         ],
     }
+
+
+@router.get("/placas-ativas")
+async def placas_ativas_do_cliente(
+    cliente_id: int = Query(..., description="id do cliente NO HARMONIT"),
+):
+    """As placas que o cliente tem ATIVAS, para o formulário do MoviZap.
+
+    🔵 Pedido dele em 29/10, no formulário de Suporte: trazer os veículos que o
+    cliente tem ativos na WESO em vez de pedir que ele digite a placa.
+
+    🚨 SÃO DUAS BASES, E NENHUMA RESPONDE SOZINHA (medido em 23/10):
+      · quem sabe **de quem** é a placa é o Harmonit (`harmonit_veiculos`,
+        9.114 linhas, com `clienteId`);
+      · quem diz que a placa está **ativa** é a WESO (`weso_equipamentos`,
+        1.998) -- é ela que tem rastreador instalado --, e é ela que tem o
+        **apelido** ("SAVEIRO / BRUNO"), que o Harmonit não tem (lá o nome é o
+        modelo, "Ford Courier").
+    Por isso a lista é o cruzamento, e por isso ela nasce aqui: as duas bases
+    vivem neste projeto.
+
+    ⚠️ A CHAVE DE PLACA SE NORMALIZA DOS DOIS LADOS (maiúscula, sem espaço e
+    sem traço): em 23/10 mediu-se **95%** de cruzamento (1.828 de 1.921), e
+    parte do que não casava era espaço no meio da placa.
+
+    Devolve sempre `{"cliente_id", "placas": [...]}`. Lista vazia significa
+    "este cliente não tem veículo ativo", e é por isso que o cliente HTTP do
+    outro lado nunca converte erro de rede em lista vazia.
+    """
+    chave = ("upper(replace(replace({c}, ' ', ''), '-', ''))")
+    sql = f"""
+        SELECT h.placa, h.veiculo, w.apelido
+          FROM harmonit_veiculos h
+          JOIN weso_equipamentos w
+            ON {chave.format(c='w.placa')} = {chave.format(c='h.placa')}
+         WHERE h.clienteId = ?
+         ORDER BY h.placa
+    """
+    with storage._connect() as conn:
+        linhas = conn.execute(sql, (cliente_id,)).fetchall()
+
+    return {
+        "cliente_id": cliente_id,
+        "placas": [
+            {
+                "placa": (placa or "").strip().upper(),
+                # ⚠️ O apelido é o que a pessoa reconhece; o modelo do Harmonit
+                # é o reforço. Os dois podem vir vazios, e aí sobra a placa --
+                # que é o que importa.
+                "apelido": (apelido or "").strip() or None,
+                "veiculo": (veiculo or "").strip() or None,
+            }
+            for placa, veiculo, apelido in linhas
+        ],
+    }
+
+
+@router.post("/placas-ativas/conferir")
+async def conferir_placas_ativas(corpo: dict):
+    """Quais destas placas estão ATIVAS na WESO. 🔵 Regra dele, 29/10: *"só é
+    possível abrir chamados para placas ativas na weso"*.
+
+    🚨 QUEM DIZ "ATIVA" É A WESO, SOZINHA -- e aqui está a diferença em relação
+    a `/placas-ativas`: lá o Harmonit entra para dizer **de quem** é a placa;
+    aqui a pergunta é outra, *"esta placa tem rastreador instalado?"*, e isso é
+    só WESO. Exigir o Harmonit nesta conferência recusaria as **30 placas**
+    (medido em 29/10) que estão ativas na WESO e **não** estão no cadastro do
+    Harmonit -- e pela regra dele essas podem abrir chamado.
+
+    ⚠️ A CHAVE É NORMALIZADA (maiúscula, só letra e dígito), porque a WESO
+    grava `BYL 2170` e a pessoa digita `byl-2170`.
+
+    Devolve `{"placas": {<como veio>: {ativa, apelido}}}` -- a chave é o texto
+    que o cliente escreveu, para quem chamou não ter de casar de volta.
+    """
+    pedidas = [str(x) for x in (corpo.get("placas") or [])][:50]
+    if not pedidas:
+        return {"placas": {}}
+
+    def so_alfanum(texto: str) -> str:
+        return "".join(c for c in (texto or "").upper() if c.isalnum())
+
+    with storage._connect() as conn:
+        linhas = conn.execute(
+            "SELECT placa, apelido FROM weso_equipamentos "
+            " WHERE placa IS NOT NULL AND trim(placa) <> ''").fetchall()
+    ativas = {so_alfanum(placa): (apelido or "").strip() or None
+              for placa, apelido in linhas}
+
+    # 🚨 A PESSOA PODE ESCREVER "SAVEIRO ABC1234", e isso é resposta certa: o
+    # campo pede *"Veículo e Placa"*. Então procura-se cada pedaço do texto,
+    # não só o texto inteiro.
+    saida = {}
+    for escrito in pedidas:
+        achou = None
+        pedacos = [so_alfanum(t) for t in escrito.replace("-", " ").split()]
+        for pedaco in [so_alfanum(escrito), *pedacos]:
+            if pedaco in ativas:
+                achou = pedaco
+                break
+        saida[escrito] = {"ativa": achou is not None,
+                          "apelido": ativas.get(achou) if achou else None}
+    return {"placas": saida}
 
 
 @router.get("/clientes-com-os")
@@ -841,3 +948,425 @@ async def gravar_endereco_da_os(entrada: EnderecoDaOS):
         "fora_do_endereco": fora or None,
         "endereco": {c: depois.get(c) for c in CAMPOS_DO_ENDERECO},
     }
+
+
+# ---------------------------------------------------------------------------
+# CRIAR A OS DO CHAMADO — Bloco A do pipeline da operação (29/10)
+# ---------------------------------------------------------------------------
+#
+# 🔵 Decisão D4 dele: *"todo chamado de suporte abrirá uma OS"*, automático no
+# envio. E D3: **uma OS por placa** informada — o que inverteu a decisão de
+# 23/10 (uma por envio).
+#
+# 🚨 A OS QUE NASCE AQUI É DE ANÁLISE, NUNCA DE SERVIÇO. Palavras dele, em
+# 23/10: *"somente 1 OS para analise do problema mesmo, se for necessário
+# manutenção, daí será gerada pelo painel de 'Operações' do FPSL"*. É por isso
+# que o `problemaId` do chamado de suporte é **12760 ANÁLISE OPERACIONAL** e a
+# OS nasce **sem técnico** (3.4: *"o tecnico é outro fluxo"*).
+#
+# 🚨 POR QUE `SalvarOrdemServico` E NÃO `SalvarOrdemServicoBasica`: a básica
+# aceita 5 campos e não aceita `situacaoId` nem `produtoServicoId` — e os dois
+# são decisão dele (38 e o `ABERTURA DE OS` de R$ 0,01). A OS nasceria fora da
+# primeira coluna do painel e sem o item que ele criou para contar abertura.
+#
+# 🚨 OS IDS DE CATÁLOGO FORAM CONFERIDOS CONTRA O ERP em 29/10, lendo: `1782`
+# Demanda Interna · `1783` Solicitação de Cliente · `12760` ANÁLISE
+# OPERACIONAL · `38` Novo Solicitação 1ª · `382` Normal. Id de catálogo errado
+# não dá erro de escrita: dá OS torta e muda.
+#
+# ⚠️ `status = 2` ("Nova") NÃO É CHUTE: a doc do Harmonit mostra `1` no exemplo
+# e o dado real diz outra coisa — no cache, `2` é "Nova" em 302 OS, e a 17050,
+# aberta por eles em 29/10, nasceu com `2`. Segue-se o dado.
+#
+# ⚠️ O ENDEREÇO NASCE VAZIO, de propósito: o chamado de análise não tem
+# endereço de serviço, e inventar um seria pior que não ter. Quem agenda
+# preenche depois, pela rota `/endereco` (21/10).
+
+# A empresa e o local do serviço são os mesmos de toda OS da casa — lidos da
+# OS 17050 em 29/10, e iguais aos da 16991 de 21/10.
+EMPRESA_PADRAO = 98
+LOCAL_SERVICO_PADRAO = 1
+
+# "Nova". Ver a advertência acima: medido, não copiado da doc.
+STATUS_NOVA = 2
+
+
+class CriarOS(BaseModel):
+    """O chamado que vira OS. 🚨 Nada aqui tem valor-padrão de catálogo.
+
+    ⚠️ DE PROPÓSITO: `tipo_id`, `problema_id`, `situacao_id` e `prioridade_id`
+    são obrigatórios e vêm de quem chama. Um padrão aqui faria esta rota
+    decidir regra de negócio que é do MoviZap — o `tipoId` vem da ORIGEM do
+    chamado, e a origem este lado não conhece.
+    """
+    cliente_id: int = Field(..., ge=1)
+    tipo_id: int = Field(..., ge=1)
+    problema_id: int = Field(..., ge=1)
+    situacao_id: int = Field(..., ge=1)
+    prioridade_id: int = Field(..., ge=1)
+    descricao: str = Field(..., min_length=1, max_length=4000)
+    produto_servico_id: int | None = None
+    empresa_id: int = EMPRESA_PADRAO
+    local_servico_id: int = LOCAL_SERVICO_PADRAO
+    # 🚨 Ensaio a seco, como na rota de endereço: monta, devolve o corpo, NÃO
+    # escreve. É o que permite provar o corpo inteiro antes de a primeira OS de
+    # verdade existir no ERP.
+    conferir: bool = False
+
+
+def _corpo_de_criacao(e: CriarOS) -> dict:
+    """A OS nova, inteira. `id: 0` e `numeroOrdem: 0` é o que manda criar."""
+    return {
+        "id": 0,
+        "numeroOrdem": 0,
+        "empresaId": e.empresa_id,
+        "localServicoId": e.local_servico_id,
+        "tipoId": e.tipo_id,
+        "prioridadeId": e.prioridade_id,
+        "situacaoId": e.situacao_id,
+        "problemaId": e.problema_id,
+        "produtoServicoId": e.produto_servico_id or 0,
+        "clienteId": e.cliente_id,
+        "descricaoDetalhada": e.descricao,
+        "status": STATUS_NOVA,
+        # ⚠️ A previsão é AGORA: medido em 29/10, `dataPrevisao` é a data de
+        # criação da OS em 12 de 12 conferidas. Mandar nulo deixaria em branco
+        # o campo pelo qual a aba Operações mede prazo (100% preenchido nas 572).
+        "dataPrevisaoEntrega": datetime.now().isoformat(timespec="seconds"),
+        # Nasce vazia. Ver a advertência do cabeçalho.
+        "solucaoTecnica": "",
+        "bairro": None, "cep": None, "cidade": None,
+        "endereco": None, "uf": None, "complemento": None, "numero": None,
+        "valorRetAlimentacao": 0,
+        "valorRetProdutosLimpeza": 0,
+        "valorRetValeTransporte": 0,
+        "vendedorId": 0,
+    }
+
+
+def _numero_da_resposta(r) -> tuple[int | None, int | None]:
+    """`(numeroOrdem, osId)` do que o Harmonit devolveu na criação.
+
+    🚨 NÃO SE CONFIA NISTO COMO PROVA — serve só para saber ONDE reler. A
+    prova é a releitura, logo abaixo.
+
+    ⚠️ A doc mostra `{"data": {"ordemServicoId", "numeroOrdem"}}` para a rota
+    BÁSICA e não documenta o retorno da completa. Então aqui se procura por
+    todos os nomes plausíveis, e não achar nenhum é uma resposta tratada, não
+    um `KeyError`.
+    """
+    d = r.get("data") if isinstance(r, dict) and "data" in r else r
+    if isinstance(d, list):
+        d = d[0] if d else {}
+    if not isinstance(d, dict):
+        return None, None
+
+    def _int(valor):
+        try:
+            return int(valor) if valor else None
+        except (TypeError, ValueError):
+            return None
+
+    numero = _int(d.get("numeroOrdem") or d.get("numeroOs") or d.get("numero"))
+    os_id = _int(d.get("ordemServicoId") or d.get("osId") or d.get("id"))
+    return numero, os_id
+
+
+# O que a releitura tem de encontrar igual ao pedido. 🚨 A chave é o nome de
+# LEITURA e o valor é o campo da entrada: os dois lados não têm o mesmo nome, e
+# é a armadilha central desta ponte (ver o cabeçalho da escrita de endereço).
+_CONFERIR_NA_RELEITURA = {
+    "tipo": "tipo_id",
+    "problema": "problema_id",
+    "situacaoId": "situacao_id",
+    "prioridade": "prioridade_id",
+    "parceiro": "cliente_id",
+}
+
+
+@router.post("/criar")
+async def criar_os(entrada: CriarOS):
+    """Cria a OS de análise do chamado no Harmonit. 🚨 A prova é RELER.
+
+    Devolve `{"ok", "criada", "numero_os", "os_id", "divergencias"}`.
+
+    🚨 `ok: false` COM OS CRIADA É POSSÍVEL, e é o segundo pior caso desta
+    rota: o Harmonit aceitou a escrita e a releitura achou campo diferente do
+    pedido. A resposta diz **quais**, por extenso, e quem chama tem de guardar
+    o número de qualquer forma — OS criada e não registrada do nosso lado é OS
+    órfã no ERP, que ninguém sabe que existe.
+
+    🚨 E `criada: null` É O PIOR, O QUE NÃO SE PODE MASCARAR: se o Harmonit
+    respondeu sem dizer o número, pode haver OS criada e nós não sabemos qual.
+    A resposta diz isso em voz alta em vez de devolver "falhou" — que faria
+    quem chama tentar de novo e criar a segunda.
+    """
+    corpo = _corpo_de_criacao(entrada)
+
+    if entrada.conferir:
+        # 🚨 Ensaio a seco: nada é escrito.
+        return {"ok": True, "conferido_sem_gravar": True, "corpo": corpo}
+
+    try:
+        resposta = await harmonit_post("/OrdemServico/SalvarOrdemServico", corpo)
+    except HTTPException as e:
+        log.warning("SalvarOrdemServico recusou a OS nova do cliente %s: %s",
+                    entrada.cliente_id, e.detail)
+        return {"ok": False, "criada": False, "motivo": str(e.detail)}
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        log.warning("SalvarOrdemServico falhou na OS nova do cliente %s: %s",
+                    entrada.cliente_id, e)
+        return {"ok": False, "criada": False,
+                "motivo": f"{type(e).__name__}: {e}"}
+
+    numero, os_id = _numero_da_resposta(resposta)
+    if not numero:
+        # 🚨 Ver a advertência do docstring: isto NÃO é "falhou".
+        log.error("SalvarOrdemServico nao devolveu numero de OS; resposta: %r",
+                  resposta)
+        return {
+            "ok": False, "criada": None, "numero_os": None, "os_id": os_id,
+            "motivo": ("o Harmonit aceitou a escrita e nao disse o numero da "
+                       "OS. PODE HAVER OS CRIADA no ERP sem registro deste "
+                       "lado -- nao tente de novo sem conferir a mao, ou "
+                       "nascem duas"),
+            "resposta_crua": resposta,
+        }
+
+    # 🚨 A PROVA: reler a OS e comparar com o que foi pedido. O retorno da
+    # escrita não é prova -- é a régua desta frente inteira.
+    lida = _uma_os(await harmonit_get(
+        "/OrdemServico/ObterOrdemServicoPorNumero",
+        params={"numeroOs": numero}))
+    if not lida:
+        log.error("OS %s criada e a releitura nao a encontrou", numero)
+        return {"ok": False, "criada": True, "numero_os": numero,
+                "os_id": os_id,
+                "motivo": (f"a OS {numero} foi criada e a releitura nao a "
+                           f"encontrou -- registre o numero e confira a mao")}
+
+    divergencias = {}
+    for campo_lido, campo_pedido in _CONFERIR_NA_RELEITURA.items():
+        pedido = getattr(entrada, campo_pedido)
+        achado = lida.get(campo_lido)
+        if achado != pedido:
+            divergencias[campo_lido] = {"pedido": pedido, "gravado": achado}
+
+    if divergencias:
+        log.error("OS %s nasceu diferente do pedido: %s", numero, divergencias)
+
+    return {
+        "ok": not divergencias,
+        "criada": True,
+        "numero_os": numero,
+        "os_id": lida.get("id") or os_id,
+        "situacao_id": lida.get("situacaoId"),
+        "cliente_id": lida.get("parceiro"),
+        "divergencias": divergencias or None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# AS OS DO PAINEL — Bloco B do pipeline da operação (29/10)
+# ---------------------------------------------------------------------------
+#
+# 🔵 Decisão D8 dele: o card é a OS, **de qualquer origem** — *"seja pelo
+# painel, seja pelo FPSL, seja pelo formulario, seja a mão"*. Até aqui o painel
+# lia só `formulario_solicitacao`, e havia **uma** solicitação na base: a tela
+# estava tecnicamente certa e praticamente vazia.
+#
+# 🔵 D9: a data matriz é **24/10/2026** e *"a data inicial é somente do
+# Owner"* · *"não vamos retroagir mais do que o dia que pedi"*.
+#
+# 🚨 LÊ O CACHE, NÃO O ERP. A `os_historico` é varrida do Harmonit a cada 5 min
+# pelo `os_scan_router`, e é o único jeito de montar 17 colunas sem uma chamada
+# ao ERP por OS. O preço é a defasagem — e por isso a resposta DIZ quando cada
+# OS foi vista (`visto_em`). Tela que mostra dado velho sem dizer que é velho é
+# da mesma família do `M12`.
+#
+# ⚠️ `data_previsao` É TEXTO `dd/mm/aaaa HH:MM:SS`, e o corte usa o
+# `_PREVISAO_ISO` do topo deste arquivo: `date()` devolve zero linha no formato
+# brasileiro. Já custou um plano inteiro em 19/10.
+#
+# 🚨 E O CORTE POR `dataPrevisao` TEM PRAZO DE VALIDADE. Medido em 29/10: ela é
+# a data de criação da OS em 12 de 12 conferidas — **mas a frente do aviso
+# prévio vai movê-la em +90 dias**. No dia em que isso entrar, este filtro
+# deixa de significar "criada desde" e passa a significar outra coisa, **sem
+# erro e sem aviso**. Quem mexer no aviso prévio tem de voltar aqui.
+
+
+@router.get("/por-situacao")
+async def os_por_situacao(
+    desde: str = Query(..., description="aaaa-mm-dd — a data matriz do painel"),
+    so_abertas: int = Query(1, ge=0, le=1),
+    teto: int = Query(600, ge=1, le=3000),
+):
+    """As OS por situação, desde uma data — o que o painel da Operação monta.
+
+    🚨 `so_abertas` É INTERRUPTOR, LIGADO POR PADRÃO, e a razão é medida: "em
+    aberto" = não finalizada, e isso **não** esvazia as colunas finais (as OS
+    em "Atendimento finalizado" estão com `status` *Iniciada* — situação e
+    status são eixos independentes), **mas zera o Financeiro**, porque as OS
+    financeiras nascem `Finalizado`. Quem quer ver o Financeiro desliga, e a
+    tela tem de dizer que está desligado.
+
+    ⚠️ A OS EXCLUÍDA NUNCA ENTRA, com interruptor ou sem: excluída no ERP não é
+    "fechada", é inexistente.
+
+    🚨 `situacao_id = 0` NÃO É UMA SITUAÇÃO, e esta rota não o traduz. São 129
+    OS no cache (medido em 29/10), e **o que fazer com elas é decisão dele** —
+    a proposta no plano é `0` + *Nova* → primeira etapa e `0` + *Finalizado* →
+    finalizado, e enquanto ele não disser, quem monta o quadro as conta em
+    `fora_do_quadro` em vez de escolher calado por ele.
+    """
+    try:
+        date.fromisoformat(desde)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"a data matriz {desde!r} nao esta em aaaa-mm-dd")
+
+    sql = [
+        "SELECT numero_os, os_id, situacao_id, tipo, problema, produto_id,",
+        "       cliente_id, data_previsao, status, status_str, n_oficinas,",
+        "       oficinas_json, tecnicos_json, visto_em, atualizado_em",
+        "  FROM os_historico",
+        " WHERE coalesce(excluida, 0) = 0",
+        f"   AND {_PREVISAO_ISO} >= ?",
+    ]
+    params: list = [desde]
+    if so_abertas:
+        sql.append(f"   AND {_EM_ABERTO}")
+    sql.append(" ORDER BY numero_os DESC")
+    sql.append(" LIMIT ?")
+    params.append(teto)
+
+    with storage._connect() as conn:
+        linhas = conn.execute("\n".join(sql), params).fetchall()
+        # O dicionário de nomes, lido UMA vez por requisição e não por linha —
+        # como a `os_por_cliente` já faz.
+        # 🚨 Desde 29/10 ele tem os **28** do catálogo, não os 5 da rota curta:
+        # era a rota curta que fazia 189 OS aparecerem sem nome de tipo.
+        nomes_de_tipo = storage.nomes_dos_tipos_os(conn)
+
+    conhecidas = {sid for sid, _ in _SITUACOES_DO_PAINEL}
+    saida = []
+    for (numero, os_id, situacao, tipo, problema, produto, cliente, previsao,
+         status, status_str, n_oficinas, oficinas, tecnicos, visto,
+         atualizado) in linhas:
+        saida.append({
+            "numero_os": numero,
+            "os_id": os_id,
+            "situacao_id": situacao,
+            # 🚨 `0` e `NULL` NÃO SÃO A MESMA COISA, e já custou uma coluna
+            # inteira em 22/10: `0` é "o ERP gravou zero" e `NULL` é "a
+            # varredura não leu". A tela precisa dos dois separados.
+            "sem_situacao": situacao is None,
+            "situacao_zero": situacao == 0,
+            "tem_coluna": situacao in conhecidas,
+            "tipo": tipo,
+            # ⚠️ Nulo só se o tipo não estiver no catálogo de 28. Desde 29/10
+            # isso não acontece em nenhuma das 574 OS da base — mas continua
+            # podendo acontecer com tipo criado depois da última varredura.
+            "tipo_nome": nomes_de_tipo.get(tipo),
+            "problema": problema,
+            "produto_id": produto,
+            "cliente_id": cliente,
+            "data_previsao": previsao,
+            "status": status,
+            "status_str": status_str,
+            "finalizada": status_str == "Finalizado",
+            "placas": _placas(oficinas),
+            "n_oficinas": n_oficinas,
+            "tecnicos": _tecnicos_da_os(tecnicos),
+            # 🚨 QUANDO ESTA OS FOI VISTA. É o que permite a tela dizer "dado
+            # de 5 min atrás" em vez de deixar o operador supor que é agora.
+            "visto_em": visto,
+            "atualizado_em": atualizado,
+        })
+
+    return {
+        "desde": desde,
+        "so_abertas": bool(so_abertas),
+        "quantas": len(saida),
+        # 🚨 O teto é DITO quando bate, nunca cortado em silêncio.
+        "no_teto": len(saida) >= teto,
+        # Quantas não têm coluna no painel, já contadas aqui para quem monta o
+        # quadro não precisar varrer a lista de novo.
+        "sem_coluna": sum(1 for o in saida if not o["tem_coluna"]),
+        "os": saida,
+    }
+
+
+# As 17 situações do painel da Operação. ⚠️ A FONTE É O MOVIZAP
+# (`movizap/paineis.py`, tupla `SITUACOES`) — aqui elas existem só para a ponte
+# poder dizer `tem_coluna`, e a ordem não importa deste lado.
+#
+# 🚨 DUAS CÓPIAS É UMA VERDADE A MAIS, e isso está assumido: a alternativa era
+# o MoviZap mandar as 17 em toda chamada, e a lista é decisão dele que muda em
+# cadastro, não em operação. Se divergirem, quem manda é o MoviZap — e o
+# sintoma será `tem_coluna` errado, não card perdido: quem monta o quadro
+# reconfere pela tupla dele.
+_SITUACOES_DO_PAINEL = (
+    (38, "Novo Solicitação 1ª"),
+    (16487, "Pendente de ação da Movisat"),
+    (251, "Configurar equipamentos e Sistemas"),
+    (16488, "Entrega de materiais prontos"),
+    (677, "Enviar por correio/transportadora"),
+    (15747, "Aguardando recebimento via correio/transportadora"),
+    (15797, "Rescisão Aguardando Aviso Prévio"),
+    (890, "Agendar serviço"),
+    (16489, "Confirmação agendamento"),
+    (1316, "Serviço Agendado"),
+    (15696, "Aguardando devolução de equipamento"),
+    (16490, "Analise de Equipamentos Retornados"),
+    (15694, "Atendimento finalizado"),
+    (16491, "Não atendido"),
+    (15746, "Financeiro"),
+    (15695, "Pós venda"),
+    (16492, "Contratual"),
+)
+
+
+def _tecnicos_da_os(tecnicos_json: str | None) -> list[dict]:
+    """Quem está vinculado à OS, do `tecnicos_json`.
+
+    ⚠️ A MAIORIA DAS OS NÃO TEM TÉCNICO, e isso não é erro: a OS de análise
+    nasce sem técnico por decisão dele (*"o tecnico é outro fluxo e talvez não
+    chegue a ter tecnico"*). Lista vazia é o caso comum.
+
+    🚨 O MESMO TÉCNICO APARECE MAIS DE UMA VEZ, e é de propósito no Harmonit: o
+    segundo vínculo de 21/10 é o caminho para reagendar (`TecnicoJaAgendado` é
+    do VÍNCULO, não do técnico). Então a tela recebe um por técnico, e o número
+    de vínculos fica dito em `vinculos` — deduplicar escondendo isso faria
+    desaparecer a razão pela qual o reagendamento funciona.
+    """
+    if not tecnicos_json:
+        return []
+    try:
+        tecnicos = json.loads(tecnicos_json)
+    except (ValueError, TypeError):
+        # Dado do Harmonit, varrido por rotina: não derruba a consulta.
+        log.warning("tecnicos_json ilegivel numa OS -- devolvendo sem tecnico")
+        return []
+    if not isinstance(tecnicos, list):
+        return []
+    por_usuario: dict = {}
+    for t in tecnicos:
+        if not isinstance(t, dict):
+            continue
+        uid = t.get("usuarioId")
+        if uid is None:
+            continue
+        atual = por_usuario.setdefault(uid, {
+            "usuario_id": uid,
+            "nome": t.get("nome") or t.get("usuarioNome") or None,
+            "agendamento_id": None,
+            "vinculos": 0,
+        })
+        atual["vinculos"] += 1
+        # ⚠️ O vínculo COM agendamento ganha: é o que a tela quer mostrar, e um
+        # técnico com dois vínculos tem o compromisso em apenas um deles.
+        if t.get("agendamentoId") and not atual["agendamento_id"]:
+            atual["agendamento_id"] = t.get("agendamentoId")
+    return list(por_usuario.values())
