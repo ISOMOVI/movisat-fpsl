@@ -318,7 +318,29 @@ cd /home/claude/fpsl_weso && venv/bin/python tests/teste_tela_gerar_os.py
 | `tests/teste_disjuntor_harmonit.py` | 2 |
 
 Trilha: **448/11** (14/08) → **677/19** (17/08) → **784/21** (18/08) →
-**804/22** (19/08) → **73 arquivos** (28/10).
+**804/22** (19/08) → **73 arquivos** (28/10) → **75 arquivos** (29/10).
+
+🆕 **29/10 — os dois da ponte de OS com o MoviZap:**
+
+| arquivo | o que mede |
+|---|---|
+| `tests/teste_criar_os_ponte.py` | o corpo da criação de OS (`id: 0`), a releitura como prova, e as OS por situação — **35** |
+| `tests/teste_ponte_rotas_http.py` | **as rotas, por HTTP**: a chave `X-Ponte-Key`, os códigos de estado, a validação do corpo — **25** |
+
+🚨 **O segundo nasceu de uma auditoria dele**, no mesmo dia da entrega: as duas
+rotas novas tinham teste de **função** e **nenhum** teste de **rota**. Testar a
+função não exercita a chave da ponte, o código de estado nem a validação do
+corpo — e `py_compile` não pega import faltando, o que no mesmo dia derrubou o
+MoviZap em produção por 13 segundos.
+
+⚠️ **E isto é a leitura primeira da ponte:** `docs/fpsl/34_Ponte_MoviZap.md`.
+
+🚨 **`teste_car_router.py` NÃO É COLETÁVEL POR PYTEST** (achado de 29/10): ele
+chama `sys.exit` e derruba a coleta com `INTERNALERROR`. Roda **como script**
+(`venv/bin/python tests/teste_car_router.py` → **100 OK**), que é o modo
+documentado acima. ⚠️ Quem contar arquivos com `pytest` **não conta esse** — e
+o laço do `for` acima, que é o critério oficial, conta. Os dois da ponte rodam
+nos dois modos.
 
 🚨 **A PARTIR DE 28/10 O PLACAR SE MEDE POR ARQUIVO, NÃO POR VERIFICAÇÃO**, e o
 critério de verde do projeto é *"os mesmos 2 vermelhos de antes, e nenhum novo"*:

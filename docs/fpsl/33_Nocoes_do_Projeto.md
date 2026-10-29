@@ -202,6 +202,7 @@ valor, equipamento.
 | A aba de Contratos, do C0 ao D4, com todos os achados | `docs/fpsl/31_Gestao_Contratos.md` |
 | Contas a Receber | `docs/fpsl/32_Contas_a_Receber.md` (a spec, escrita em 28/10/2026) |
 | Painel Financeiro (FIN_1.1 e FIN_2.1 — pagar técnico) | `docs/fpsl/30_Painel_Financeiro.md` |
+| **A ponte de OS com o MoviZap — as 10 rotas, a chave e a escrita no ERP** | `docs/fpsl/34_Ponte_MoviZap.md` (29/10/2026). 🚨 Nasceu de uma auditoria dele: a ponte existia desde 21/10 e **nunca teve seção de rotas** aqui |
 | Metodologia e o ciclo de entrega | `docs/fpsl/00_Metodologia.md` |
 | Log do FPSL e a última passada de cada rotina (16/10) | `/home/claude/logs/fpsl.log` · `venv/bin/python scripts/rotinas_mudas.py` · trava 8 acima |
 | A auditoria que originou tudo | `C:\code\termos_harmonit` (README com as regras dele) e `Downloads\Termos Harmonit por Cliente` |
