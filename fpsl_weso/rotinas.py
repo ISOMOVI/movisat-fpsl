@@ -39,6 +39,10 @@ LACOS: dict[str, tuple[str, int]] = {
     "sync_tecnicos": ("Sync de técnicos", 86400),
     "sync_tipos_os": ("Sync de tipos de OS", 86400),
     "cartoes_fechamento": ("Semáforo dos cartões", 3600),
+    # O 10º laço (30/10): o espelho do faturado do Harmonit da `CAR_1.1`.
+    # Nasce desligado, e por isso "desligada" é o resultado esperado da passada
+    # até ele ligar na tela.
+    "faturado": ("Espelho do faturado (Harmonit)", 86400),
 }
 
 TOLERANCIA = 2  # dobro do intervalo antes de chamar de atrasada
@@ -95,5 +99,9 @@ async def ultima(nome: str) -> dict:
 
 
 async def estado() -> list[dict]:
-    """Os oito laços, na ordem do dicionário."""
+    """Todos os laços de `LACOS`, na ordem do dicionário.
+
+    ⚠️ Esta frase já disse "os oito laços" e eram dez (`M12` em docstring): o
+    número vivia aqui e no dicionário, e só um dos dois era atualizado.
+    """
     return [await ultima(nome) for nome in LACOS]

@@ -63,6 +63,13 @@ ESPERADO = {
                      "valor_mensal_total", "divergencia", "competencia", "calculado_em"},
     "car_leitura": {"id", "competencia", "cnpj", "gerada_em", "por", "clientes",
                     "placas", "sem_valor", "total", "assinatura"},
+    # 🆕 30/10, bloco F1: o espelho do que o Harmonit já fatura.
+    "car_faturado": {"id", "tipo", "estado", "competencia", "vencimento",
+                     "pagamento", "valor", "valor_final", "contato_id",
+                     "contato", "cnpj", "termo_numero", "termo_id", "numero_os",
+                     "numero_venda", "parcela", "centro_custo", "categoria",
+                     "conta_corrente", "nosso_numero", "descricao",
+                     "venc_ano_mes", "lido_em"},
 }
 
 
@@ -76,14 +83,20 @@ def main():
     ctr.migrar(conn)
     ctr_antes = {t: colunas(conn, t) for t in ctr.TABELAS}
 
-    print("\n[1] criar() faz as 3 tabelas, com as colunas da spec")
+    print("\n[1] criar() faz as 4 tabelas, com as colunas da spec")
     car.criar(conn)
     feitas = car.migrar(conn)
-    checar("TABELAS declara as 3", 3, len(car.TABELAS))
+    # ⚠️ Eram 3 até 29/10; a `car_faturado` entrou em 30/10. O número vive aqui
+    # E no modulo -- quando o proximo nascer, os dois mudam juntos.
+    checar("TABELAS declara as 4", 4, len(car.TABELAS))
     for t in car.TABELAS:
         checar(f"{t} existe", True, t in tabelas(conn))
         checar(f"{t} tem exatamente as colunas da spec", ESPERADO[t], colunas(conn, t))
-    checar("migrar() nasce sem nada a fazer", [], feitas)
+    # ⚠️ Deixou de nascer vazia em 30/10: `venc_ano_mes` entrou depois do
+    # `CREATE`, e por isso vive nos DOIS -- o `CREATE` serve ao banco novo, o
+    # `ALTER` ao que já existe. Num banco novo o `criar()` já a põe, então aqui
+    # não há nada a migrar.
+    checar("migrar() não tem nada a fazer em banco novo", [], feitas)
 
     print("\n[2] os índices que a spec pede")
     idx = indices(conn)
@@ -177,7 +190,7 @@ def main():
            "ALTER TABLE CONTRATO_" in sql)
     checar("o SQL do módulo não tem UPDATE", False, "UPDATE " in sql)
     checar("o SQL do módulo não tem DROP", False, "DROP " in sql)
-    checar("e tem as 3 tabelas", 3, sql.count("CREATE TABLE IF NOT EXISTS"))
+    checar("e tem as 4 tabelas", 4, sql.count("CREATE TABLE IF NOT EXISTS"))
 
     conn.close()
     print("\n" + "=" * 52)

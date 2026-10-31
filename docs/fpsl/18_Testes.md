@@ -318,7 +318,7 @@ cd /home/claude/fpsl_weso && venv/bin/python tests/teste_tela_gerar_os.py
 | `tests/teste_disjuntor_harmonit.py` | 2 |
 
 Trilha: **448/11** (14/08) → **677/19** (17/08) → **784/21** (18/08) →
-**804/22** (19/08) → **73 arquivos** (28/10) → **75 arquivos** (29/10).
+**804/22** (19/08) → **73 arquivos** (28/10) → **75 arquivos** (29/10) → **77 arquivos** (30/10, com `teste_car_faturado` e `teste_car_semear`).
 
 🆕 **29/10 — os dois da ponte de OS com o MoviZap:**
 
@@ -343,13 +343,13 @@ o laço do `for` acima, que é o critério oficial, conta. Os dois da ponte roda
 nos dois modos.
 
 🚨 **A PARTIR DE 28/10 O PLACAR SE MEDE POR ARQUIVO, NÃO POR VERIFICAÇÃO**, e o
-critério de verde do projeto é *"os mesmos 2 vermelhos de antes, e nenhum novo"*:
+critério de verde do projeto é *"os mesmos vermelhos de antes, e nenhum novo"*. ⚠️ **Em 30/10 passou de 2 para 1**: o `teste_higiene_placas_weso` voltou ao verde sozinho (era falha de DADO, placa com espaço na WESO), e sobrou só o `teste_extrair_termo`:
 
 ```bash
 for t in tests/teste_*.py; do out=$(venv/bin/python "$t" 2>&1); echo "$? | $t | $(printf '%s' "$out" | tail -1)"; done
 ```
 
-Medido em **28/10, depois da `CAR_1.1`: 73 arquivos, 71 verdes.** Os 2 vermelhos
+Medido em **30/10, depois dos blocos F1-F4: 77 arquivos, 76 verdes** (em 28/10 eram 73 e 71). O vermelho
 são conhecidos e **não** são regressão: `teste_extrair_termo` (desde 02/10,
 **espera decisão dele**) e `teste_higiene_placas_weso` (1 falha de **dado** — placa
 com espaço à direita na WESO). ⚠️ Somar verificações deixou de ser útil porque

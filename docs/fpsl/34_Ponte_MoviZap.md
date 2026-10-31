@@ -162,7 +162,7 @@ perdido, porque quem monta o quadro reconfere pela tupla dele.
 a situação da OS, por isso o painel e consulta para atualizar a situação no
 painel"*. E a ordem é **livre**, por decisão dele em 29/10: *"que tal de caminho
 proibido é esse??"* — **esta rota não valida transição**, e o Harmonit também
-não (medido: de "Serviço Realizado" para "Agendamento" e ele aceitou).
+não (medido: de ""Atendimento finalizado" (situação 15694, renomeada em 29/10)" para "Agendamento" e ele aceitou).
 
 | campo | o que faz |
 |---|---|

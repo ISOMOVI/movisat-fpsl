@@ -230,7 +230,11 @@ def main():
     linhas = csv.splitlines()
     checar("tem cabeçalho", True, linhas[0].startswith("cnpj;cliente;termo"))
     checar("e uma linha de dado", 2, len(linhas))
-    checar("sem ponto-e-vírgula dentro do motivo", 9, linhas[1].count(";"))
+    # ⚠️ 13 e nao 9 desde 30/10: o CSV ganhou `em_uso_weso`, `situacao_weso` e as
+    # duas colunas de faturado do cliente (blocos F2/F3). O numero conta
+    # separadores, e e ele que pega motivo com `;` dentro -- o que o `replace`
+    # do `para_csv` existe para impedir.
+    checar("sem ponto-e-vírgula dentro do motivo", 13, linhas[1].count(";"))
 
     print("\n[10] 🚨 a pré-fatura NÃO grava — medido no ast")
     import ast

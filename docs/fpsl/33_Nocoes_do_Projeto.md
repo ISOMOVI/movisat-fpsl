@@ -181,7 +181,7 @@ valor, equipamento.
      `claude-logs` não casa com o nome; dois rotacionadores brigariam pelo inode), pendurado nas raízes
      `fpsl` e `fpsl_weso`, com `MascararSegredoDaQueryString` — a chave da WESO viaja na query string. Os
      loggers do uvicorn **não** foram tocados: seguem no journal.
-   - **`fpsl_weso/rotinas.py`**: os **8 laços** (inadimplência, scan-os, resync-os, operações, conferência,
+   - **`fpsl_weso/rotinas.py`**: os **10 laços** (eram 8 neste texto, 9 em 28/10 e 10 em 30/10 com o espelho do faturado -- o número vive no dicionário `LACOS`, e aqui era a segunda verdade) (inadimplência, scan-os, resync-os, operações, conferência,
      auditoria de contratos, técnicos, cartões) carimbam `rotina_<nome>_ultima_em` e `_resultado` em
      `config` **a cada passada**, inclusive a que não fez nada e a que viu a rotina desligada — *laço vivo
      com rotina desligada* não é *laço morto*. `marcar()` nunca levanta.
@@ -190,7 +190,7 @@ valor, equipamento.
      não é atraso).
    - **`scripts/rotinas_mudas.py`** — **só relata**, sem WhatsApp. Cron `10 18 * * *` →
      `logs/fpsl_rotinas_mudas.log`. Uma semana em arquivo; depois ele decide se vira aviso. Resumo diz
-     número: *"8 laços: 6 em dia, 0 mudos, 2 sem registro"*.
+     número: *"10 laços: N em dia, N mudos, N sem registro"* -- a barra conta de `LACOS`, não de um número escrito.
    - **`tests/teste_rotinas.py`**: 28 verificações, em banco temporário.
 
 ---

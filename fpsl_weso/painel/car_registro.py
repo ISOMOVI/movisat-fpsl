@@ -225,20 +225,94 @@ def lancar_preco_em_lote(conn, termos: list, valor: str, competencia: str,
     return r
 
 
-def contratos_sem_valor(conn, competencia: str, limite: int = 200) -> list:
-    """Os contratos com placa cobrável e SEM valor, do que mais pesa para o
-    menos. É a fila de trabalho do lote, e sai da própria pré-fatura -- a régua
-    de "cobrável" não se reescreve aqui.
+MOTIVO_SEMEADURA = "preço adotado do que o Harmonit já fatura neste contrato"
+
+
+def semear_em_lote(conn, propostas: list, por: str, motivo=None) -> dict:
+    """Um `PRECO` por contrato, **com o valor de cada um** (bloco F4, 30/10).
+
+    🚨 POR QUE NÃO SERVE O `lancar_preco_em_lote`: aquele aplica **um** valor a
+    vários termos (é o "todos a R$ 149,90"). A semeadura é o contrário -- cada
+    contrato tem o valor que o Harmonit já cobra NELE, e aplicar um valor só
+    seria inventar número em cima de dado medido.
+
+    🔵 DECISÃO DELE, 30/10: *"faça o 2 [o lote], mas deixe as regras do 1 tbm,
+    para quando alguem alterar os demais"*. Então o lote entra aqui e o "adotar"
+    de uma linha continua sendo `lancar_preco` -- a mesma trilha, o mesmo autor.
+
+    Cada proposta é `{cnpj, termo_id, valor, competencia, documento}`. O
+    `documento` é o lançamento financeiro de origem (`"mov. financeira 10396439"`),
+    e é ele que responde "de onde veio este preço?" meses depois.
+
+    🚨 IDEMPOTENTE POR (termo, competência, valor) e **recusado não derruba o
+    lote** -- as mesmas duas invariantes do outro lote, e pelo mesmo motivo:
+    clicar duas vezes não pode encher o histórico de preço com a mesma linha, e
+    lote que morre no meio deixa metade da carteira precificada sem ninguém
+    saber qual metade.
     """
-    pre = pf.montar(conn, competencia)
+    if not propostas:
+        raise DadoInvalido("semeadura sem proposta nenhuma")
+    texto_motivo = _texto(motivo) or MOTIVO_SEMEADURA
+
+    r = {"lancados": 0, "repetidos": 0, "recusados": [], "ids": []}
+    for p in propostas:
+        termo_id = p.get("termo_id")
+        cnpj = p.get("cnpj")
+        valor = _texto(p.get("valor"))
+        comp = p.get("competencia")
+        try:
+            motor.validar_competencia(comp)
+            if not valor:
+                raise DadoInvalido("proposta sem valor não é preço")
+            _exigir_termo(conn, cnpj, termo_id)
+        except (DadoInvalido, motor.CompetenciaInvalida) as e:
+            r["recusados"].append({"termo_id": termo_id, "cnpj": cnpj,
+                                   "motivo": str(e)})
+            continue
+        igual = conn.execute(
+            """SELECT id FROM car_evento
+                WHERE termo_id = ? AND acao = ? AND competencia = ?
+                  AND placa_chave IS NULL AND valor_mensal = ?""",
+            (termo_id, motor.PRECO, comp, valor)).fetchone()
+        if igual is not None:
+            r["repetidos"] += 1
+            continue
+        r["ids"].append(_inserir(
+            conn, cnpj=cnpj, termo_id=termo_id, acao=motor.PRECO,
+            competencia=comp, por=por, valor=valor, motivo=texto_motivo,
+            documento=_texto(p.get("documento"))))
+        r["lancados"] += 1
+    return r
+
+
+def contratos_sem_valor(conn, competencia: str, limite: int = 200,
+                        weso: dict | None = None,
+                        idade_weso: float | None = None) -> list:
+    """Os contratos com placa cobrável e SEM valor. É a fila de trabalho do lote,
+    e sai da própria pré-fatura -- a régua de "cobrável" não se reescreve aqui.
+
+    🔵 ORDEM NOVA (30/10): **placa EM USO na WESO primeiro**, depois o volume.
+    🚨 A ordem velha era só `-sem_valor`, e é o achado A1 da auditoria de 28/10:
+    ela punha a Horse na frente -- 356 placas cobráveis, **zero** em uso. Seguir
+    aquela fila lançaria preço em placa fora de serviço, que foi exatamente o
+    que ele barrou ao dizer *"as placas ativas são somente as que estão na Weso
+    ativa"*.
+
+    Sem o mapa da WESO a ordem cai na antiga, e a linha carrega `em_uso: None`
+    para a tela não afirmar o que não foi consultado.
+    """
+    pre = pf.montar(conn, competencia, weso=weso, idade_weso=idade_weso)
     fila = [
         {"cnpj": c["cnpj"], "nome": c["nome"], "termo_id": ct["termo_id"],
          "numero": ct["numero"], "empresa": ct["empresa"],
          "assinado": ct["assinado"], "situacao": ct["situacao"],
-         "placas": ct["placas"], "sem_valor": ct["sem_valor"]}
+         "placas": ct["placas"], "sem_valor": ct["sem_valor"],
+         "em_uso": ct.get("em_uso"),
+         "faturado": ct.get("faturado")}
         for c in pre["clientes"] for ct in c["contratos"] if ct["sem_valor"]
     ]
-    fila.sort(key=lambda x: (-x["sem_valor"], x["nome"] or x["cnpj"]))
+    fila.sort(key=lambda x: (-(x["em_uso"] or 0), -x["sem_valor"],
+                             x["nome"] or x["cnpj"]))
     return fila[:limite]
 
 

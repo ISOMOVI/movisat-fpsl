@@ -152,7 +152,10 @@ checar("e NAO o de producao", False, storage.DB_PATH.endswith("data/fpsl.db"))
 # `car_leitura`. Sem ela a tabela nascia sem nenhum escritor -- tabela que
 # existe e ninguém preenche é promessa que a tela não cumpre.
 # 🔵 A trava de 18 rotas do `teste_contratos_router` NÃO muda: router separado.
-checar("o router subiu com as 16 rotas", 16, len(car_router.router.routes))
+# 🆕 30/10, blocos F1 e F4: 21 rotas. As 5 novas sao
+# GET/PUT /faturado/interruptor · POST /faturado/atualizar · GET /semear ·
+# POST /semear.
+checar("o router subiu com as 21 rotas", 21, len(car_router.router.routes))
 
 # 🚨 TODA ROTA NOVA ENTRA SOB A MESMA TRANCA DE ABA. Rota solta sem a
 # dependência do router seria a porta aberta que o `requer_aba` existe para
@@ -191,8 +194,14 @@ checar("e nao exige financeiro", False, "financeiro" in alvos)
 # vem do token. O fonte é conferido porque o `Depends` da assinatura não aparece
 # em `rota.dependencies` -- só o do router aparece.
 fonte_router = (RAIZ / "fpsl_weso" / "painel" / "routers" / "car_router.py").read_text("utf-8")
-checar("nenhuma rota pede outra aba na assinatura", 0,
-       fonte_router.count('requer_aba("') - fonte_router.count('requer_aba("contas_receber")'))
+# 🚨 UMA EXCECAO, E ELA E NOMEADA: o PUT do interruptor do espelho pede
+# `config`, como o da FIN_1.1 e o da auditoria da CTR -- ler e de quem tem a
+# aba, LIGAR LACO e do dono. Qualquer OUTRA aba na assinatura derruba este
+# teste, que e exatamente o que ele existe para pegar.
+outras = (fonte_router.count('requer_aba("')
+          - fonte_router.count('requer_aba("contas_receber")'))
+checar("so o PUT do interruptor pede outra aba", 1, outras)
+checar("e a outra aba e `config`", 1, fonte_router.count('requer_aba("config")'))
 
 print("\n[2] o grid abre, refaz o cache vazio e DIZ que refez")
 r = c.get(f"{PREFIXO}/clientes")

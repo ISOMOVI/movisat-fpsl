@@ -144,6 +144,22 @@ ROTAS = [
     # registro chegar a gravar coisa nenhuma.
     ("POST", "/painel/api/car/termo/0/preco",   "contas_receber",
      {"valor": "1,00", "motivo": "zz tranca"}, True),
+
+    # Espelho do faturado e semeadura de preco (blocos F1 e F4, 30/10).
+    ("GET",  "/painel/api/car/faturado/interruptor", "contas_receber", None, False),
+    ("GET",  "/painel/api/car/semear",               "contas_receber", None, False),
+    # Mudar o interruptor exige `config`, como na FIN_1.1 e na auditoria da CTR
+    # -- e `config` NAO entra em `concediveis` do laco [7] por ser somente_owner.
+    # ⚠️ A rota exige as DUAS coisas (a aba do router mais `config`), e e por
+    # isso que o usuario magro leva 403 aqui: e o mesmo desenho do PUT da
+    # auditoria logo acima.
+    ("PUT",  "/painel/api/car/faturado/interruptor", "config",
+     {"ativa": False}, True),
+    # 🚨 ESCREVE=True porque fala com o HARMONIT: chamar autorizado gastaria 12
+    # GET na API de outra empresa dentro de um teste. Aqui so a tranca.
+    ("POST", "/painel/api/car/faturado/atualizar",   "contas_receber", None, True),
+    ("POST", "/painel/api/car/semear",               "contas_receber",
+     {"termos": [0]}, True),
 ]
 
 

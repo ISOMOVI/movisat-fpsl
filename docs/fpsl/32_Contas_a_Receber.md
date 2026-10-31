@@ -443,7 +443,10 @@ Resumo do que toca o FPSL:
 
 ---
 
-## 11. As 16 rotas, como ficaram (E7, 28/10)
+## 11. As rotas, como ficaram (16 na E7 de 28/10; **21 desde 30/10**)
+
+> 🆕 **As 5 de 30/10** (blocos F1 e F4, detalhe na seção 12): `GET`/`PUT /faturado/interruptor` · `POST /faturado/atualizar` · `GET /semear` · `POST /semear`.
+> Todas herdam `requer_aba("contas_receber")` do `APIRouter`; o `PUT` exige **também** `config`, como o interruptor da `FIN_1.1`.
 
 Prefixo `/painel/api/car`, todas atrás de `requer_aba("contas_receber")` declarado no próprio
 `APIRouter` — `car_router.py` não tem uma única rota solta, e isso é travado por teste.
@@ -481,3 +484,200 @@ aberto).
 ⚠️ **Limite conhecido, escrito no teste:** CNPJ com `/` (`12.345.678/0001-99`) **não chega na rota** —
 a barra parte o caminho em dois segmentos. Ponto, traço e espaço funcionam, e a tela liga pelo CNPJ
 limpo, que é como a base o guarda.
+
+---
+
+# 12. Fase 1 da operação de financeiro — blocos F1 a F4 (30/10/2026)
+
+> 🔵 **Escopo decidido por ele em 30/10:** *"F1 + F2 + F3 + F4: já nascer com
+> preço"*. Nada de emitir boleto (F8, espera a D8) e nada de fechar o mês (F5).
+> Controle da frente: `C:\Users\Lenovo\Desktop\CAR_1.1_Financeiro_FPSL.md`.
+
+## 12.1 O que o financeiro do Harmonit dá, e o que NÃO dá
+
+Pergunta dele, textual: *"conseguimos via API puxar as placas que ou consultar as
+que estão sendo cobradas no harmonit? e valores tbm? e outras cobranças tbm?"*.
+Medido ao vivo em **30/10**, só com `GET`, em 297 lançamentos de vencimento
+10/2026:
+
+| | Resposta medida |
+|---|---|
+| **Placas** | 🚨 **NÃO.** Os 12 campos do lançamento são `id · pagamento · descricao · contatoId · contato · valor · categoria(Id) · centroCusto(Id) · contaCorrente(Id)`. **Zero** das 297 descrições traz placa, e o `swagger.json` **não tem nenhuma rota de contrato** (`/Contrato*`, `/Mensalidade*`, `/Parcela*`). A placa só existe do nosso lado: `contrato_placa` + cache da WESO |
+| **Valores** | ✅ **Sim**, por lançamento e por cliente; os "a baixar" trazem `vencimento`, `valorFinal`, `nossoNumero`, `numeroDocumento`. A conta é **Banco Asaas** |
+| **Outras cobranças** | ✅ **Sim, cinco tipos:** Mensalidades (265) · Prestação de Serviços = `Ordem de Serviço Nr. X` (23) · Venda de Produtos = `Venda Nr. X` (4) · `boleto`/sem centro (4) · Adesão (1). E aparece **`Negociação 17/24`** — parcelamento |
+
+## 12.2 `car_faturado` — o espelho (F1)
+
+Espelho, **não fonte**: nada aqui decide cobrança. O que a CAR afirma sai de
+`car_evento` (preço) e da CTR (placas).
+
+- **A chave é o `id` do Harmonit**, e é isso que torna reler um mês idempotente
+  (`INSERT OR REPLACE`): o lançamento que era `a_baixar` e virou `baixado`
+  **muda de estado**, não vira duas linhas.
+- **`competencia` sai do TEXTO** (`"... ref. período 09/2026"`) e é **NULA**
+  quando o texto não diz. 🚨 Nunca cai no mês de vencimento: das 261
+  mensalidades baixadas em outubro, 233 eram de referência 09/2026. ⚠️ A **v2**
+  da rota, que traria `competencia` como campo, **recusa esta empresa**.
+- **`tipo` sai do TEXTO**, não do `centroCusto`: 4 mensalidades chegam com
+  centro `boleto`. O centro de custo fica gravado cru, e é ele que separa
+  recorrente de avulso na tela.
+- **`venc_ano_mes`** guarda de que mês de vencimento a linha veio. É
+  proveniência, e serve para a tela dizer se a conta do mês está completa.
+- **A amarração é (cliente, número do contrato)**, nunca o número solto. Medido
+  em 30/10 nos vencimentos 09 e 10: dos **544** lançamentos com número,
+  **537 (98,7%)** acham termo **do próprio cliente**; 2 números não existem e 5
+  lançamentos têm `contatoId` fora de `clientes`. O desempate entre homônimos é
+  o `resolver_termo` da pré-fatura (**MOVISAT vence**).
+
+🚨 **A JANELA DE VENCIMENTO ERA CURTA E SUBESTIMAVA A RECEITA EM SILÊNCIO.**
+Medido em 30/10: a competência **2026-09** tem lançamento em **sete** meses de
+vencimento (04 a 10/2026) — **282 lançamentos, R$ 185.234,14** — e **5 de
+vencimento abril** somam R$ 15.678,03. Com a janela de 6 meses a conta de
+setembro fechava em R$ 163.666,05, e **nada dizia**. A passada varre **10 meses**
+(6 atrás, 3 à frente, mais o corrente = 20 `GET`, ~1,5 min), e a pré-fatura
+**declara de quantos meses de vencimento aquela competência foi lida**, nas duas
+pontas da janela.
+
+## 12.3 A rotina e o botão (F1)
+
+🚨 **Nasce DESLIGADA** (`faturado_sync_ativa`), interruptor **na tela dela**.
+Ler o interruptor exige `contas_receber`; **mudar exige `config`** — a mesma
+régua da `FIN_1.1` e da auditoria da CTR. É o **10º laço** do FPSL
+(`rotinas.LACOS["faturado"]`, 1×/dia).
+
+🔵 **A régua do botão, frase dele:** *"nasce desligada mas tbm pode ser feita
+pelo botão, até que decidam deixar ligada, aí o botão esmaece ou só pode ser
+usado mais 1 vez no dia 4hrs após a automática, quando ligada"*. Implementada em
+`car_faturado.pode_atualizar_agora`, **pura**, com 4 casos travados por teste. A
+recusa é **429 com o motivo escrito**, e a tela esmaece o botão **dizendo por
+quê** e a que hora libera.
+
+## 12.4 As três colunas, no CLIENTE (F2)
+
+`deveria cobrar × cobrado × recebido`, com o termo como detalhe de dentro.
+
+🚨 **A unidade é o CLIENTE, porque é dele que sai o boleto.** Medir por termo foi
+erro de 28/10: a XOMV é faturada no termo 306 e usa 53 placas nos termos
+8531/8754/8802, e a conta por termo a acusava de "cobra sem usar" **e** "usa sem
+cobrar" ao mesmo tempo.
+
+Duas listas, nunca uma (defeito meu achado com dado real em 30/10):
+- `nao_amarrados` — lançamentos **desta** competência sem cliente ou sem
+  contrato conhecido. **7** em 2026-09.
+- `sem_competencia` — o que não pertence a mês nenhum pelo texto: OS, venda,
+  adesão sem período, parcelamento. **333 lançamentos, R$ 281.795,87**. Misturar
+  os dois dava uma lista de 340 linhas numa pré-fatura de setembro.
+
+Com `car_faturado` vazia a resposta traz `faturado.lido = false` **com o motivo**
+e a tela diz isso, em vez de desenhar R$ 0.
+
+## 12.5 A régua dele, portada (F3)
+
+🔵 Decisão de 30/10: **interseção, com as duas colunas visíveis**. A cobrança é
+pela WESO **em uso** (`Instalado`), e a tela mostra ao lado o que o contrato
+prevê, com a diferença por cliente.
+
+- O mapa `{placa: situação}` vem do **cache diário** da WESO
+  (`/home/claude/weso_cache/weso.db`, cron 04:15), pelo leitor que já existia
+  (`services.contratos_auditoria._weso_do_cache`). A **idade do cache** aparece
+  na resposta e na tela.
+- ⚠️ **Injetado, não lido pela pré-fatura**: `montar(conn, comp, weso=..., idade_weso=...)`.
+  Sem o mapa, `em_uso_weso` é **`None`** em toda linha — nunca `False`, que
+  afirmaria "não está instalada".
+- Situação intermediária (Estoque, Bancada, Manutenção, Comodato) **não é uso** e
+  aparece **com o nome** (`situacao_weso`), não como um "não" sem causa.
+- **A fila reordena:** primeiro quem tem placa em uso e **nenhuma mensalidade
+  cobrada** no mês. É o conserto do achado **A1** — a ordem velha punha a Horse
+  na frente, com 356 placas cobráveis e **zero** instaladas.
+
+Medido na produção em 30/10, competência 2026-09: **3.033 placas cobráveis ·
+1.606 em uso na WESO · 1.427 contratadas e não instaladas · 26 clientes usando
+sem faturar**. O primeiro da fila nova é a **CONSTRUCTO** (21 placas, 18 em uso,
+nada cobrado) — a mesma empresa que o levantamento `F0` apontou.
+
+## 12.6 Semear preço (F4)
+
+🔵 Decisão dele, 30/10: *"faça o 2 [o lote], mas deixe as regras do 1 tbm, para
+quando alguem alterar os demais"*.
+
+- `car_faturado.propor_precos` é **puro** e devolve `propostas · conflitos ·
+  sem_termo`. **Conflito não entra no lote**: contrato que já tem preço vigente
+  diferente, ou dois valores no mesmo mês, pede decisão.
+- `POST /painel/api/car/semear` grava. 🚨 **O corpo diz QUAIS, nunca QUANTO**: o
+  valor, a competência e o documento saem do espelho desta base — aceitar valor
+  do corpo deixaria quem chama a rota escolher preço. O autor sai do **token**.
+- O `documento` é o lançamento de origem (`"mov. financeira 10396439"`), e o
+  motivo padrão é *"preço adotado do que o Harmonit já fatura neste contrato"*.
+- **Idempotente** por (termo, competência, valor); **recusado não derruba o
+  lote**. `POST /termo/{id}/preco` continua sendo o "adotar" de uma linha.
+- Medido na produção em 30/10, competência 2026-09: **274 propostas,
+  R$ 167.684,06, ZERO conflitos**, 6 lançamentos de mensalidade sem contrato
+  nesta base.
+
+🚨 **Nada foi semeado na produção**: `car_evento` segue com 0 linhas. O lançamento
+é ato dele, no botão.
+
+## 12.7 O defeito de dinheiro que o teste pegou antes de valer nada
+
+O Harmonit manda `200.53` (número JSON, ponto decimal) e **todo dinheiro desta
+casa é texto em convenção brasileira** — `car_prefatura._centavos` lê o ponto
+como **separador de milhar**. Guardar o número cru fazia R$ 200,53 virar
+**R$ 20.053,00** na soma, cem vezes mais. E o valor do espelho é **copiado** para
+`car_evento` pela semeadura, onde é imutável. `car_faturado.valor_texto`
+normaliza na entrada, num lugar só, com teste.
+
+## 12.8 As 21 rotas (eram 16)
+
+As 5 novas: `GET`/`PUT /faturado/interruptor` · `POST /faturado/atualizar` ·
+`GET /semear` · `POST /semear`. Todas herdam `requer_aba("contas_receber")` do
+`APIRouter`; o `PUT` exige **também** `config`.
+
+## 12.9 Travas
+
+`teste_car_faturado.py` (**72**) · `teste_car_semear.py` (**42**) · e os
+ampliados `teste_car_tabelas` (44, com a 4ª tabela), `teste_car_prefatura` (53,
+com o CSV de 14 colunas), `teste_car_router` (106, com as 21 rotas e a exceção
+do `config` nomeada), `teste_roteadores_painel` (102, com as 5 rotas novas na
+matriz escrita à mão — a armadilha `X0`).
+
+**Suíte inteira em 30/10: 77 arquivos, 76 verdes, 1 vermelho** (`teste_extrair_termo`, que espera decisão dele). A baseline do dia, antes de qualquer alteração, era 75/74/1 — o `teste_higiene_placas_weso`, 2º vermelho desde 28/10, passou a verde sozinho.
+
+## 12.10 ⚠️ O limite da coluna "em uso", declarado (medido em 30/10)
+
+Das **2.946 placas sustentadas** (`ATIVA` ou `EM_AVISO_PREVIO`), **1.625 casam** com alguma chave do
+cache da WESO. As outras aparecem como **não em uso** — e isso é o limite, não a verdade:
+
+- **338 têm chave com cara de chassi** (mais de 8 caracteres) e **só 39 dessas casam**. O mecanismo
+  cobre chassi (`_weso_do_cache` indexa `chave_placa` **e** `chassi`, e o cache tem 327 chaves de
+  chassi), então o que falta é o veículo, não a regra.
+- **E parte nem é identificador:** há **nome de pessoa na coluna de placa** — `MARTONE2009`,
+  `NAILZASILVA986`. Isso é higiene de `contrato_placa.placa_chave`, e pertence à `CTR_1.1`.
+
+🚨 **Consequência que a tela tem de respeitar:** `em_uso` é **piso**. Chave que não casa empurra o
+cliente para *"usa e não fatura"* ou o tira de lá — então o número vem sempre ao lado do **previsto
+no contrato** (a interseção que ele pediu em 30/10), e nunca sozinho.
+
+## 12.11 ⚠️ A decisão D6, encurtada — mas não extinta
+
+O achado de 30/10 (`cobrar` por item, provado contra o faturado) **resolve o mecanismo**: não há lista
+de itens do catálogo a levantar. **Mas continua sendo decisão dele** uma pergunta de uma linha:
+**a CAR adota o `cobrar` do Harmonit como régua da parte variável?** Enquanto ela não vier, o espelho
+**guarda e mostra** os lançamentos de serviço e a CAR **não** calcula variável.
+
+## 12.12 O que foi exercitado ao vivo em 30/10, e o que não
+
+| Exercitado | Como |
+|---|---|
+| o espelho inteiro | botão **Atualizar agora**: 3.070 lançamentos, 10 meses, 20 `GET`, ~1min15, zero falhas |
+| a conferência do espelho | competência 2026-09 fechou em **282 lançamentos / R$ 185.234,14**, igual ao medido ao vivo no Harmonit |
+| o `PUT` do interruptor | ligado e desligado com token de owner; corpo sem `ativa` → **400** |
+| 🔵 **a régua do botão** | com a rotina **ligada** ele recusou dizendo *"vale uma vez por dia, e já foi usado hoje às 12:17 UTC"* |
+| as propostas de preço | **274 propostas, R$ 167.684,06, zero conflitos** (`GET /semear`) |
+| o CSV da pré-fatura | 14 colunas, com `em_uso_weso` e `situacao_weso` |
+
+| **NÃO** exercitado | Por quê |
+|---|---|
+| a passada **automática** da rotina | ela nasce desligada; o laço só carimbou *"desligada"* (12:10 e 12:19) |
+| o **lançamento** de preço | são 274 eventos de dinheiro com autor — é o clique dele |
+| o `POST /prefatura/fechar` | não tem botão na tela (achado **A2**), e `car_leitura` segue vazia |
+| **a tela no navegador** | `M9`: nenhuma suíte vê tela quebrada |

@@ -35,9 +35,11 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 
-from ... import storage
+from ... import rotinas, storage
+from ...services import sync_faturado
 from ..auth import requer_aba
 from .. import car_busca as busca
+from .. import car_faturado as cf
 from .. import car_motor as motor
 from .. import car_prefatura as prefatura
 from .. import car_registro as registro
@@ -137,6 +139,32 @@ def _resolver_cnpj(conn, bruto: str) -> str:
         if busca._limpo(c) == limpo:
             return c
     raise HTTPException(404, f"o documento {limpo} não está nesta base")
+
+
+def _weso() -> tuple:
+    """O cache diário da WESO: `({chave: situação}, idade em horas)`.
+
+    🚨 REUSA O LEITOR QUE JÁ EXISTE, `services.contratos_auditoria._weso_do_cache`
+    -- o mesmo que a `CTR_1.1` usa desde 13/10. ⚠️ E ele continua com o nome
+    privado de propósito: `teste_contratos_auditoria` troca a função **pelo
+    nome** em 9 lugares, e um apelido público não seguiria a troca. Quem já o
+    importava assim é o `contratos_aderencia` -- não sou o primeiro.
+
+    Cache ausente volta `({}, None)`, e a pré-fatura trata mapa vazio como
+    "nenhuma placa em uso", que é o que o cache de fato diz. Falha de leitura
+    levanta, e a rota responde o erro -- comparação com dado que não deu para
+    ler seria pior.
+    """
+    from ...services.contratos_auditoria import _weso_do_cache
+    placas, idade, _n = _weso_do_cache()
+    return placas, idade
+
+
+def _montar_com_weso(conn, competencia: str, cnpj: str | None = None) -> dict:
+    """A pré-fatura com a régua da WESO já injetada. Um lugar só."""
+    placas, idade = _weso()
+    return prefatura.montar(conn, competencia, cnpj=cnpj,
+                            weso=placas, idade_weso=idade)
 
 
 def _cnpj_do_termo(conn, termo_id: int) -> str:
@@ -292,7 +320,7 @@ async def cliente(cnpj: str, competencia: str | None = Query(None)):
     comp = _competencia(competencia)
 
     def _ler(conn):
-        return prefatura.montar(conn, comp, cnpj=_resolver_cnpj(conn, bruto))
+        return _montar_com_weso(conn, comp, cnpj=_resolver_cnpj(conn, bruto))
     return await _exec(_ler)
 
 
@@ -308,7 +336,7 @@ async def termo(termo_id: int, competencia: str | None = Query(None)):
 
     def _ler(conn):
         doc = _cnpj_do_termo(conn, termo_id)
-        pre = prefatura.montar(conn, comp, cnpj=doc)
+        pre = _montar_com_weso(conn, comp, cnpj=doc)
         achado = None
         for c in pre["clientes"]:
             for ct in c["contratos"]:
@@ -350,9 +378,15 @@ async def fila_sem_valor(competencia: str | None = Query(None),
     em 28/10: das 2.993 placas cobráveis, **zero** tinha valor.
     """
     comp = _competencia(competencia)
-    return await _exec(
-        lambda conn: {"competencia": comp, "limite": limite,
-                      "fila": registro.contratos_sem_valor(conn, comp, limite)})
+
+    def _ler(conn):
+        placas, idade = _weso()
+        return {"competencia": comp, "limite": limite,
+                "weso": {"lido": True, "idade_h": idade, "chaves": len(placas)},
+                "fila": registro.contratos_sem_valor(conn, comp, limite,
+                                                     weso=placas,
+                                                     idade_weso=idade)}
+    return await _exec(_ler)
 
 
 @router.get("/termo/{termo_id}/historico-preco")
@@ -380,7 +414,7 @@ async def prefatura_do_mes(competencia: str | None = Query(None),
     doc = (cnpj or "").strip() or None
 
     def _ler(conn):
-        return prefatura.montar(
+        return _montar_com_weso(
             conn, comp, cnpj=_resolver_cnpj(conn, doc) if doc else None)
     return await _exec(_ler)
 
@@ -393,7 +427,7 @@ async def prefatura_csv(competencia: str | None = Query(None),
     doc = (cnpj or "").strip() or None
 
     def _ler(conn):
-        return prefatura.montar(
+        return _montar_com_weso(
             conn, comp, cnpj=_resolver_cnpj(conn, doc) if doc else None)
     pre = await _exec(_ler)
     return PlainTextResponse(
@@ -419,7 +453,7 @@ async def fechar_prefatura(corpo: dict | None = None,
 
     def _gravar(conn):
         doc = _resolver_cnpj(conn, pedido) if pedido else None
-        pre = prefatura.montar(conn, comp, cnpj=doc)
+        pre = _montar_com_weso(conn, comp, cnpj=doc)
         # A assinatura é do RESULTADO NORMALIZADO, não da resposta inteira: o
         # cache e a hora mudam a cada chamada e fariam toda leitura parecer
         # diferente da anterior.
@@ -447,6 +481,230 @@ async def fechar_prefatura(corpo: dict | None = None,
                 "por": por, "assinatura": assinatura, "totais": t,
                 "leituras_anteriores": anteriores}
     return await _exec(_gravar)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# F1 — o espelho do faturado: o interruptor, o botão e o que ele trouxe
+# ─────────────────────────────────────────────────────────────────────────────
+def _resumo_do_espelho(conn) -> dict:
+    """Quantas linhas o espelho tem, por competência e por tipo. Só leitura."""
+    linha = conn.execute(
+        "SELECT COUNT(*), MAX(lido_em), MIN(competencia), MAX(competencia) "
+        "FROM car_faturado").fetchone()
+    quantas, lido_em, comp_min, comp_max = linha or (0, None, None, None)
+    por_tipo = {t: n for t, n in conn.execute(
+        "SELECT tipo, COUNT(*) FROM car_faturado GROUP BY tipo")}
+    venc = [m for m, in conn.execute(
+        "SELECT DISTINCT venc_ano_mes FROM car_faturado "
+        "WHERE venc_ano_mes IS NOT NULL ORDER BY venc_ano_mes")]
+    return {"lancamentos": quantas, "lido_em": lido_em,
+            "competencia_de": comp_min, "competencia_ate": comp_max,
+            "por_tipo": por_tipo,
+            # 🚨 De quais meses de VENCIMENTO o espelho foi lido. E a resposta
+            # honesta a "esta conta esta completa?" -- ver o achado de 30/10 na
+            # `meses_da_passada`.
+            "meses_de_vencimento": venc,
+            "sem_cnpj": conn.execute(
+                "SELECT COUNT(*) FROM car_faturado WHERE cnpj IS NULL").fetchone()[0],
+            "sem_termo": conn.execute(
+                "SELECT COUNT(*) FROM car_faturado "
+                "WHERE termo_numero IS NOT NULL AND termo_id IS NULL").fetchone()[0]}
+
+
+async def _estado_do_espelho() -> dict:
+    """Interruptor + última passada + a régua do botão, num lugar só."""
+    ativa = (await storage.get_config(sync_faturado.FLAG, "false")) == "true"
+    passada = await rotinas.ultima("faturado")
+    manual = await storage.get_config(sync_faturado.CHAVE_MANUAL, "")
+    botao = cf.pode_atualizar_agora(ativa, passada["ultima_em"], manual)
+    return {
+        "ativa": ativa,
+        "intervalo_h": sync_faturado.INTERVALO_ROTINA // 3600,
+        "ultima_em": passada["ultima_em"],
+        "ultimo_resultado": passada["resultado"],
+        "atrasada": passada["atrasada"],
+        "sem_registro": passada["sem_registro"],
+        "ultima_manual_em": manual or None,
+        # 🚨 A TELA RECEBE O MOTIVO, não só o `false`. Botão esmaecido que não
+        # diz por quê é botão que mente (`M12`).
+        "botao": botao,
+        "espera_apos_automatica_h": cf.ESPERA_APOS_AUTOMATICA_H,
+    }
+
+
+@router.get("/faturado/interruptor")
+async def ler_interruptor_faturado():
+    """Estado da rotina do espelho, a última passada e a régua do botão.
+
+    🚨 "LIGADA" NÃO É "RODOU", e a `FIN_1.1` provou isso do jeito caro: ficou
+    desligada de 02/10 a 08/10 e nada na tela dizia. Aqui vêm as duas coisas.
+    """
+    estado = await _estado_do_espelho()
+    return {**estado, "espelho": await _exec(_resumo_do_espelho)}
+
+
+@router.put("/faturado/interruptor")
+async def mudar_interruptor_faturado(corpo: dict,
+                                     _=Depends(requer_aba("config"))):
+    """Liga/desliga a rotina diária.
+
+    🚨 LER EXIGE `contas_receber` (a tranca do router), MUDAR EXIGE `config` --
+    a mesma régua do interruptor da `FIN_1.1`. Quem opera a cobrança não
+    precisa ligar laço, e laço ligado por engano fala com o Harmonit todo dia.
+    """
+    if not isinstance(corpo, dict) or "ativa" not in corpo:
+        raise HTTPException(400, "informe `ativa` (true/false)")
+    ativa = bool(corpo.get("ativa"))
+    await storage.set_config(sync_faturado.FLAG, "true" if ativa else "false")
+    log.info("CAR: rotina do espelho do faturado %s",
+             "LIGADA" if ativa else "DESLIGADA")
+    return await _estado_do_espelho()
+
+
+@router.post("/faturado/atualizar")
+async def atualizar_faturado(corpo: dict | None = None,
+                             usuario: dict = Depends(requer_aba("contas_receber"))):
+    """O botão "atualizar agora": lê o Harmonit e refaz o espelho dos meses.
+
+    🔵 REGRA DELE, 30/10: com a rotina **desligada** o botão é livre; **ligada**,
+    vale **uma vez por dia** e só **4 h depois da passada automática**. Quem
+    decide é `car_faturado.pode_atualizar_agora`, pura e travada por teste; aqui
+    só se obedece.
+
+    🚨 RECUSA É **429 COM O MOTIVO**, não 403 nem silêncio: o operador precisa
+    saber que a janela existe e quando ela abre.
+    """
+    corpo = corpo or {}
+    estado = await _estado_do_espelho()
+    if not estado["botao"]["pode"]:
+        raise HTTPException(429, estado["botao"]["motivo"])
+
+    meses = None
+    pedido = corpo.get("meses")
+    if pedido:
+        # Carga à mão de um intervalo (a inicial, 2026-01 a 2027-12). Formato
+        # 'AAAA-MM', validado pela mesma função da competência -- um lugar só.
+        try:
+            meses = [(int(motor.validar_competencia(str(m))[:4]),
+                      int(str(m)[5:7])) for m in pedido]
+        except motor.CompetenciaInvalida as e:
+            raise HTTPException(400, str(e))
+        if len(meses) > 36:
+            raise HTTPException(400, f"{len(meses)} meses é mais que o teto de 36 "
+                                     "por chamada (são 2 GET por mês)")
+
+    r = await sync_faturado.run_sync(meses=meses)
+    await storage.set_config(sync_faturado.CHAVE_MANUAL, _agora())
+    log.info("CAR: espelho atualizado à mão por %s — %s lançamentos, %s gravados",
+             _autor(usuario), r["lidos"], r["gravadas"])
+    return {"por": _autor(usuario), **r,
+            "estado": await _estado_do_espelho(),
+            "espelho": await _exec(_resumo_do_espelho)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# F4 — semear preço do que o Harmonit já fatura
+# ─────────────────────────────────────────────────────────────────────────────
+def _propostas(conn, competencia: str) -> dict:
+    """As propostas de preço da competência, lidas do espelho. Não grava nada."""
+    faturado = [
+        {"id": i, "tipo": t, "competencia": c, "valor": v,
+         "termo_id": tid, "termo_numero": tn, "contato": ct}
+        for i, t, c, v, tid, tn, ct in conn.execute(
+            """SELECT id, tipo, competencia, valor, termo_id, termo_numero, contato
+                 FROM car_faturado WHERE competencia = ?""", (competencia,))]
+    termos = {tid: {"id": tid, "cnpj": cnpj, "numero": num, "empresa": emp}
+              for tid, cnpj, num, emp in conn.execute(
+                  "SELECT id, cnpj, numero, empresa FROM contrato_termo")}
+    eventos = prefatura.eventos_por_termo(conn)
+    nomes = prefatura.nomes_dos_clientes(conn)
+
+    def vigente(termo_id):
+        # 🚨 `preco_vigente` devolve o EVENTO, não o número -- e o campo dele é
+        # `valor_mensal`. Ler `"valor"` aqui daria `None` em todo contrato, e a
+        # semeadura proporia preço para quem já tem, sem conflito nenhum.
+        e = motor.preco_vigente(eventos.get(termo_id, []), competencia)
+        return (e or {}).get("valor_mensal")
+
+    r = cf.propor_precos(faturado, termos, vigente, competencia)
+    for lista in (r["propostas"], r["conflitos"]):
+        for p in lista:
+            p["nome"] = nomes.get(p.get("cnpj"))
+    return r
+
+
+@router.get("/semear")
+async def ler_semeadura(competencia: str | None = Query(None)):
+    """O que o Harmonit cobra e a CAR ainda não sabe — **proposta, não fato**.
+
+    Os conflitos saem à parte e **não entram no lote**: contrato que já tem
+    outro preço vigente pede decisão, não cópia. É a regra do "adotar por linha"
+    que ele mandou manter em 30/10.
+    """
+    comp = _competencia(competencia)
+    return await _exec(_propostas, comp)
+
+
+@router.post("/semear")
+async def semear(corpo: dict,
+                 usuario: dict = Depends(requer_aba("contas_receber"))):
+    """Lança `PRECO` nos contratos escolhidos, com o valor que o Harmonit cobra.
+
+    🚨 O CORPO DIZ **QUAIS**, NUNCA **QUANTO**. `termos` é uma lista de
+    `termo_id`; o valor, a competência e o documento saem do espelho desta base.
+    Aceitar valor do corpo deixaria a tela (ou quem chama a rota) escolher
+    preço, e o preço é fato medido -- é a mesma razão de `por` sair do token.
+
+    `termos` ausente ou vazio = **todas as propostas sem conflito** da
+    competência, que é o lote dos 272 que ele aprovou.
+    """
+    comp = _competencia(corpo.get("competencia"))
+    por = _autor(usuario)
+    pedidos = corpo.get("termos")
+    if pedidos is not None and not isinstance(pedidos, list):
+        raise HTTPException(400, "termos: lista de termo_id, ou nada para o lote inteiro")
+    if isinstance(pedidos, list):
+        try:
+            pedidos = {int(x) for x in pedidos}
+        except (TypeError, ValueError):
+            raise HTTPException(400, "termos: só aceita termo_id numérico")
+
+    def _grava(conn):
+        r = _propostas(conn, comp)
+        # O conflito também pode ser adotado -- mas só **nomeado**, nunca pelo
+        # lote: é o "alguém alterou" que ele pediu que continuasse possível.
+        disponiveis = {p["termo_id"]: p for p in r["propostas"]}
+        if pedidos:
+            for p in r["conflitos"]:
+                if p.get("valor") and p["termo_id"] in pedidos:
+                    disponiveis[p["termo_id"]] = p
+            escolhidas = [p for tid, p in disponiveis.items() if tid in pedidos]
+            faltam = [{"termo_id": t, "cnpj": None,
+                       "motivo": "não há proposta para este contrato nesta competência"}
+                      for t in sorted(pedidos) if t not in disponiveis]
+        else:
+            escolhidas = list(r["propostas"])
+            faltam = []
+        if not escolhidas:
+            raise HTTPException(
+                400, "nenhuma proposta para lançar nesta competência "
+                     f"({r['totais']['propostas']} propostas, "
+                     f"{r['totais']['conflitos']} conflitos)")
+        try:
+            saida = registro.semear_em_lote(conn, escolhidas, por,
+                                            motivo=corpo.get("motivo"))
+        except registro.DadoInvalido as e:
+            raise _recusa(e)
+        saida["recusados"] = faltam + saida["recusados"]
+        saida.update({"competencia": comp, "por": por,
+                      "pedidos": len(escolhidas),
+                      "propostas_disponiveis": r["totais"]["propostas"],
+                      "conflitos": r["totais"]["conflitos"]})
+        # A derivada é cache de uma régua que acabou de mudar: refaz na mesma
+        # transação, para a tela não mostrar a carteira velha depois do lote.
+        saida["recalculado"] = registro.recalcular_todos(conn, comp)
+        return saida
+    return await _exec(_grava)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

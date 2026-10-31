@@ -10,6 +10,9 @@
 
 ## Status
 
+> 🚨 **O NOME DA PORTA MUDOU EM 29/10, E ESTE DOCUMENTO USA O NOVO.** A situação **15694**, que é a porta da `FIN_1.1` e da `FIN_2.1`, chamava-se *«Serviço Realizado»* e hoje chama-se **"Atendimento finalizado"** (foram 11 situações renomeadas e 6 criadas no Harmonit). Onde este texto diz *"Atendimento finalizado"*, leia **a situação 15694** (o nome anterior, *«Serviço Realizado»*, foi trocado neste documento em 30/10) -- o `id` é o que o código usa, e o nome se lê do catálogo. ⚠️ Vizinhas que importam: **1316 "Serviço Agendado"** (onde param OS com serviço feito e valor de técnico lançado) e **15746 "Financeiro"** (a "OS do tipo financeiro" da `CAR_1.1`).
+
+
 | Peça | Estado |
 |---|---|
 | `FIN_1.1` Conferência de Fechamento | ✅ no ar desde 29/09. Rotina de 1h **LIGADA** desde ~19:00 de 01/10 (`conferencia_fechamento_ativa = true`) |
@@ -243,7 +246,7 @@ não divergência.
 
 🔵 *"o painel de fechamentos terá duas funções, uma de conferencia e outra de ação"*.
 
-**Porta de entrada:** só OS em **15694 "Serviço Realizado"**.
+**Porta de entrada:** só OS em **15694 "Atendimento finalizado"**.
 
 **Conferência (lê):** grid das OS com oficina, quatro vereditos — ação × tipo ·
 situação · WESO placa×ID×modelo · DataScope. **"Ainda não aconteceu" é cinza,
@@ -270,7 +273,7 @@ não contradizer a rotina de Operações.
 
 ```
 Objetivo:     a Ação só considera OS que uma pessoa marcou como concluída
-Hoje:         situacaoId 15694 "Serviço Realizado" é a porta de entrada
+Hoje:         situacaoId 15694 "Atendimento finalizado" é a porta de entrada
 Por quê:      🔵 "será feito justamente por uma pessoa mesmo, por isso que a
               rotina valida ele primeiro e parte dali" (01/10)
 Reavaliar se: a equipe parar de mover a situação — a fila esvazia
@@ -539,7 +542,7 @@ vermelho de "excluída" nunca aparecia. Definida junto.
 
 ---
 
-## ✅ 01/10 — E3: a porta "Serviço Realizado", 30 dias, e a rotina LIGADA (~19:00)
+## ✅ 01/10 — E3: a porta "Atendimento finalizado", 30 dias, e a rotina LIGADA (~19:00)
 
 🔵 *"pode seguir com a recomendação e fazer a E3 e o 'Rodar Agora' bem como
 acionar a rotina, deve varrer somente a partir dos ultimos 30 dias"*.
@@ -548,7 +551,7 @@ acionar a rotina, deve varrer somente a partir dos ultimos 30 dias"*.
 
 | Antes (29/09) | Agora |
 |---|---|
-| Entrava OS cujo **status** virou "Finalizado" | Entra OS com oficina cuja **situação** é **15694 "Serviço Realizado"** |
+| Entrava OS cujo **status** virou "Finalizado" | Entra OS com oficina cuja **situação** é **15694 "Atendimento finalizado"** |
 | Relia as ~400 OS mais recentes não finalizadas | Relê as **OS com oficina dos últimos 30 dias** (63 em 01/10) |
 | Conferia cada OS **uma vez** | Reconfere **toda a fila a cada passada** — WESO e DataScope mudam |
 | WESO: só a situação do rastreador, por série | Regra da oficina inteira (a mesma da sub-aba "ID × modelo"), com a **WESO ao vivo** |
@@ -576,7 +579,7 @@ Isso só acontece quando há OS na fila. WESO fora = vereditos de oficina ficam
 
 ### DataScope na porta
 
-🔵 *"a situação de 'Serviço Realizado' só acontece depois que OS datascope
+🔵 *"a situação de '"Atendimento finalizado" (15694)' só acontece depois que OS datascope
 existe"*. Então, numa OS que já passou pela porta, **faltar a resposta é
 anomalia** — mas continua **cinza**, com o motivo *"confira o Nº da O.S.
 digitado"*: não se sabe qual lado errou.
@@ -593,7 +596,7 @@ digitado"*: não se sabe qual lado errou.
 
 ### Sub-aba "ID × modelo"
 
-Ganhou o filtro **"só Serviço Realizado"** (parâmetro `so_servico_realizado`),
+Ganhou o filtro **"só "Atendimento finalizado" (15694)"** (parâmetro `so_servico_realizado`),
 como recomendado e aceito: a sub-aba segue mostrando **todas** as OS com oficina
 por padrão, porque 15 das 16 divergências de modelo estão em OS ainda abertas —
 e é antes de fechar que se corrige.
@@ -630,7 +633,7 @@ no `node --check`.
 
 Tela nova (`/painel/fechamento-tecnicos`, aba `financeiro`, `telas.py` FIN_2.1)
 que apura quanto pagar a cada técnico por período, a partir das OS em **15694
-"Serviço Realizado"** conferidas pela E1-E3. Arquivos:
+"Atendimento finalizado"** conferidas pela E1-E3. Arquivos:
 `services/sync_tecnicos.py` (sync diário de técnicos), `services/fechamento.py`
 (geração de cards, semáforo, máquina de estados), `painel/routers/fechamento_router.py`,
 `frontend/fechamento_tecnicos.html` (kanban de 5 colunas).
@@ -757,7 +760,7 @@ O SQLite não remove constraint de tabela. A **migração guardada no `init_db`*
 
 ### C. A mensagem do "Gerar" diz a verdade (`M12`)
 O `gerar_cartoes` descartava em silêncio OS sem técnico real e OS sem linha de conferência, e a tela dizia "todas as OS do período já estão em cards". Agora o retorno traz `os_no_periodo`, `ignoradas_sem_tecnico`, `ignoradas_sem_conferencia` e `conferencia_ativa`. A tela monta a frase a partir desses números:
-- "Nenhuma OS em Serviço Realizado com previsão neste período";
+- "Nenhuma OS em "Atendimento finalizado" (15694) com previsão neste período";
 - "N OS ficaram de fora: sem conferência (16993)";
 - "a rotina da Conferência está desligada".
 
@@ -770,7 +773,7 @@ O `gerar_cartoes` descartava em silêncio OS sem técnico real e OS sem linha de
 - Produção depois do restart: card 12 igual (aberto, amarelo, R$ 137,55, OS 16991). O quadro de 05–11/10 devolve o card 12. Backup em `data/fpsl.db.bak_pre_fin21_2026-10-08`.
 
 ### Achados da auditoria que ficam com ele (mudam regra)
-1. **A rotina da FIN_1.1 está DESLIGADA desde 02/10 10:55** (PUT no interruptor pela conta admin). Sem ela, OS nova em Serviço Realizado não ganha linha de conferência e fica de fora do Fechamento. Agora a tela do Gerar diz isso.
+1. **A rotina da FIN_1.1 está DESLIGADA desde 02/10 10:55** (PUT no interruptor pela conta admin). Sem ela, OS nova em "Atendimento finalizado" (15694) não ganha linha de conferência e fica de fora do Fechamento. Agora a tela do Gerar diz isso.
 2. DataScope em "Aprovado análise técnica" conta como "ainda não finalizou" (`ESTADO_OK = "Finalizado"`). É o estado para onde a E4 vai mandar a OS, então depois da Ação toda OS ficaria amarela no Fechamento.
 3. O OK do Fechamento (harmonit + datascope + weso) ignora Ação e Modelo, que a FIN_1.1 mostra.
 4. Vermelho não trava o "Marcar Pago".

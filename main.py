@@ -33,6 +33,7 @@ from fpsl_weso.services.contratos_auditoria import loop_contratos_auditoria
 from fpsl_weso.services.sync_tecnicos import loop_sync_tecnicos
 from fpsl_weso.services.sync_tipos_os import loop_sync_tipos_os
 from fpsl_weso.services.fechamento import loop_atualizar_cartoes
+from fpsl_weso.services.sync_faturado import loop_sync_faturado
 from fpsl_weso.painel.routers import fechamento_router as painel_fechamento_router
 from fpsl_weso.painel.routers import conferencia_fechamento_router as painel_conferencia_fechamento_router
 from fpsl_weso.painel.routers import contratos_router as painel_contratos_router
@@ -177,6 +178,11 @@ async def lifespan(app: FastAPI):
     # na frente de uma rota lenta.
     asyncio.create_task(loop_sync_tipos_os())
     asyncio.create_task(loop_atualizar_cartoes())
+    # 🆕 30/10, bloco F1 da `CAR_1.1`: o espelho do que o Harmonit JÁ fatura.
+    # 🚨 NASCE DESLIGADO (`faturado_sync_ativa`), com interruptor e botão na
+    # própria tela de Contas a Receber. É o 10º laço, e só faz `GET` -- a API
+    # financeira do Harmonit é 100% leitura.
+    asyncio.create_task(loop_sync_faturado())
     yield
     await stop_datascope_client()
     await stop_harmonit_client()

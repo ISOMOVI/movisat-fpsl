@@ -40,7 +40,7 @@ Padrão da casa: `CREATE TABLE IF NOT EXISTS` + `ALTER` idempotente conferido
 por `PRAGMA table_info`. Rodar duas vezes não quebra e não perde dado.
 """
 
-TABELAS = ("car_evento", "car_contrato", "car_leitura")
+TABELAS = ("car_evento", "car_contrato", "car_leitura", "car_faturado")
 
 
 def criar(conn) -> None:
@@ -169,6 +169,71 @@ def criar(conn) -> None:
     conn.execute("""CREATE INDEX IF NOT EXISTS idx_car_leitura_comp
                       ON car_leitura(competencia)""")
 
+    # ─────────────────────────────────────────────────────────────────────
+    # car_faturado — o espelho do que o Harmonit JÁ cobra (bloco F1, 30/10)
+    # ─────────────────────────────────────────────────────────────────────
+    # 🚨 ESPELHO, NÃO FONTE: toda linha daqui é cópia de leitura do Harmonit, e
+    # nada nesta tabela decide cobrança. O que a CAR afirma sai de `car_evento`
+    # (o preço) e da CTR (as placas). Confundir os dois faria a CAR "cobrar o
+    # que o Harmonit cobrou", e aí ela não substituiria nada -- repetiria.
+    #
+    # 🚨 A CHAVE É O `id` DO HARMONIT, e é isso que torna reler um mês
+    # idempotente: a passada seguinte faz `INSERT OR REPLACE` da mesma linha, em
+    # vez de empilhar cópia (foi o defeito das 11/22/21 cópias por caminho novo
+    # na Operações).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS car_faturado (
+            id            INTEGER PRIMARY KEY,
+            -- mensalidade · servico · venda · adesao · negociacao · outro.
+            -- Enum em `car_faturado.py` (o módulo), não em CHECK -- ver o topo.
+            tipo          TEXT    NOT NULL,
+            estado        TEXT    NOT NULL,     -- a_baixar · baixado
+            -- 🚨 'AAAA-MM' LIDA DA DESCRIÇÃO, e NULA quando o texto não diz.
+            -- O mês de vencimento NÃO serve de substituto: das 261 mensalidades
+            -- baixadas em outubro/2026, 233 eram de referência 09/2026.
+            competencia   TEXT,
+            vencimento    TEXT,
+            pagamento     TEXT,
+            -- TEXT pela mesma razão de `car_evento.valor_mensal`.
+            valor         TEXT,
+            valor_final   TEXT,
+            -- O cliente no Harmonit. `cnpj` é o nosso, resolvido por
+            -- `clientes.harmonit_id`, e fica NULO quando não resolve (3 de 246
+            -- em 30/10) -- nulo com a lista na tela, nunca chute.
+            contato_id    INTEGER,
+            contato       TEXT,
+            cnpj          TEXT,
+            -- O número do contrato vem no TEXTO; `termo_id` é o que ele resolve
+            -- nesta base, NULO quando não resolve (77 de 268 em 30/10).
+            termo_numero  TEXT,
+            termo_id      INTEGER,
+            numero_os     INTEGER,
+            numero_venda  TEXT,
+            parcela       TEXT,                 -- "17/24", da Negociação
+            centro_custo  TEXT,
+            categoria     TEXT,
+            conta_corrente TEXT,
+            nosso_numero  TEXT,
+            -- 🚨 A DESCRIÇÃO CRUA FICA SEMPRE. É a única prova do que o texto
+            -- dizia, e o que permite reclassificar sem reler o Harmonit.
+            descricao     TEXT,
+            -- 🚨 DE QUE MES DE VENCIMENTO esta linha veio ('AAAA-MM'). E
+            -- proveniencia, e serve para uma pergunta que a tela precisa
+            -- responder: "a competencia 09/2026 foi lida de quantos meses?".
+            -- Medido em 30/10: aquela competencia tem lancamento em SETE meses
+            -- de vencimento, e uma janela curta subestimava R$ 21 mil sem dizer.
+            venc_ano_mes  TEXT,
+            lido_em       TEXT    NOT NULL
+        )
+    """)
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_car_faturado_comp
+                      ON car_faturado(competencia)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_car_faturado_cnpj ON car_faturado(cnpj)")
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_car_faturado_termo
+                      ON car_faturado(termo_id)""")
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_car_faturado_os
+                      ON car_faturado(numero_os)""")
+
 
 def _colunas(conn, tabela) -> set:
     return {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})").fetchall()}
@@ -188,4 +253,10 @@ def migrar(conn) -> list:
     serve à base que já existe.
     """
     feitas = []
+    # 30/10: `venc_ano_mes` nasceu depois da primeira versao da `car_faturado`
+    # (no mesmo dia, mas em bancos que ja tinham a tabela criada).
+    if "car_faturado" in {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}             and "venc_ano_mes" not in _colunas(conn, "car_faturado"):
+        conn.execute("ALTER TABLE car_faturado ADD COLUMN venc_ano_mes TEXT")
+        feitas.append("car_faturado.venc_ano_mes")
     return feitas

@@ -62,6 +62,14 @@
   .t-aviso { background:var(--amber-dim); color:var(--amber); }
   .t-fora  { background:var(--red-dim); color:var(--red); }
   .t-info  { background:var(--blue-dim); color:var(--blue); }
+  /* ⚠️ O `.spinner` do `estilo.css` NÃO serve aqui: esta página não carrega
+     aquele arquivo. Sem esta regra o `<span class="spinner">` do botão de
+     atualizar seria marcação morta -- feedback que não aparece é feedback que
+     não existe. */
+  .spinner { display:inline-block; width:12px; height:12px; vertical-align:-1px;
+             border:2px solid currentColor; border-right-color:transparent;
+             border-radius:50%; animation:girar .7s linear infinite; }
+  @keyframes girar { to { transform:rotate(360deg); } }
   .msg { font-size:.84rem; padding:10px 12px; border-radius:7px; margin-top:12px; display:none; }
   .msg-ok { background:var(--green-dim); color:var(--green); display:block; }
   .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
@@ -127,7 +135,9 @@
          fiscal, vencimento, multa e juros não existem aqui, e por isso não
          aparecem nem como botão desligado. Promessa de data futura não entra
          em texto de tela. -->
-    <p class="sub">Um <strong>contrato</strong> por linha, e o que ele cobra na competência escolhida.<br>
+    <p class="sub">Um <strong>contrato</strong> por linha, e o que ele cobra na competência escolhida.
+       Desde 30/10 a conta do mês tem <strong>três colunas</strong>: o que <em>deveria</em> ser cobrado (contrato
+       × placa em uso na WESO), o que o Harmonit <em>cobrou</em> e o que foi <em>recebido</em>.<br>
        <strong>Esta tela não emite boleto nem nota fiscal, e não escreve no Harmonit.</strong>
        <strong>Vencimento, multa e juros não existem nesta base</strong> — a pré-fatura responde “o que cobrar no
        mês”, e não “quando vence”.</p>
@@ -168,6 +178,23 @@
     </div>
 
     <div class="card" id="cardTotais"><div class="nota">Carregando…</div></div>
+
+    <!-- 🆕 30/10, bloco F1: o espelho do que o Harmonit JÁ fatura.
+         🚨 O interruptor mora AQUI, na tela da própria rotina (convenção do
+         FPSL, oposta à do MoviZap). E o botão diz quando NÃO pode: com a rotina
+         ligada ele vale 1× por dia e só 4 h depois da passada automática. -->
+    <div class="card">
+      <h2>Espelho do faturado no Harmonit</h2>
+      <div id="cardEspelho"><div class="nota">Carregando…</div></div>
+    </div>
+
+    <!-- 🆕 30/10, bloco F4: semear preço do que o Harmonit já cobra.
+         🚨 Escolha linha por linha, ou o lote inteiro: lote que o operador não
+         escolhe é lote que ele não assume. Conflito NÃO entra no lote. -->
+    <div class="card">
+      <h2>Semear preço do faturado</h2>
+      <div id="cardSemear"><div class="nota">Carregando…</div></div>
+    </div>
 
     <div class="chips" id="chips"></div>
 
@@ -250,6 +277,7 @@ function pintarTotais(pre) {
         <div class="barra-cob"><i style="width:${cob === null ? 0 : cob}%"></i></div>
       </div>
     </div>
+    ${pintarTresColunas(pre)}
     <!-- M12: a parte variável se declara desligada, com o motivo, em vez de a
          soma da mensalidade passar por total. -->
     <div class="aviso-item" style="margin-top:14px"><strong>Este total é só mensalidade.</strong>
@@ -258,6 +286,69 @@ function pintarTotais(pre) {
       ? `<div class="aviso-item"><strong>${pre.sem_termo.length} placa(s) cobráveis apontam um termo que não existe
          nesta base</strong> — elas aparecem no CSV da pré-fatura, não somem.</div>` : ''}`;
   document.getElementById('cardTotais').innerHTML = html;
+}
+
+// ── F2 + F3: deveria cobrar × cobrado × recebido, e a régua da WESO ────────
+// 🚨 TUDO AQUI É POR CLIENTE, não por termo. Medir por termo foi erro meu em
+// 28/10: a mesma empresa pode ser faturada num termo e usar placa em outro (a
+// XOMV é faturada no 306 e usa 53 placas em três outros), e a conta por termo
+// acusava "cobra sem usar" E "usa sem cobrar" ao mesmo tempo.
+function pintarTresColunas(pre) {
+  const t = pre.totais, f = pre.faturado || {}, w = pre.weso || {};
+  // 🚨 Espelho não lido NÃO vira R$ 0: a tela diz que a rotina não passou.
+  if (!f.lido) {
+    return `<div class="aviso-item" style="margin-top:14px">
+      <strong>O que o Harmonit cobrou não está nesta conta.</strong> ${esc(f.porque || '')}.
+      Use <em>Atualizar agora</em> no espelho, abaixo.</div>`;
+  }
+  const ft = f.totais || {}, cob = f.cobertura || {};
+  const idade = w.idade_h === null || w.idade_h === undefined
+    ? 'não consultado' : (Math.round(w.idade_h * 10) / 10) + ' h';
+  return `
+    <div class="totais" style="margin-top:14px">
+      <div>
+        <label>Deveria cobrar (contrato)</label>
+        <div class="grande">${t.total ? 'R$ ' + esc(t.total) : '—'}</div>
+        <div class="nota">${t.placas} placas cobráveis · <strong>${t.em_uso === null ? '?' : t.em_uso}</strong>
+          em uso na WESO · ${t.contratadas_sem_uso === null ? '?' : t.contratadas_sem_uso} contratadas e não instaladas</div>
+      </div>
+      <div>
+        <label>Cobrado no Harmonit</label>
+        <div class="grande">${ft.mensalidade ? 'R$ ' + esc(ft.mensalidade) : '—'}</div>
+        <div class="nota">${ft.clientes || 0} cliente(s) · ${ft.lancamentos || 0} lançamento(s)
+          ${ft.avulso ? `· avulso no mês: R$ ${esc(ft.avulso)}` : ''}</div>
+      </div>
+      <div>
+        <label>Recebido</label>
+        <div class="grande">${ft.recebido ? 'R$ ' + esc(ft.recebido) : '—'}</div>
+        <div class="nota">em aberto: ${ft.em_aberto ? 'R$ ' + esc(ft.em_aberto) : '—'}</div>
+      </div>
+    </div>
+    ${t.clientes_em_uso_sem_faturar
+      ? `<div class="aviso-item"><strong>${t.clientes_em_uso_sem_faturar} cliente(s) têm placa em uso na WESO e
+         nenhuma mensalidade cobrada nesta competência</strong> — é o vazamento, e são eles que abrem a fila
+         abaixo.</div>` : ''}
+    <div class="nota" style="margin-top:10px">
+      Régua da cobrança: <strong>${esc(w.situacao_em_uso || 'Instalado')} na WESO</strong>, pelo cache diário
+      (idade: ${esc(idade)}, ${w.chaves === null || w.chaves === undefined ? '?' : w.chaves} placas).
+      O que o contrato prevê fica à vista do lado — a diferença é a pergunta.
+    </div>
+    ${cob.pode_faltar
+      ? `<div class="aviso-item"><strong>Esta conta pode estar incompleta.</strong> A competência de um lançamento
+         vive na descrição, não no vencimento: esta veio de
+         ${(cob.meses_de_vencimento_desta_competencia || []).length} mês(es) de vencimento
+         (${esc((cob.meses_de_vencimento_desta_competencia || []).join(', '))}), e o espelho leu de
+         ${esc(cob.mais_antigo_lido || '?')} a ${esc(cob.mais_novo_lido || '?')}. Pode haver lançamento dela
+         fora dessa janela.</div>` : ''}
+    ${(f.nao_amarrados || []).length
+      ? `<div class="aviso-item"><strong>${f.nao_amarrados.length} lançamento(s) desta competência não amarram</strong>
+         — cliente ou contrato que esta base não conhece. Primeiro:
+         ${esc((f.nao_amarrados[0].contato || f.nao_amarrados[0].motivo || '').slice(0, 60))}.</div>` : ''}
+    ${(f.sem_competencia || {}).lancamentos
+      ? `<div class="aviso-item"><strong>${f.sem_competencia.lancamentos} cobrança(s) do Harmonit ficam fora de
+         qualquer mês</strong> (${esc(Object.entries(f.sem_competencia.por_tipo || {})
+             .map(([k, v]) => v + ' ' + k).join(' · '))}), somando
+         R$ ${esc(f.sem_competencia.total || '—')}. ${esc(f.sem_competencia.porque)}.</div>` : ''}`;
 }
 
 function pintarChips(d) {
@@ -385,13 +476,22 @@ async function carregarFila() {
       <td>${esc(f.nome || '—')}<div class="nota mono">${esc(f.cnpj)}</div></td>
       <td>${f.assinado ? '<span class="tag t-ativa">assinado</span>' : '<span class="tag t-fora">sem assinatura</span>'}</td>
       <td class="num">${f.placas}</td>
+      <td class="num">${f.em_uso === null || f.em_uso === undefined
+        ? '<span class="nota">?</span>' : '<strong>' + f.em_uso + '</strong>'}</td>
       <td class="num"><strong>${f.sem_valor}</strong></td>
       <td><button class="btn btn-mini" onclick="abrirContrato(${f.termo_id})">Abrir</button></td>
     </tr>`).join('');
     document.getElementById('cardFila').innerHTML = `
+      <!-- 🔵 A ordem é "em uso na WESO primeiro" desde 30/10: a antiga punha na
+           frente cliente com 356 placas cobráveis e ZERO instaladas. -->
+      <div class="nota" style="padding:0 12px 8px">Do que mais pesa para o menos, contando
+        <strong>placa em uso na WESO</strong> primeiro
+        ${d.weso && d.weso.idade_h !== null && d.weso.idade_h !== undefined
+          ? `(cache de ${Math.round(d.weso.idade_h * 10) / 10} h atrás)` : ''}.</div>
       <table>
         <thead><tr><th>Termo</th><th>Cliente</th><th>Documento</th>
-          <th class="num">Placas</th><th class="num">Sem preço</th><th></th></tr></thead>
+          <th class="num">Placas</th><th class="num">Em uso</th>
+          <th class="num">Sem preço</th><th></th></tr></thead>
         <tbody>${linhas}</tbody>
       </table>
       ${d.fila.length > 50 ? `<div class="nota" style="padding:10px 12px">Mostrando 50 de ${d.fila.length}.</div>` : ''}`;
@@ -400,7 +500,214 @@ async function carregarFila() {
   }
 }
 
-function recarregarTudo() { carregarPrefatura(); carregarGrid(); carregarFila(); }
+// ── F1: o espelho do faturado — interruptor, botão e o que ele trouxe ──────
+let espelhoAtual = null;
+async function carregarEspelho() {
+  try {
+    const r = await fetch('/painel/api/car/faturado/interruptor', { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    espelhoAtual = d;
+    pintarEspelho(d);
+  } catch (e) {
+    document.getElementById('cardEspelho').innerHTML =
+      `<div class="nota">Não deu para ler o espelho: ${esc(e.message)}</div>`;
+  }
+}
+
+function pintarEspelho(d) {
+  const e = d.espelho || {}, b = d.botao || {};
+  const tipos = Object.entries(e.por_tipo || {}).map(([k, v]) => `${v} ${k}`).join(' · ');
+  // 🚨 BOTÃO ESMAECIDO DIZ POR QUÊ. Sem o motivo, o operador conclui que a tela
+  // está quebrada — foi a lição do `M12` aplicada a um botão.
+  const botao = b.pode
+    ? `<button class="btn btn-primary" id="btAtualizar" onclick="atualizarEspelho()">
+         <i class="bi bi-arrow-repeat"></i> Atualizar agora</button>`
+    : `<button class="btn btn-linha" disabled title="${esc(b.motivo)}" style="opacity:.55">
+         <i class="bi bi-hourglass"></i> Atualizar agora</button>
+       <div class="nota">${esc(b.motivo)}</div>`;
+  document.getElementById('cardEspelho').innerHTML = `
+    <div class="linha" style="align-items:flex-end">
+      <div class="campo">
+        <label>Rotina diária (lê o financeiro do Harmonit, só leitura)</label>
+        <div>
+          <span class="tag ${d.ativa ? 't-ativa' : 't-fora'}">${d.ativa ? 'ligada' : 'desligada'}</span>
+          <span class="nota">
+            ${d.sem_registro ? 'nunca passou' :
+              'última passada: ' + esc((d.ultima_em || '').replace('T', ' ').slice(0, 16)) +
+              ' UTC — ' + esc(d.ultimo_resultado || '')}
+            ${d.atrasada ? ' · <strong>atrasada</strong>' : ''}
+          </span>
+        </div>
+      </div>
+      <div>
+        <button class="btn btn-linha" onclick="mudarEspelho(${d.ativa ? 'false' : 'true'})">
+          <i class="bi bi-toggle${d.ativa ? '-on' : '-off'}"></i> ${d.ativa ? 'Desligar' : 'Ligar'} a rotina
+        </button>
+      </div>
+      <div>${botao}</div>
+    </div>
+    <div id="msgEspelho" class="msg"></div>
+    <div class="nota" style="margin-top:8px">
+      ${e.lancamentos
+        ? `<strong>${e.lancamentos}</strong> lançamento(s) no espelho — ${esc(tipos)}.
+           Competências de <strong>${esc(e.competencia_de || '?')}</strong> a
+           <strong>${esc(e.competencia_ate || '?')}</strong>, lidas dos vencimentos
+           ${esc((e.meses_de_vencimento || []).join(', ') || '?')}.
+           ${e.sem_cnpj ? `<br>${e.sem_cnpj} sem cliente nesta base` : ''}
+           ${e.sem_termo ? ` · ${e.sem_termo} citam contrato que esta base não tem` : ''}
+           <br>Lido em ${esc((e.lido_em || '').replace('T', ' ').slice(0, 16))} UTC.`
+        : '<strong>O espelho está vazio.</strong> A rotina nasce desligada; use <em>Atualizar agora</em>.'}
+      <br>Com a rotina ligada, o botão vale <strong>1× por dia</strong> e só
+      <strong>${d.espera_apos_automatica_h} h</strong> depois da passada automática.
+    </div>`;
+}
+
+async function mudarEspelho(ativa) {
+  try {
+    const r = await fetch('/painel/api/car/faturado/interruptor',
+      { method: 'PUT', headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativa }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    espelhoAtual = d;
+    pintarEspelho({ ...d, espelho: (espelhoAtual && espelhoAtual.espelho) || {} });
+    carregarEspelho();
+  } catch (e) {
+    const m = document.getElementById('msgEspelho');
+    if (m) { m.textContent = 'Não deu para mudar: ' + e.message; m.className = 'msg msg-erro'; }
+  }
+}
+
+async function atualizarEspelho() {
+  const bt = document.getElementById('btAtualizar');
+  const m = document.getElementById('msgEspelho');
+  // ⚠️ A leitura são 20 chamadas ao Harmonit (10 meses × 2 rotas) e leva ~1,5
+  // min medido. O botão DIZ isso enquanto roda, em vez de parecer travado.
+  if (bt) { bt.disabled = true; bt.innerHTML = '<span class="spinner"></span> Lendo o Harmonit… (até ~2 min)'; }
+  if (m) { m.textContent = 'Lendo 10 meses de vencimento no Harmonit…'; m.className = 'msg'; }
+  try {
+    const r = await fetch('/painel/api/car/faturado/atualizar',
+      { method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({}) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    if (m) {
+      m.textContent = `${d.lidos} lançamentos lidos, ${d.gravadas} gravados` +
+        (d.falhas && d.falhas.length ? ` · ${d.falhas.length} falha(s) de leitura` : '');
+      m.className = 'msg msg-ok';
+    }
+    await carregarEspelho();
+    await carregarPrefatura();
+    await carregarSemear();
+  } catch (e) {
+    if (m) { m.textContent = 'Não deu para atualizar: ' + e.message; m.className = 'msg msg-erro'; }
+    await carregarEspelho();
+  }
+}
+
+// ── F4: semear preço do faturado ──────────────────────────────────────────
+let semeaduraAtual = null;
+async function carregarSemear() {
+  const p = new URLSearchParams();
+  const c = comp(); if (c) p.set('competencia', c);
+  try {
+    const r = await fetch('/painel/api/car/semear?' + p.toString(), { headers: auth() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    semeaduraAtual = d;
+    pintarSemear(d);
+  } catch (e) {
+    document.getElementById('cardSemear').innerHTML =
+      `<div class="nota">Não deu para ler as propostas: ${esc(e.message)}</div>`;
+  }
+}
+
+function pintarSemear(d) {
+  const t = d.totais || {};
+  if (!t.propostas && !t.conflitos && !t.sem_termo) {
+    document.getElementById('cardSemear').innerHTML =
+      `<div class="nota">Nenhuma proposta de preço em ${esc(d.competencia)}. O espelho precisa estar
+       lido e o contrato ainda sem preço.</div>`;
+    return;
+  }
+  const linhas = (d.propostas || []).slice(0, 100).map(p => `<tr>
+    <td><input type="checkbox" class="semear-item" value="${p.termo_id}" checked></td>
+    <td><strong>${esc(p.numero || '—')}</strong><div class="nota">${esc(p.empresa || '')}</div></td>
+    <td>${esc(p.nome || '—')}<div class="nota mono">${esc(p.cnpj || '')}</div></td>
+    <td class="num"><strong>R$ ${esc(p.valor)}</strong></td>
+    <td class="nota">${esc(p.documento)}</td>
+    <td><button class="btn btn-mini" onclick="semear([${p.termo_id}])">Adotar</button></td>
+  </tr>`).join('');
+  document.getElementById('cardSemear').innerHTML = `
+    <div class="nota">O Harmonit cobra estes valores em ${esc(d.competencia)} e a CAR ainda não tem preço
+      nestes contratos. <strong>Adotar</strong> grava um <code>PRECO</code> com o seu nome, o motivo e o
+      lançamento financeiro como documento — o valor vem do espelho, nunca da tela.</div>
+    <div class="linha" style="margin:10px 0">
+      <div><button class="btn btn-primary" onclick="semear(null)">
+        <i class="bi bi-tags"></i> Adotar as ${t.propostas} propostas</button></div>
+      <div><button class="btn btn-linha" onclick="semear(marcados())">
+        <i class="bi bi-check2-square"></i> Adotar os marcados</button></div>
+    </div>
+    <div id="msgSemear" class="msg"></div>
+    ${t.propostas ? `<table>
+      <thead><tr><th></th><th>Termo</th><th>Cliente</th><th class="num">Valor no Harmonit</th>
+        <th>Documento</th><th></th></tr></thead>
+      <tbody>${linhas}</tbody></table>
+      ${t.propostas > 100 ? `<div class="nota" style="padding:10px 12px">Mostrando 100 de ${t.propostas};
+        “Adotar as ${t.propostas}” pega todas.</div>` : ''}` : ''}
+    ${t.conflitos ? `<div class="aviso-item"><strong>${t.conflitos} contrato(s) pedem decisão, não cópia</strong>
+      — já têm preço vigente, ou o Harmonit cobra dois valores diferentes no mesmo mês. Eles
+      <strong>não entram no lote</strong>: o primeiro é
+      ${esc((d.conflitos[0].numero || '') + ' — ' + (d.conflitos[0].motivo || ''))}.</div>` : ''}
+    ${t.sem_termo ? `<div class="aviso-item">${t.sem_termo} lançamento(s) de mensalidade citam contrato que esta
+      base não conhece para aquele cliente — aparecem no espelho, não somem.</div>` : ''}`;
+}
+
+function marcados() {
+  return Array.from(document.querySelectorAll('.semear-item:checked'))
+    .map(c => Number(c.value));
+}
+
+async function semear(termos) {
+  const m = document.getElementById('msgSemear');
+  const quantos = termos === null ? ((semeaduraAtual || {}).totais || {}).propostas : termos.length;
+  if (termos !== null && !termos.length) {
+    if (m) { m.textContent = 'Marque pelo menos um contrato.'; m.className = 'msg msg-erro'; }
+    return;
+  }
+  // 🚨 PERGUNTA ANTES, porque isto grava dinheiro em lote e o autor é quem
+  // clica. Desfazer existe (ANULA), mas o histórico guarda as duas linhas.
+  if (!confirm(`Lançar preço em ${quantos} contrato(s) na competência ` +
+               `${(semeaduraAtual || {}).competencia}, com você como autor?`)) return;
+  if (m) { m.textContent = 'Lançando…'; m.className = 'msg'; }
+  try {
+    const corpo = { competencia: (semeaduraAtual || {}).competencia };
+    if (termos !== null) corpo.termos = termos;
+    const r = await fetch('/painel/api/car/semear',
+      { method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    if (m) {
+      m.textContent = `${d.lancados} preço(s) lançado(s)` +
+        (d.repetidos ? ` · ${d.repetidos} já existiam` : '') +
+        (d.recusados && d.recusados.length ? ` · ${d.recusados.length} recusado(s)` : '');
+      m.className = 'msg msg-ok';
+    }
+    await carregarSemear();
+    await carregarPrefatura();
+    await carregarGrid();
+    await carregarFila();
+  } catch (e) {
+    if (m) { m.textContent = 'Não deu para lançar: ' + e.message; m.className = 'msg msg-erro'; }
+  }
+}
+
+function recarregarTudo() {
+  carregarPrefatura(); carregarGrid(); carregarFila();
+  carregarEspelho(); carregarSemear();
+}
 
 // ── Busca ampla: responde SEMPRE dizendo por onde achou ────────────────────
 async function buscarAmplo() {
