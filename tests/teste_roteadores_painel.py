@@ -127,7 +127,8 @@ ROTAS = [
     ("PUT",  "/painel/api/contratos/auditoria/interruptor", "config",
      {"ativa": False}, True),
 
-    # Contas a Receber (CAR_1.1, 28/10) -- as 16 rotas ficam atras de
+    # Contas a Receber (CAR_1.1, 28/10; 21 rotas desde 30/10, 27 desde 03/11)
+    # -- todas atras de
     # `requer_aba("contas_receber")` declarado no proprio APIRouter
     # (car_router.py:51).
     #
@@ -160,6 +161,22 @@ ROTAS = [
     ("POST", "/painel/api/car/faturado/atualizar",   "contas_receber", None, True),
     ("POST", "/painel/api/car/semear",               "contas_receber",
      {"termos": [0]}, True),
+
+    # A tela OPERACIONAL do contas a receber (blocos G1-G5, 03/11). 🚨 Mesma
+    # permissao `contas_receber`: e a SEGUNDA PAGINA da CAR_1.1, nao aba nova,
+    # e por isso nao ha permissao nova para entrar no laco [7].
+    ("GET",  "/painel/api/car/variavel",             "contas_receber", None, False),
+    # A OS 0 nao existe, de proposito: a tranca responde antes de a rota ler
+    # coisa nenhuma -- mesmo desenho do `termo 0` acima.
+    ("GET",  "/painel/api/car/os/0",                 "contas_receber", None, False),
+    ("GET",  "/painel/api/car/gerar",                "contas_receber", None, False),
+    ("GET",  "/painel/api/car/gerar/fechamentos",    "contas_receber", None, False),
+    # 🚨 ESCREVE=True: este fecha a competencia e grava em `car_leitura` com
+    # autor. Chamar autorizado deixaria um fechamento de teste na producao, com
+    # assinatura -- e fechamento e exatamente o registro que ninguem quer ver
+    # com `zz` no autor. Aqui so a tranca.
+    ("POST", "/painel/api/car/gerar/fechar",         "contas_receber",
+     {"vencimento": "2026-11-10", "cnpjs": []}, True),
 ]
 
 

@@ -61,8 +61,14 @@ ESPERADO = {
     "car_contrato": {"termo_id", "cnpj", "numero", "empresa", "situacao", "motivo",
                      "placas_ativas", "placas_com_valor", "placas_sem_valor",
                      "valor_mensal_total", "divergencia", "competencia", "calculado_em"},
+    # 🆕 03/11, bloco G4: `escopo` separa a leitura analítica do fechamento do
+    # lote operacional (sem ela o histórico da competência misturaria "eu olhei"
+    # com "eu gerei"); `vencimento` guarda a data que o operador escolheu, que
+    # não existe em coluna nenhuma desta base; `lancamentos` quantas linhas o
+    # fechamento gerou.
     "car_leitura": {"id", "competencia", "cnpj", "gerada_em", "por", "clientes",
-                    "placas", "sem_valor", "total", "assinatura"},
+                    "placas", "sem_valor", "total", "assinatura",
+                    "escopo", "vencimento", "lancamentos"},
     # 🆕 30/10, bloco F1: o espelho do que o Harmonit já fatura.
     "car_faturado": {"id", "tipo", "estado", "competencia", "vencimento",
                      "pagamento", "valor", "valor_final", "contato_id",

@@ -681,3 +681,147 @@ de itens do catálogo a levantar. **Mas continua sendo decisão dele** uma pergu
 | o **lançamento** de preço | são 274 eventos de dinheiro com autor — é o clique dele |
 | o `POST /prefatura/fechar` | não tem botão na tela (achado **A2**), e `car_leitura` segue vazia |
 | **a tela no navegador** | `M9`: nenhuma suíte vê tela quebrada |
+
+---
+
+# 13. Fase 2 da operação — a tela OPERACIONAL, blocos G1 a G5 (03/11/2026)
+
+> 🔵 **Origem:** o mockup aprovado por ele em 30/10
+> (`https://claude.ai/artifact/RnvbtMzgCE44mgfqQsvKDt`) e o pedido de 03/11 (*"vamos continuar o
+> 'financeiro' e 'contas a receber' no FPSL, pelo mockup, base de op financeira"*).
+>
+> 📘 **Controle da frente, com os números medidos e os cinco achados:**
+> `C:\Users\Lenovo\Desktop\CAR_1.1_Financeiro_FPSL.md`, **§V7**.
+
+## 13.1 O que é
+
+**Uma segunda página da `CAR_1.1`**, em `/painel/contas-receber/gerar`, com a mesma permissão
+`contas_receber` e **nenhuma entrada nova em `telas.py`** — *"a posição no menu"* é decisão dele em
+aberto desde 28/10, e a porta continua sendo a carteira, com um botão.
+
+**Um documento por CLIENTE**, com linhas por **contrato** (fixo) e por **OS** (variável), nunca
+somados numa coluna só. É o encaixe das duas unidades: o boleto sai do cliente (decisão dele de
+28/10) e o Harmonit lança por contrato e por OS.
+
+## 13.2 A parte variável (G2) — `painel/car_variavel.py`, puro
+
+A régua dele, portada ao pé da letra: **situação 15746 "Financeiro" + finalizada + item marcado
+`cobrar` + o Harmonit ainda não faturou**.
+
+| Perna | Onde está no dado |
+|---|---|
+| *"OS do tipo financeiro"* | **situação 15746**, não um tipo (não existe tipo "Financeiro" entre os 29) |
+| *"marcados para cobrar"* | `cobrar`, booleano **por item** (`OrdemServicoXMaterialViewModel`) |
+| *"finalizados"* | `os_historico.status_str = 'Finalizado'` |
+| *"o Harmonit não faturou"* | `car_faturado.numero_os`, **sem filtro de competência** |
+
+🚨 **A FONTE É A `os_historico`, NÃO O HARMONIT.** Não existe no `swagger.json` rota que **liste** OS
+por situação — só `ObterOrdemServico` por `osId` e `ObterOrdemServicoPorNumero`. Montar esta fila
+pela API seria **uma chamada por OS**; pela varredura que já roda de 5 em 5 min, é **uma consulta**.
+
+🚨 **`numero_os` compara CRU, sem competência:** o lançamento de serviço do Harmonit **não traz
+período de referência** na descrição (é o grupo "sem competência" da `faturado_do_mes`). Restringir a
+comparação a um mês deixaria passar OS já faturada em outro vencimento — e o cliente receberia **dois
+boletos da mesma OS**.
+
+⚠️ **A COMPETÊNCIA DA OS SAI DA PREVISÃO, e a tela diz isso na coluna.** A `os_historico` guarda
+`data_previsao` e **não** a data de finalização (ela só existe no `ObterTimeLine`, uma chamada por
+OS). Chamar previsão de *"finalizada em"* seria a tela mentindo pelo rótulo.
+
+⚠️ **Item com `cobrar` e valor ZERO fica na lista, marcado** (o `ENTREGA OS` vem assim). Somi-lo em
+silêncio faria a OS parecer ter menos item do que tem — e ele não muda a soma.
+
+## 13.3 O lote (G1 · G4 · G5) — `painel/car_lote.py`, puro
+
+🚨 **O VALOR DO FIXO É O DA CAR, NÃO O DO HARMONIT.** Usar o número do espelho como se fosse nosso
+faria a CAR **repetir** o Harmonit em vez de substituí-lo, e o lote pareceria pronto. O documento
+mostra os dois lados — **a CAR** e **cobrado hoje** — e o cliente sem preço na CAR cai em "ficaram
+fora", com o caminho para resolver.
+
+**A linha nasce no formato de lançamento do Harmonit**, e isso não é estilo: é a frase que o
+`car_faturado.RE_CONTRATO`/`RE_COMPETENCIA`/`RE_OS` sabe reconhecer. Gerar outro texto faria o
+**próprio lançamento da CAR** cair em "não amarrado" na passada seguinte do espelho.
+
+| Tipo | Descrição | Centro de custo | Categoria |
+|---|---|---|---|
+| mensalidade | `Faturamento do contrato Nr. X. Mensalidade ref. período MM/AAAA.` | `Mensalidades` | `Boleto` |
+| serviço | `Ordem de Serviço Nr. X` | `Prestação de Serviços` | `Serviços` |
+
+⚠️ **Esses pares são MEDIDOS, não escolhidos:** nas 3.070 linhas de `car_faturado`, mensalidade sai
+`Mensalidades`/`Boleto` em **2.640 de 2.726** e serviço `Prestação de Serviços`/`Serviços` em **280 de
+282**. O resto da base é ruído de digitação do Harmonit (`boleto`, `boletos`, `(vários)`), que **não**
+se propaga daqui.
+
+### 🚨 Cancelado não gera linha — e `INATIVO` não serve de régua
+`situacao_do_contrato` devolve **INATIVO** para três coisas diferentes: *termo não assinado*,
+*cancelado* e *sem placa ativa*. Só **uma** proíbe cobrar. E termo sem assinatura é a maior parte da
+carteira (1.543 em 28/10), incluindo o **8711 da MOTO HELP, que o Harmonit fatura hoje**. Por isso a
+`car_prefatura` passou a expor um booleano **`cancelado`** (de `motor.cancelamento_vigente`), e o
+lote tira **só esse** da soma e das linhas, deixando-o visível com o motivo. ⚠️ Régua por texto do
+`motivo` seria adivinhação por string.
+
+### 🚨 Dois contadores de pendência, e a diferença é o que a tela mostra
+Medido em 03/11: **481 de 481** documentos acusam *"sem preço lançado na CAR"*, porque `car_evento`
+está vazia. Com um contador só, a tela diria *"481 exigem conferência"* e os achados de verdade (**70**
+com amarração errada, **26** usando sem faturar) **desapareceriam no meio**. `sem_preco` é o **estado**
+da carteira; `com_achado` é a **fila de trabalho**, e é esse que o cartão mostra.
+
+### A ordem de gravidade do selo, travada por teste
+**sem cliente → usa e não fatura → conferir amarração → sem preço.** O mais comum por último, pela
+mesma razão do parágrafo acima.
+
+## 13.4 O fechamento (G4) — e o achado **A2** fechado
+
+`POST /gerar/fechar` grava em `car_leitura` com **escopo `lote`**, autor do token e a **assinatura
+sha256 das linhas normalizadas**. 🚨 Isso fecha o achado **A2** da auditoria de 28/10: a
+`POST /prefatura/fechar` existia **sem botão**, e a `car_leitura` seguia sem escritor **pelo uso**.
+
+**Três colunas novas na `car_leitura`** (no `CREATE` **e** no `migrar()`, como a regra desta casa
+exige): `escopo` (`prefatura` | `lote`; nulo = linha anterior a 03/11) · `vencimento` ·
+`lancamentos`. 🚨 Sem `escopo`, o histórico da competência misturaria *"eu olhei"* com *"eu gerei"* —
+e é essa a diferença que a pergunta *"por que o número mudou?"* precisa separar.
+
+🚨 **A assinatura é das LINHAS, não do vencimento.** Trocar a data de vencimento **não** muda a
+assinatura (travado por teste): se ela entrasse na conta, mudar a data faria o mês parecer outro.
+
+🚨 **Fechar lote VAZIO é recusado, com a causa provável na frase.** E `cnpjs: []` é **seleção vazia**,
+não *"a carteira inteira"* — era um defeito meu, e o teste o pegou: quem desmarcasse todos e clicasse
+em fechar fecharia o mês inteiro, calado.
+
+## 13.5 As 27 rotas (eram 21)
+
+`GET /variavel` (a fila, `todas=true` ignora a competência) · `GET /os/{numero_os}` (a ficha, com
+**todos** os itens e o `cobrar` de cada um, mais os lançamentos que o Harmonit já tem dela) ·
+`GET /gerar` (o lote; **não grava nada**) · `GET /gerar.csv` · `POST /gerar/fechar` ·
+`GET /gerar/fechamentos`.
+
+⚠️ **Vencimento ilegível é 400, não nulo em silêncio:** lote com vencimento perdido é lote que
+ninguém consegue lançar. 🔴 E ele é **entrada da tela** porque **não existe coluna de dia de
+vencimento em base nenhuma** (medido em 30/10).
+
+⚠️ **`os_historico` ausente devolve fila vazia, não erro:** banco sem a varredura (cópia restaurada,
+banco de teste de outra suíte) não derruba a tela do lote inteiro.
+
+## 13.6 Travas
+
+| Suíte | O que trava |
+|---|---|
+| `teste_car_variavel` (**59**) | a régua dele, a ordem dos cortes, o dinheiro em convenção brasileira, e que o módulo **não tem I/O** |
+| `teste_car_lote` (**87**) | o encaixe das duas unidades, a descrição que o espelho reconhece, cancelado × sem assinatura, os dois contadores, e que o módulo **não escreve** |
+| `teste_car_router` (**166**, eram 134) | **27 rotas**, a tranca da aba em cada uma, o fechamento com autor e assinatura, e que `GET /gerar` **não grava** |
+
+🚨 **E o que nenhuma das 312 verificações vê é a tela** (`M9`). Em 29/10 ele achou **8 defeitos**
+abrindo uma tela com tudo verde.
+
+## 13.7 O que a tela mostra hoje (medido em 03/11, competência 2026-09)
+
+**481 documentos · 1 gerável · 2 linhas · fixo `None` · variável R$ 240,00**, contra **R$ 164.943,88
+cobrados pelo Harmonit** na mesma carteira e no mesmo mês. 🚨 **E está certo:** `car_evento` tem
+**zero** linhas — ninguém adotou as 274 propostas da semeadura, logo a CAR não tem preço lançado e
+não há fixo a gerar. **Adotar é o que destrava o lote.**
+
+## 13.8 O que NÃO entrou
+
+**G6** (o comparativo cobrado × gerado para a virada) espera a **D8**. ⚠️ E sem G6 a virada carrega o
+risco dos **dois boletos**, porque **o Harmonit continua faturando sozinho** — substituir exige
+**desligar o automático lá**.

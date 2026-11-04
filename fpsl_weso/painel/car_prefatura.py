@@ -433,6 +433,18 @@ def montar(conn, competencia: str, cnpj: str | None = None,
                 "empresa": termo.get("empresa"), "assinado": bool(termo.get("assinado")),
                 "situacao": estado["situacao"], "motivo": estado["motivo"],
                 "divergencia": estado["divergencia"],
+                # 🆕 03/11, bloco G1: o cancelamento VIGENTE, como booleano.
+                # 🚨 É o que impede o lote operacional de gerar cobrança de
+                # contrato cancelado -- e precisa ser campo, não prosa: a
+                # `situacao` INATIVO junta três coisas diferentes (termo sem
+                # assinatura, cancelado, sem placa ativa), e só UMA delas proíbe
+                # cobrar. Adivinhar pelo texto do `motivo` seria régua por
+                # string, que é a aposta que já me custou uma rota em produção.
+                # ⚠️ Termo SEM ASSINATURA continua cobrável de propósito: é o
+                # caso da maior parte da carteira (1.543 termos em 28/10), e é
+                # ACHADO, não impedimento (regra dele de 14/10).
+                "cancelado": motor.cancelamento_vigente(
+                    eventos, competencia) is not None,
                 "placas": len(linhas), "com_valor": com,
                 "sem_valor": len(linhas) - com,
                 # Previsto no contrato × em uso na WESO, lado a lado: é a

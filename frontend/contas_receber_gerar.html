@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gerar contas a receber — FPSL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/painel/static/barra_status.css">
+<style>
+  :root {
+    --blue:#2563EB; --blue-dim:#EFF6FF; --green:#16a34a; --green-dim:#F0FDF4;
+    --red:#DC2626; --red-dim:#FEF2F2; --amber:#D97706; --amber-dim:#FFFBEB;
+    --bg:#F8FAFC; --bg2:#F1F5F9; --text:#0F172A; --text2:#64748B;
+    --border:#E2E8F0; --card:#FFFFFF; --sidebar-bg:#0F172A; --sidebar-tx:#94A3B8; --sidebar-w:230px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg2); font-family:'Inter',system-ui,sans-serif; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); flex-shrink:0; display:flex; flex-direction:column;
+             padding:20px 0; position:sticky; top:0; height:100vh; }
+  .sidebar-logo { padding:0 20px 20px; font-weight:800; color:#fff; font-size:1rem; }
+  .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 12px; flex:1; }
+  .sidebar-nav a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:7px;
+                   color:var(--sidebar-tx); text-decoration:none; font-size:.86rem; font-weight:500; }
+  .sidebar-nav a:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .sidebar-nav a.active { background:var(--blue); color:#fff; }
+  .sidebar-bottom { padding:12px; }
+  .sidebar-bottom button { width:100%; padding:9px; border-radius:7px; border:1px solid rgba(255,255,255,.15);
+                            background:transparent; color:var(--sidebar-tx); font-size:.82rem; font-family:inherit; cursor:pointer; }
+  .main { flex:1; padding:32px; max-width:1420px; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:8px; flex-wrap:wrap; }
+  h1 { font-size:1.3rem; font-weight:700; }
+  h2 { font-size:1rem; font-weight:700; margin-bottom:10px; }
+  h3 { font-size:.88rem; font-weight:700; margin-bottom:8px; }
+  .sub { color:var(--text2); font-size:.84rem; margin-bottom:18px; line-height:1.5; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card.tabela { padding:0; overflow:hidden; }
+  label { display:block; font-size:.78rem; font-weight:600; color:var(--text2); margin-bottom:5px; }
+  select, input[type=text], input[type=month] {
+    font-family:inherit; font-size:16px; padding:8px 10px; border:1px solid var(--border);
+    border-radius:7px; background:#fff; width:100%; }
+  .linha { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+  .campo { flex:1; min-width:200px; }
+  .btn { font-family:inherit; font-size:.86rem; font-weight:600; padding:9px 16px; border-radius:7px;
+         border:1.5px solid transparent; cursor:pointer; background:#fff; color:var(--text); }
+  .btn-primary { background:var(--blue); color:#fff; } .btn-primary:hover { background:#1d4ed8; }
+  .btn-linha { border-color:var(--border); }
+  .btn-perigo { border-color:var(--red); color:var(--red); }
+  .btn:disabled { opacity:.55; cursor:default; }
+  .btn-mini { font-size:.76rem; padding:5px 9px; border-color:var(--border); }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th { text-align:left; color:var(--text2); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.03em;
+       padding:11px 12px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
+  td { padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tbody tr:hover { background:var(--bg); }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .tag { display:inline-block; font-size:.72rem; font-weight:700; padding:3px 8px; border-radius:20px; white-space:nowrap; }
+  .t-ativa { background:var(--green-dim); color:var(--green); }
+  .t-aviso { background:var(--amber-dim); color:var(--amber); }
+  .t-fora  { background:var(--red-dim); color:var(--red); }
+  .t-info  { background:var(--blue-dim); color:var(--blue); }
+  /* ⚠️ O `.spinner` do `estilo.css` NÃO serve aqui: esta página não carrega
+     aquele arquivo. Sem esta regra o `<span class="spinner">` do botão de
+     atualizar seria marcação morta -- feedback que não aparece é feedback que
+     não existe. */
+  .spinner { display:inline-block; width:12px; height:12px; vertical-align:-1px;
+             border:2px solid currentColor; border-right-color:transparent;
+             border-radius:50%; animation:girar .7s linear infinite; }
+  @keyframes girar { to { transform:rotate(360deg); } }
+  .msg { font-size:.84rem; padding:10px 12px; border-radius:7px; margin-top:12px; display:none; }
+  .msg-ok { background:var(--green-dim); color:var(--green); display:block; }
+  .msg-erro { background:var(--red-dim); color:var(--red); display:block; }
+  .nota { font-size:.8rem; color:var(--text2); }
+  .aviso-item { background:var(--amber-dim); color:#92400E; font-size:.83rem; padding:9px 12px;
+                border-radius:7px; margin-bottom:8px; }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .vazio { padding:26px; text-align:center; color:var(--text2); font-size:.86rem; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .chip { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:7px 13px;
+          font-size:.8rem; cursor:pointer; display:flex; align-items:center; gap:7px; font-family:inherit; color:var(--text); }
+  .chip:hover { border-color:var(--blue); }
+  .chip.on { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .chip b { font-variant-numeric:tabular-nums; }
+  /* O painel do total: é o número que a aba existe para produzir, e ele vem
+     SEMPRE acompanhado da cobertura -- total sem cobertura é meia verdade. */
+  .totais { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end; }
+  .totais .grande { font-size:1.8rem; font-weight:800; font-variant-numeric:tabular-nums; }
+  .totais .ao-lado { font-size:.82rem; color:var(--text2); line-height:1.5; }
+  .barra-cob { height:7px; background:var(--bg2); border-radius:4px; overflow:hidden; margin-top:7px; min-width:220px; }
+  .barra-cob > i { display:block; height:100%; background:var(--green); }
+  /* Gaveta: o contrato abre ao lado, sem trocar de página. */
+  .fundo { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; z-index:40; }
+  .fundo.on { display:block; }
+  .gaveta { position:fixed; top:0; right:0; height:100vh; width:min(880px,96vw); background:var(--bg2);
+            border-left:1px solid var(--border); z-index:50; transform:translateX(100%);
+            transition:transform .18s ease; display:flex; flex-direction:column; }
+  .gaveta.on { transform:translateX(0); }
+  .gaveta-topo { padding:16px 20px; background:var(--card); border-bottom:1px solid var(--border);
+                 display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .gaveta-corpo { padding:20px; overflow-y:auto; flex:1; }
+  .fechar { background:none; border:none; font-size:1.3rem; cursor:pointer; color:var(--text2); line-height:1; }
+  .modal { position:fixed; inset:0; z-index:60; display:none; padding:24px; overflow-y:auto; }
+  .modal.on { display:block; }
+  .modal-caixa { background:var(--bg2); border-radius:14px; max-width:860px; margin:0 auto;
+                 border:1px solid var(--border); }
+  .modal-topo { padding:16px 20px; background:var(--card); border-radius:14px 14px 0 0;
+                border-bottom:1px solid var(--border); display:flex; justify-content:space-between;
+                align-items:center; gap:12px; position:sticky; top:0; z-index:2; }
+  .modal-corpo { padding:20px; }
+  @media (max-width:760px) { .main { padding:18px 16px; } .modal { padding:0; } .modal-caixa { border-radius:0; } }
+</style>
+<style>
+  /* Só o que esta tela acrescenta ao chrome da casa. O resto do CSS é o mesmo
+     da carteira, copiado acima para as duas páginas terem UM look. */
+  .doc-linha > td { background:var(--bg); }
+  .sel { width:17px; height:17px; accent-color:var(--blue); cursor:pointer; }
+  .abrir { border:0; background:none; padding:0; text-align:left; cursor:pointer; font-family:inherit;
+           color:var(--text); font-weight:700; font-size:.9rem; display:flex; gap:7px; align-items:baseline; }
+  .abrir .seta { color:var(--text2); display:inline-block; transition:transform .12s ease; }
+  .abrir.on .seta { transform:rotate(90deg); }
+  .bloco { background:var(--card); border:1px solid var(--border); border-radius:10px; flex:1 1 440px; min-width:300px; }
+  .bloco-topo { padding:11px 15px; border-bottom:1px solid var(--border); display:flex;
+                justify-content:space-between; align-items:center; gap:10px; }
+  .bloco-topo h3 { margin:0; font-size:.74rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text2); }
+  .bloco table { font-size:.8rem; }
+  .bloco th, .bloco td { padding:8px 14px; }
+  .lado-a-lado { display:flex; flex-wrap:wrap; gap:16px; padding:14px 0 4px; }
+  .rodape { position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--border);
+            padding:13px 18px; display:flex; flex-wrap:wrap; gap:14px; align-items:center;
+            margin:16px -32px -32px; }
+  .rodape .conta { flex:1 1 280px; font-size:.86rem; }
+  .cartoes { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:13px; margin-bottom:16px; }
+  .cartao { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:15px 17px; }
+  .cartao .rot { font-size:.7rem; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.06em; }
+  .cartao .val { font-size:1.5rem; font-weight:800; font-variant-numeric:tabular-nums; margin-top:5px; }
+  .cartao .pe { font-size:.78rem; color:var(--text2); margin-top:3px; line-height:1.4; }
+  .cartao.alerta { border-color:#FDE68A; } .cartao.alerta .rot { color:#92400E; } .cartao.alerta .val { color:var(--amber); }
+  .selo { display:inline-flex; align-items:center; gap:5px; font-size:.72rem; font-weight:700;
+          padding:3px 9px; border-radius:20px; background:var(--bg2); color:var(--text2); }
+  @media (max-width:760px) { .rodape { margin:16px -16px -18px; } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">FPSL</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-bottom"><button onclick="logout()"><i class="bi bi-box-arrow-right"></i> Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h1>Gerar contas a receber</h1>
+        <!-- 🚨 `M12` COMO ESTADO, NÃO COMO PARÁGRAFO -- regra dele de 30/10:
+             *"não precisa dos comentarios na tela. atrapalha o
+             profissionalismo"*. O que esta tela não faz vive nestes selos e no
+             rodapé de cobertura, nunca em texto de aula. -->
+        <div id="selos" style="display:flex; gap:7px; flex-wrap:wrap; margin-top:7px"></div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end">
+        <div style="max-width:150px">
+          <label for="competencia">Competência</label>
+          <input type="month" id="competencia" onchange="carregar()">
+        </div>
+        <div style="max-width:160px">
+          <label for="vencimento">Vencimento</label>
+          <input type="date" id="vencimento" onchange="pintar()">
+        </div>
+        <button class="btn btn-linha" onclick="exportar()"><i class="bi bi-filetype-csv"></i> Exportar</button>
+        <a class="btn btn-linha" href="/painel/contas-receber"><i class="bi bi-arrow-left"></i> Carteira</a>
+      </div>
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="cartoes" id="cartoes"></div>
+
+    <div class="chips" id="chips"></div>
+
+    <div class="card">
+      <div class="linha">
+        <div class="campo">
+          <label for="busca">Buscar cliente, CNPJ, contrato ou nº da OS</label>
+          <input type="text" id="busca" placeholder="ex.: MOTO HELP, 07098192000160, 8711, 16896"
+                 oninput="pintar()">
+        </div>
+      </div>
+    </div>
+
+    <div class="card tabela" id="cardDocs"><div class="vazio">Carregando…</div></div>
+
+    <div class="card">
+      <h2>Ficaram fora</h2>
+      <div id="cardFora"><div class="nota">Carregando…</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Lançamentos do lote</h2>
+      <div class="nota" style="margin-bottom:10px">No formato de lançamento do Harmonit —
+        descrição, centro de custo, categoria e vencimento.</div>
+      <div id="cardLancamentos"><div class="nota">Carregando…</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Fechamentos desta competência</h2>
+      <div id="cardFechamentos"><div class="nota">Carregando…</div></div>
+    </div>
+
+    <div class="rodape">
+      <div class="conta" id="contaRodape">—</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn btn-linha" onclick="marcarSemPendencia()">Marcar sem pendência</button>
+        <button class="btn btn-linha" onclick="marcarTodos(false)">Limpar seleção</button>
+        <button class="btn btn-primary" id="btFechar" onclick="fecharLote()">
+          <i class="bi bi-lock"></i> Fechar competência</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="fundo" id="fundo" onclick="fecharGaveta()"></div>
+<aside class="gaveta" id="gaveta">
+  <div class="gaveta-topo">
+    <div><h2 id="gavetaTitulo">Vínculo</h2><div class="nota" id="gavetaSub"></div></div>
+    <button class="fechar" onclick="fecharGaveta()" title="Fechar">&times;</button>
+  </div>
+  <div class="gaveta-corpo" id="gavetaCorpo"></div>
+</aside>
+
+<script src="/painel/static/barra_status.js"></script>
+<script src="/painel/static/sidebar.js"></script>
+<script>
+const token = localStorage.getItem('fpsl_painel_token');
+if (!token) window.location.href = '/painel';
+// 🚨 O ARGUMENTO É A PERMISSÃO, não a rota -- a trava do sidebar lê
+// `permissoes`. É a mesma `contas_receber` da carteira: esta é a segunda
+// página da MESMA tela, e não uma aba nova.
+montarSidebar('contas_receber');
+function auth() { return { 'Authorization': 'Bearer ' + token }; }
+function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showMsg(t, erro) { const m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(erro?'msg-erro':'msg-ok'); }
+
+// 🚨 DINHEIRO NULO NÃO VIRA "R$ 0,00". A régua do backend atravessa a tela: o
+// nulo diz "não sabemos / não há preço lançado" e o zero afirma "não cobra
+// nada". Desenhar R$ 0,00 no lugar do nulo foi o que fez a tela da carteira
+// parecer uma carteira vazia com a operação inteira rodando do lado.
+function din(v) { return v == null ? '—' : 'R$ ' + v; }
+function n(v) { return v == null ? '—' : v; }
+
+const TAG = {
+  'sem pendência':                  't-ativa',
+  'conferir amarração':             't-aviso',
+  'usa na WESO e não é faturado':   't-fora',
+  'sem preço lançado na CAR':       't-info',
+  'sem cliente nesta base':         't-fora',
+};
+
+let lote = null, abertos = {}, marcados = null, filtro = 'todos';
+
+function comp() {
+  const c = document.getElementById('competencia').value;
+  if (c) return c;
+  const h = new Date();
+  return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0');
+}
+function venc() { return document.getElementById('vencimento').value || ''; }
+
+async function carregar(manterSelecao) {
+  document.getElementById('cardDocs').innerHTML = '<div class="vazio">Carregando…</div>';
+  const guardados = manterSelecao && marcados ? new Set(marcados) : null;
+  try {
+    const p = new URLSearchParams({ competencia: comp() });
+    if (venc()) p.set('vencimento', venc());
+    const r = await fetch('/painel/api/car/gerar?' + p.toString(), { headers: auth() });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+    lote = await r.json();
+    // A seleção nasce com os documentos geráveis marcados: é o caso comum, e
+    // desmarcar é um clique. ⚠️ Mas ela NÃO sobrevive à troca de competência --
+    // seleção herdada de outro mês geraria o lote errado em silêncio. Trocar o
+    // vencimento, sim: é a mesma carteira, e `manterSelecao` diz isso.
+    marcados = guardados
+      || new Set(lote.documentos.filter(d => d.geravel).map(d => d.cnpj));
+    pintarSelos(); pintarCartoes(); pintarChips(); pintarDocs(); pintarFora();
+    pintarLancamentos(); pintarRodape();
+    carregarFechamentos();
+  } catch (e) {
+    document.getElementById('cardDocs').innerHTML =
+      '<div class="vazio">Não deu para carregar: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function carregarFechamentos() {
+  try {
+    const r = await fetch('/painel/api/car/gerar/fechamentos?competencia=' + comp(),
+                          { headers: auth() });
+    const d = await r.json();
+    const f = d.fechamentos || [];
+    document.getElementById('cardFechamentos').innerHTML = !f.length
+      ? '<div class="nota">Nenhum fechamento desta competência.</div>'
+      : '<table><thead><tr><th>Quando</th><th>Por</th><th class="num">Clientes</th>' +
+        '<th class="num">Linhas</th><th class="num">Total</th><th>Vencimento</th>' +
+        '<th>Assinatura</th></tr></thead><tbody>' + f.map(x =>
+          '<tr><td>' + esc((x.gerada_em || '').replace('T', ' ').slice(0, 16)) + '</td>' +
+          '<td>' + esc(x.por) + '</td><td class="num">' + n(x.clientes) + '</td>' +
+          '<td class="num">' + n(x.lancamentos) + '</td>' +
+          '<td class="num">' + din(x.total) + '</td><td>' + esc(x.vencimento || '—') + '</td>' +
+          '<td class="mono nota">' + esc((x.assinatura || '').slice(0, 12)) + '…</td></tr>'
+        ).join('') + '</tbody></table>';
+  } catch (e) { /* o histórico é acessório: a tela não cai por ele */ }
+}
+
+function pintarSelos() {
+  if (!lote) return;
+  const l = lote.limites || {}, w = lote.weso || {}, f = lote.faturado || {};
+  const selos = [
+    ['bi-ban', 'não emite boleto'],
+    ['bi-ban', 'não escreve no Harmonit'],
+    ['bi-broadcast', w.lido ? ('WESO de ' + (w.idade_h == null ? '?' : w.idade_h.toFixed(1)) + ' h')
+                            : 'WESO não consultada'],
+    ['bi-arrow-repeat', f.lido ? ('espelho lido ' + (f.lido_em || '').slice(0, 10))
+                               : 'espelho vazio'],
+  ];
+  if (l.harmonit_continua_faturando) selos.push(['bi-exclamation-triangle', 'Harmonit ainda fatura']);
+  document.getElementById('selos').innerHTML = selos.map(([i, t]) =>
+    '<span class="selo"><i class="bi ' + i + '"></i>' + esc(t) + '</span>').join('');
+}
+
+function pintarCartoes() {
+  const t = lote.totais, v = lote.variavel.totais || {};
+  document.getElementById('cartoes').innerHTML = [
+    ['Fixo de contrato', din(t.fixo),
+     (lote.prefatura_totais.clientes || 0) + ' clientes na competência' +
+     (t.fixo == null ? ' · nenhum preço lançado na CAR' : '')],
+    ['Variável de OS', din(t.variavel),
+     v.os_a_gerar + ' OS em “Financeiro”, finalizadas, com item a cobrar'],
+    ['Total a gerar', din(t.total),
+     t.a_gerar + ' documentos · ' + t.lancamentos + ' linhas' +
+     (lote.vencimento ? ' · vence ' + lote.vencimento : ' · sem vencimento escolhido')],
+    ['Cobrado hoje no Harmonit', din(t.cobrado_hoje), 'a carteira que este lote substitui'],
+  ].map(([r, val, pe]) =>
+    '<div class="cartao"><div class="rot">' + esc(r) + '</div><div class="val">' +
+    esc(val) + '</div><div class="pe">' + esc(pe) + '</div></div>').join('') +
+    // 🚨 O CONTADOR É `com_achado`, NÃO `com_pendencia`. Medido em 03/11: 481
+    // de 481 clientes acusam "sem preço na CAR" porque ninguém adotou as 274
+    // propostas da semeadura -- "481 exigem conferência" afogaria o achado de
+    // verdade (70 com amarração errada, 26 usando sem faturar). O estado da
+    // carteira vai no pé do cartão, que é o lugar dele.
+    '<div class="cartao alerta"><div class="rot">Exigem conferência</div><div class="val">' +
+    t.com_achado + '</div><div class="pe">' +
+    esc((lote.fora || []).filter(f => f.motivo !== 'sem preço lançado na CAR')
+         .slice(0, 3).map(f => f.clientes + ' ' + f.motivo).join(' · ') || '—') +
+    (t.sem_preco ? '<br>' + t.sem_preco + ' sem preço lançado na CAR' : '') +
+    '</div></div>';
+}
+
+function pintarChips() {
+  const docs = lote.documentos;
+  const conta = m => docs.filter(d => d.situacao === m).length;
+  const opcoes = [
+    ['todos', 'Todos', docs.length],
+    ['geraveis', 'Geráveis', docs.filter(d => d.geravel).length],
+    ['conferir amarração', 'Conferir amarração', conta('conferir amarração')],
+    ['usa na WESO e não é faturado', 'Usa e não fatura', conta('usa na WESO e não é faturado')],
+    ['sem preço lançado na CAR', 'Sem preço na CAR', conta('sem preço lançado na CAR')],
+    ['com_variavel', 'Com variável', docs.filter(d => d.variavel).length],
+  ];
+  document.getElementById('chips').innerHTML = opcoes.map(([id, rot, q]) =>
+    '<button class="chip' + (filtro === id ? ' on' : '') + '" onclick="filtrar(' +
+    JSON.stringify(id).replace(/"/g, '&quot;') + ')">' + esc(rot) + ' <b>' + q + '</b></button>'
+  ).join('');
+}
+function filtrar(id) { filtro = id; pintar(); }
+
+function visiveis() {
+  const q = (document.getElementById('busca').value || '').trim().toLowerCase();
+  return lote.documentos.filter(d => {
+    if (filtro === 'geraveis' && !d.geravel) return false;
+    if (filtro === 'com_variavel' && !d.variavel) return false;
+    if (filtro !== 'todos' && filtro !== 'geraveis' && filtro !== 'com_variavel'
+        && d.situacao !== filtro) return false;
+    if (!q) return true;
+    const alvo = [d.nome, d.cnpj,
+      ...(d.fixo_linhas || []).map(c => c.numero),
+      ...(d.variavel_linhas || []).map(o => o.numero_os)].join(' ').toLowerCase();
+    return alvo.includes(q);
+  });
+}
+
+function pintarDocs() {
+  const docs = visiveis();
+  if (!docs.length) {
+    document.getElementById('cardDocs').innerHTML =
+      '<div class="vazio">Nenhum cliente neste filtro.</div>';
+    return;
+  }
+  const cab = '<thead><tr><th style="width:42px"></th><th>Cliente</th>' +
+    '<th class="num">Contratos</th><th class="num">Placas</th><th class="num">Em uso</th>' +
+    '<th class="num">Fixo</th><th class="num">Variável</th><th class="num">Total</th>' +
+    '<th class="num">Cobrado hoje</th><th>Situação</th></tr></thead>';
+  const corpo = docs.map(d => {
+    const aberto = !!abertos[d.cnpj];
+    const tag = TAG[d.situacao] || 't-info';
+    let html =
+      '<tr class="doc-linha"><td><input type="checkbox" class="sel"' +
+        (marcados.has(d.cnpj) ? ' checked' : '') + (d.geravel ? '' : ' disabled') +
+        ' onchange="alternarMarca(' + JSON.stringify(d.cnpj) + ')"' +
+        ' aria-label="Incluir ' + esc(d.nome || d.cnpj) + ' no lote"></td>' +
+      '<td><button class="abrir' + (aberto ? ' on' : '') + '" aria-expanded="' + aberto +
+        '" onclick="alternar(' + JSON.stringify(d.cnpj) + ')">' +
+        '<span class="seta" aria-hidden="true">&#9656;</span><span>' +
+        esc(d.nome || '(cliente sem nome nesta base)') + '</span></button>' +
+        '<div class="nota mono" style="margin-top:3px; padding-left:20px">' + esc(d.cnpj) + '</div></td>' +
+      '<td class="num">' + n(d.contratos) + '</td><td class="num">' + n(d.placas) + '</td>' +
+      '<td class="num">' + n(d.em_uso) + '</td>' +
+      '<td class="num"><b>' + din(d.fixo) + '</b></td>' +
+      '<td class="num">' + din(d.variavel) + '</td>' +
+      '<td class="num"><b>' + din(d.total) + '</b></td>' +
+      '<td class="num nota">' + din(d.cobrado_hoje) + '</td>' +
+      '<td><span class="tag ' + tag + '">' + esc(d.situacao) + '</span>' +
+      (d.pendencias.length > 1
+        ? '<div class="nota" style="margin-top:4px">+ ' + (d.pendencias.length - 1) + ' pendência(s)</div>'
+        : '') + '</td></tr>';
+    if (aberto) html += '<tr><td colspan="10" style="background:var(--bg); padding:0 18px 18px 60px">' +
+      corpoAberto(d) + '</td></tr>';
+    return html;
+  }).join('');
+  document.getElementById('cardDocs').innerHTML =
+    '<table>' + cab + '<tbody>' + corpo + '</tbody></table>' +
+    '<div style="padding:12px 18px; border-top:1px solid var(--border)" class="nota">' +
+    docs.length + ' de ' + lote.documentos.length + ' clientes · ordenados por valor</div>';
+}
+
+// 🚨 OS DOIS BLOCOS LADO A LADO, NUNCA SOMADOS NUMA COLUNA (decisão de desenho
+// 2): o fixo vem do contrato e se repete todo mês; o variável vem de OS e não
+// se repete. Somados, ninguém sabe qual dos dois mudou quando o total muda.
+function corpoAberto(d) {
+  const fixo = (d.fixo_linhas || []).length
+    ? '<table><thead><tr><th>Contrato</th><th class="num">Placas</th><th class="num">Em uso</th>' +
+      '<th>Preço</th><th class="num">Valor</th><th class="num">Cobrado hoje</th></tr></thead><tbody>' +
+      d.fixo_linhas.map(c =>
+        '<tr><td><button class="abrir" onclick="abrirContrato(' + c.termo_id + ')">' +
+          '<span>Contrato ' + esc(c.numero || c.termo_id) + '</span></button>' +
+          '<div class="nota">' + esc(c.assinado ? 'assinado' : 'sem assinatura') +
+          (c.divergencia ? ' · ' + esc(c.divergencia) : '') + '</div></td>' +
+        '<td class="num">' + n(c.placas) + '</td><td class="num">' + n(c.em_uso) + '</td>' +
+        '<td class="nota">' + esc(c.fonte_do_valor || 'sem preço lançado') + '</td>' +
+        '<td class="num"><b>' + din(c.valor) + '</b></td>' +
+        '<td class="num nota">' + din(c.cobrado_hoje) + '</td></tr>').join('') +
+      '</tbody></table>'
+    : '<div class="vazio">Nenhum contrato com placa cobrável nesta competência.</div>';
+
+  const vari = (d.variavel_linhas || []).length
+    ? '<table><thead><tr><th>OS</th><th>Itens marcados para cobrar</th>' +
+      '<th class="num">Valor</th></tr></thead><tbody>' +
+      d.variavel_linhas.map(o =>
+        '<tr><td><button class="abrir" onclick="abrirOS(' + o.numero_os + ')">' +
+          '<span>OS ' + o.numero_os + '</span></button>' +
+          '<div class="nota">' + esc(o.data_previsao || '—') + ' · ' + esc(o.status || '—') +
+          '</div></td>' +
+        '<td class="nota">' + esc((o.itens || []).map(i => i.descricao).join(' · ')) + '</td>' +
+        '<td class="num"><b>' + din(o.total) + '</b></td></tr>').join('') +
+      '</tbody></table>'
+    : '<div class="vazio">Sem OS em “Financeiro” com item a cobrar nesta competência.</div>';
+
+  const pend = d.pendencias.length
+    ? d.pendencias.map(p => '<div class="aviso-item">' + esc(p) + '</div>').join('')
+    : '';
+  return pend + '<div class="lado-a-lado">' +
+    '<div class="bloco"><div class="bloco-topo"><h3>Fixo · mensalidade por contrato</h3>' +
+      '<b class="num">' + din(d.fixo) + '</b></div>' + fixo + '</div>' +
+    '<div class="bloco"><div class="bloco-topo"><h3>Variável · serviços de OS</h3>' +
+      '<b class="num">' + din(d.variavel) + '</b></div>' + vari + '</div></div>';
+}
+
+function pintarFora() {
+  const f = lote.fora || [];
+  document.getElementById('cardFora').innerHTML = !f.length
+    ? '<div class="nota">Nada ficou fora deste lote.</div>'
+    : '<table><thead><tr><th>Motivo</th><th class="num">Quantos</th><th>Onde resolver</th>' +
+      '</tr></thead><tbody>' + f.map(x =>
+        '<tr><td>' + esc(x.motivo) + (x.valor ? ' <span class="nota">(R$ ' + esc(x.valor) + ')</span>' : '') +
+        '</td><td class="num">' + x.clientes + '</td><td class="nota">' + esc(x.onde) + '</td></tr>'
+      ).join('') + '</tbody></table>';
+}
+
+function pintarLancamentos() {
+  // Só as linhas dos clientes selecionados: a tabela é a prévia do que o CSV e
+  // o fechamento vão levar, e mostrar linha de quem está desmarcado faria a
+  // prévia mentir sobre o lote.
+  const l = linhasSelecionadas();
+  document.getElementById('cardLancamentos').innerHTML = !l.length
+    ? '<div class="nota">Nenhuma linha: nenhum documento selecionado tem valor. ' +
+      'Se o fixo está vazio, é porque nenhum preço foi lançado na CAR ainda.</div>'
+    : '<div style="overflow-x:auto"><table><thead><tr><th>Cliente</th><th>Descrição</th>' +
+      '<th>Centro de custo</th><th>Categoria</th><th>Vencimento</th><th class="num">Valor</th>' +
+      '</tr></thead><tbody>' + l.slice(0, 200).map(x =>
+        '<tr><td>' + esc(x.cliente || x.cnpj) + '</td><td class="nota">' + esc(x.descricao) + '</td>' +
+        '<td><span class="tag t-info">' + esc(x.centro_custo) + '</span></td>' +
+        '<td class="nota">' + esc(x.categoria) + '</td>' +
+        '<td class="nota">' + esc(x.vencimento || '—') + '</td>' +
+        '<td class="num"><b>' + din(x.valor) + '</b></td></tr>').join('') +
+      '</tbody></table></div>' +
+      (l.length > 200 ? '<div class="nota" style="padding:10px 0">mostrando 200 de ' +
+                        l.length + ' — o CSV traz todas</div>' : '');
+}
+
+// 🚨 A TELA NÃO CONVERTE DINHEIRO -- ela SOMA INTEIRO e formata. A régua de ler
+// "R$ 1.234,56" mora num lugar só, no servidor (`_centavos`), e o backend manda
+// o mesmo valor em centavos justo para isto. Foi conversão de dinheiro em dois
+// lugares que fez R$ 200,53 virar R$ 20.053,00 em 30/10.
+// 🚨 SEM SEPARADOR DE MILHAR, e isso é medição, não descuido:
+// `car_prefatura.somar_textos` e `car_variavel.somar_textos` devolvem
+// "1080,00", e é esse texto que aparece em toda linha desta tela e da carteira.
+// Pôr ponto só no rodapé faria a mesma tela mostrar o mesmo dinheiro de dois
+// jeitos -- e "R$ 1.080,00" ao lado de "R$ 1080,00" é tela que parece errada.
+// 🟡 Trocar a convenção é uma linha nos dois módulos e aqui, e é decisão dele.
+function deCentavos(c) {
+  if (c == null) return null;
+  const s = String(Math.abs(c)).padStart(3, '0');
+  return (c < 0 ? '-' : '') + s.slice(0, -2) + ',' + s.slice(-2);
+}
+
+function selecionados() {
+  return lote.documentos.filter(d => marcados.has(d.cnpj) && d.geravel);
+}
+function linhasSelecionadas() {
+  return (lote.lancamentos || []).filter(l => marcados.has(l.cnpj));
+}
+
+function pintarRodape() {
+  const sel = selecionados();
+  const linhas = linhasSelecionadas();
+  // ⚠️ `null` não entra na soma e isso é DITO: documento sem valor conhecido
+  // não vale R$ 0,00, e por isso a conta mostra quantos ficaram de fora dela.
+  const comValor = sel.filter(d => d.total_centavos != null);
+  const soma = comValor.reduce((s, d) => s + d.total_centavos, 0);
+  document.getElementById('contaRodape').innerHTML =
+    '<b>' + sel.length + '</b> selecionados · <b>R$ ' + (deCentavos(soma) || '0,00') +
+    '</b> · ' + linhas.length + ' linha(s) de lançamento' +
+    (sel.length - comValor.length
+      ? ' · <span class="nota">' + (sel.length - comValor.length) + ' sem valor conhecido</span>'
+      : '') +
+    (lote.vencimento ? ''
+      : ' · <span style="color:var(--amber)">escolha o vencimento antes de fechar</span>');
+  document.getElementById('btFechar').disabled = !linhas.length || !lote.vencimento;
+}
+
+function pintar() {
+  if (!lote) return;
+  // 🚨 O VENCIMENTO MUDA AS LINHAS DO LOTE (ele é campo de cada lançamento), e
+  // quem as monta é o servidor. Trocar a data então recarrega -- preencher a
+  // data na tela faria a linha exportada e a linha mostrada divergirem.
+  if (venc() !== (lote.vencimento || '')) { carregar(true); return; }
+  pintarSelos(); pintarCartoes(); pintarChips(); pintarDocs(); pintarFora();
+  pintarLancamentos(); pintarRodape();
+}
+
+function alternarMarca(cnpj) {
+  if (marcados.has(cnpj)) marcados.delete(cnpj); else marcados.add(cnpj);
+  pintarDocs(); pintarLancamentos(); pintarRodape();
+}
+function marcarTodos(valor) {
+  marcados = valor ? new Set(lote.documentos.filter(d => d.geravel).map(d => d.cnpj)) : new Set();
+  pintarDocs(); pintarLancamentos(); pintarRodape();
+}
+function marcarSemPendencia() {
+  marcados = new Set(lote.documentos.filter(d => d.geravel && !d.pendencias.length)
+                                    .map(d => d.cnpj));
+  pintarDocs(); pintarLancamentos(); pintarRodape();
+}
+function alternar(cnpj) { abertos[cnpj] = !abertos[cnpj]; pintarDocs(); }
+
+// ── G3: o vínculo por clique, nos dois lados ───────────────────────────────
+function abrirGaveta(titulo, sub, html) {
+  document.getElementById('gavetaTitulo').textContent = titulo;
+  document.getElementById('gavetaSub').textContent = sub || '';
+  document.getElementById('gavetaCorpo').innerHTML = html;
+  document.getElementById('gaveta').classList.add('on');
+  document.getElementById('fundo').classList.add('on');
+}
+function fecharGaveta() {
+  document.getElementById('gaveta').classList.remove('on');
+  document.getElementById('fundo').classList.remove('on');
+}
+
+async function abrirContrato(termoId) {
+  abrirGaveta('Contrato', 'carregando…', '<div class="nota">Carregando…</div>');
+  try {
+    const r = await fetch('/painel/api/car/termo/' + termoId + '?competencia=' + comp(),
+                          { headers: auth() });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+    const d = await r.json();
+    // 🚨 `contrato` VEM NULO quando o termo não tem placa cobrável no mês, e a
+    // rota manda o porquê. Desenhar um contrato vazio aqui seria a tela dizendo
+    // "sem nada" onde a verdade é "sem placa cobrável nesta competência".
+    if (!d.contrato) {
+      abrirGaveta('Contrato ' + termoId, '',
+        '<div class="aviso-item">' + esc(d.porque_sem_linhas || '') + '</div>');
+      return;
+    }
+    const ct = d.contrato;
+    const linhas = (ct.linhas || []);
+    abrirGaveta('Contrato ' + esc(ct.numero || termoId),
+                (ct.cliente && ct.cliente.nome) || d.cnpj || '',
+      '<div class="cartoes">' +
+      '<div class="cartao"><div class="rot">Placas no contrato</div><div class="val">' +
+        n(ct.placas) + '</div></div>' +
+      '<div class="cartao"><div class="rot">Em uso na WESO</div><div class="val">' +
+        n(ct.em_uso) + '</div></div>' +
+      '<div class="cartao"><div class="rot">Contratadas sem uso</div><div class="val">' +
+        n(ct.contratadas_sem_uso) + '</div></div>' +
+      '<div class="cartao"><div class="rot">Situação</div><div class="val" style="font-size:1rem">' +
+        esc(ct.situacao || '—') + '</div><div class="pe">' + esc(ct.motivo || '') + '</div></div>' +
+      '</div>' +
+      (linhas.length
+        ? '<table><thead><tr><th>Placa</th><th>No contrato</th><th>Na WESO</th>' +
+          '<th class="num">Valor</th><th>Preço</th></tr></thead><tbody>' +
+          linhas.map(l =>
+            '<tr><td class="mono">' + esc(l.placa) + '</td>' +
+            '<td><span class="tag ' + (l.situacao === 'ATIVA' ? 't-ativa' : 't-aviso') + '">' +
+              esc(l.situacao || '—') + '</span></td>' +
+            '<td class="nota">' + esc(l.situacao_weso || (l.em_uso_weso === null ? 'não consultada' : 'fora da WESO')) + '</td>' +
+            '<td class="num">' + din(l.valor) + '</td>' +
+            '<td class="nota">' + esc(l.fonte_do_valor || l.motivo || '—') + '</td></tr>').join('') +
+          '</tbody></table>'
+        : '<div class="vazio">Nenhuma placa cobrável nesta competência.</div>'));
+  } catch (e) {
+    abrirGaveta('Contrato', '', '<div class="vazio">Não deu para abrir: ' + esc(e.message) + '</div>');
+  }
+}
+
+async function abrirOS(numero) {
+  abrirGaveta('OS ' + numero, 'carregando…', '<div class="nota">Carregando…</div>');
+  try {
+    const r = await fetch('/painel/api/car/os/' + numero, { headers: auth() });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+    const d = await r.json();
+    const fat = d.lancamentos_no_harmonit || [];
+    abrirGaveta('OS ' + numero, d.cliente || ('contatoId ' + n(d.cliente_id)),
+      '<div class="cartoes">' +
+      '<div class="cartao"><div class="rot">Status</div><div class="val" style="font-size:1rem">' +
+        esc(d.status || '—') + '</div></div>' +
+      '<div class="cartao"><div class="rot">Data de previsão</div><div class="val" style="font-size:1rem">' +
+        esc(d.data_previsao || '—') + '</div>' +
+        '<div class="pe">a varredura local não guarda a data de finalização</div></div>' +
+      '<div class="cartao"><div class="rot">Competência</div><div class="val" style="font-size:1rem">' +
+        esc(d.competencia || '—') + '</div></div>' +
+      '<div class="cartao"><div class="rot">Entra no documento</div><div class="val">' +
+        din(d.total) + '</div><div class="pe">' + esc(d.porque) + '</div></div>' +
+      '</div>' +
+      '<h3>Itens da OS</h3>' +
+      '<table><thead><tr><th>Item</th><th class="num">Qtd.</th><th>Cobrar</th>' +
+      '<th class="num">Valor</th></tr></thead><tbody>' +
+      (d.itens_todos || []).map(i =>
+        '<tr' + (i.cobrar ? '' : ' style="color:var(--text2)"') + '>' +
+        '<td>' + esc(i.descricao || '—') + (i.comodato ? ' <span class="tag t-info">comodato</span>' : '') + '</td>' +
+        '<td class="num">' + n(i.quantidade) + '</td>' +
+        '<td><span class="tag ' + (i.cobrar ? 't-ativa' : 't-fora') + '">' +
+          (i.cobrar ? 'sim' : 'não') + '</span></td>' +
+        '<td class="num">' + din(i.valor_total) + '</td></tr>').join('') +
+      '</tbody></table>' +
+      (fat.length
+        ? '<h3 style="margin-top:18px">Já lançada no Harmonit</h3><table><thead><tr>' +
+          '<th>Lançamento</th><th>Estado</th><th>Vencimento</th><th class="num">Valor</th>' +
+          '</tr></thead><tbody>' + fat.map(l =>
+            '<tr><td class="mono">' + n(l.lancamento_id) + '</td><td>' + esc(l.estado) + '</td>' +
+            '<td class="nota">' + esc(l.vencimento || '—') + '</td>' +
+            '<td class="num">' + din(l.valor) + '</td></tr>').join('') + '</tbody></table>'
+        : ''));
+  } catch (e) {
+    abrirGaveta('OS ' + numero, '', '<div class="vazio">Não deu para abrir: ' + esc(e.message) + '</div>');
+  }
+}
+
+async function exportar() {
+  const p = new URLSearchParams({ competencia: comp() });
+  if (venc()) p.set('vencimento', venc());
+  if (marcados && marcados.size) p.set('cnpjs', [...marcados].join(','));
+  try {
+    const r = await fetch('/painel/api/car/gerar.csv?' + p.toString(), { headers: auth() });
+    if (!r.ok) throw new Error(r.status);
+    const b = await r.blob(), a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'contas_a_receber_' + comp() + '.csv';
+    a.click(); URL.revokeObjectURL(a.href);
+  } catch (e) { showMsg('Não deu para exportar: ' + e.message, true); }
+}
+
+// 🚨 FECHAR É ESCRITA, E PERGUNTA ANTES -- com os números na pergunta. É a
+// mesma régua do lote de preço da carteira: lote que o operador não confirma é
+// lote que ele não assume. ⚠️ E ele não emite nada: o que grava é a assinatura.
+async function fecharLote() {
+  const t = lote.totais;
+  const texto = 'Fechar a competência ' + lote.competencia_extenso + '?\n\n' +
+    t.a_gerar + ' documento(s) · ' + t.lancamentos + ' linha(s) · R$ ' + (t.total || '0,00') +
+    '\nVencimento: ' + (lote.vencimento || '(nenhum)') +
+    '\n\nIsto NÃO emite boleto e NÃO escreve no Harmonit: grava a assinatura do lote.';
+  if (!window.confirm(texto)) return;
+  const bt = document.getElementById('btFechar');
+  bt.disabled = true; bt.innerHTML = '<span class="spinner"></span> Fechando…';
+  try {
+    const r = await fetch('/painel/api/car/gerar/fechar', {
+      method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ competencia: comp(), vencimento: venc(),
+                             cnpjs: [...marcados] }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.status);
+    showMsg('Competência fechada: ' + d.totais.lancamentos + ' linha(s), R$ ' +
+            (d.totais.total || '0,00') + ' · assinatura ' + d.assinatura.slice(0, 12) + '…');
+    carregarFechamentos();
+  } catch (e) {
+    showMsg('Não deu para fechar: ' + e.message, true);
+  } finally {
+    bt.disabled = false; bt.innerHTML = '<i class="bi bi-lock"></i> Fechar competência';
+  }
+}
+
+(function iniciar() {
+  // 🚨 O MÊS PADRÃO É O ANTERIOR, e isso é medição, não gosto: a competência do
+  // Harmonit não é o mês de vencimento -- das 261 mensalidades baixadas em
+  // outubro, 233 eram de referência 09/2026. O mês corrente não está faturado
+  // quando acontece, então a gestão mensal roda sobre o mês fechado.
+  const h = new Date();
+  const anterior = new Date(h.getFullYear(), h.getMonth() - 1, 1);
+  document.getElementById('competencia').value =
+    anterior.getFullYear() + '-' + String(anterior.getMonth() + 1).padStart(2, '0');
+  carregar();
+})();
+</script>
+</body>
+</html>

@@ -197,6 +197,39 @@ TELAS = [
         "permissao": "contas_receber",
         "fase": 1,
     },
+    # 🆕 CAR_1.2 (03/11). A TELA OPERACIONAL: é onde o contas a receber é de
+    # fato gerado -- um documento por cliente, fixo de contrato × variável de
+    # OS, e o lote no formato de lançamento do Harmonit. Blocos G1-G5 da §V7 do
+    # documento de controle; mockup aprovado por ele em 30/10.
+    #
+    # 🚨 ELA ENTRA NO MENU EM 03/11, E A FALTA DISTO FOI DEFEITO MEU. Em 03/11
+    # a tela subiu **sem entrada aqui**, alcançável só por um botão dentro da
+    # `CAR_1.1` -- eu a deixei como "segunda página" porque *"a posição no
+    # menu"* estava na lista de decisões dele em aberto desde 28/10. A
+    # consequência veio na hora: ele foi ao menu procurar o que aprovou, não
+    # achou, e perguntou *"o mockup do contas a receber e financeiro não esta
+    # no ar do FPSL porque?"*. Estava no ar; era **invisível**. 🔵 Ele fechou a
+    # decisão com *"ja foi aprovado"*.
+    #
+    # ⚠️ É O `M10` OUTRA VEZ, NA FORMA MAIS BARATA: tela que existe e ninguém
+    # alcança é tela que não existe. A diferença para a porta trancada de 14/08
+    # é que aqui nem 403 havia -- não havia porta.
+    #
+    # 🚨 MESMA PERMISSÃO `contas_receber`, de propósito: é a mesma aba, em dois
+    # passos (conferir a carteira → gerar o lote). Permissão nova daria a
+    # alguém o poder de gerar sem poder conferir, que é o contrário do desenho.
+    # E porque a permissão se repete, **nada muda em `PERMISSOES_VALIDAS` nem em
+    # `PERMISSOES_CONCEDIVEIS`** -- as duas são derivadas, e a trava de 8
+    # concedíveis do `teste_perfis` continua em 8.
+    {
+        "codigo": "CAR_1.2",
+        "titulo": "Gerar Contas a Receber",
+        "rota": "/painel/contas-receber/gerar",
+        "icone": "bi-file-earmark-plus",
+        "descricao": "Gera o lote do mês: fixo de contrato e variável de OS, por cliente.",
+        "permissao": "contas_receber",
+        "fase": 1,
+    },
     # ---- CFG: configuração ----
     {
         "codigo": "CFG_1.1",

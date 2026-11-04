@@ -125,6 +125,43 @@ def semear():
                                                 acao, fonte, criado_em)
                    VALUES (?,?,?,?,?,?)""",
                 (tid, placa, placa, "ENTRA", "assinado", "2026-01-01T00:00:00Z"))
+        # 🆕 03/11, bloco G2: a fila variável. `os_historico` e `clientes` são
+        # tabelas do `storage`, não da CAR -- este banco é temporário e nasce
+        # sem elas, então a semeadura cria o mínimo que a consulta usa.
+        # ⚠️ Criar aqui o esquema MÍNIMO, e não chamar `storage.init()`: aquele
+        # monta dezenas de tabelas e laços, e o que esta rota lê são seis
+        # colunas. A trava de que a rota tolera a tabela AUSENTE está no [20].
+        conn.execute("""CREATE TABLE IF NOT EXISTS clientes (
+                            harmonit_id INTEGER PRIMARY KEY,
+                            cnpjcpf TEXT NOT NULL, criado_em TEXT)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS os_historico (
+                            numero_os INTEGER PRIMARY KEY, situacao_id INTEGER,
+                            status_str TEXT, cliente_id INTEGER,
+                            data_previsao TEXT, materiais_json TEXT,
+                            os_id INTEGER, excluida INTEGER NOT NULL DEFAULT 0)""")
+        conn.execute("INSERT INTO clientes (harmonit_id, cnpjcpf, criado_em) "
+                     "VALUES (?,?,?)", (990001, "12345678000199", "2026-11-03"))
+        # Uma OS que ENTRA na fila (finalizada, item a cobrar, cliente conhecido)
+        # e uma que NÃO entra (item sem `cobrar`) -- é o contraste que prova a
+        # régua dele, e não só o caminho feliz.
+        hoje_br = f"15/{COMP[5:7]}/{COMP[0:4]} 10:00:00"
+        conn.execute(
+            """INSERT INTO os_historico (numero_os, situacao_id, status_str,
+                                         cliente_id, data_previsao,
+                                         materiais_json, os_id, excluida)
+               VALUES (?,?,?,?,?,?,?,0)""",
+            (99001, 15746, "Finalizado", 990001, hoje_br,
+             '[{"descricao": "INSTALA\\u00c7\\u00c3O", "cobrar": true, '
+             '"valor": 120.0, "valorTotal": 120.0}, '
+             '{"descricao": "PAGAMENTO DE T\\u00c9CNICO", "cobrar": false, '
+             '"valor": 80.0, "valorTotal": 80.0}]', 880001))
+        conn.execute(
+            """INSERT INTO os_historico (numero_os, situacao_id, status_str,
+                                         cliente_id, data_previsao,
+                                         materiais_json, os_id, excluida)
+               VALUES (?,?,?,?,?,?,?,0)""",
+            (99002, 15746, "Finalizado", 990001, hoje_br,
+             '[{"descricao": "KM", "cobrar": false, "valorTotal": 50.0}]', 880002))
         conn.commit()
 
 
@@ -155,7 +192,10 @@ checar("e NAO o de producao", False, storage.DB_PATH.endswith("data/fpsl.db"))
 # 🆕 30/10, blocos F1 e F4: 21 rotas. As 5 novas sao
 # GET/PUT /faturado/interruptor · POST /faturado/atualizar · GET /semear ·
 # POST /semear.
-checar("o router subiu com as 21 rotas", 21, len(car_router.router.routes))
+# 🆕 03/11, blocos G1-G5: 27 rotas. As 6 novas sao GET /variavel ·
+# GET /os/{numero_os} · GET /gerar · GET /gerar.csv · POST /gerar/fechar ·
+# GET /gerar/fechamentos.
+checar("o router subiu com as 27 rotas", 27, len(car_router.router.routes))
 
 # 🚨 TODA ROTA NOVA ENTRA SOB A MESMA TRANCA DE ABA. Rota solta sem a
 # dependência do router seria a porta aberta que o `requer_aba` existe para
@@ -432,6 +472,134 @@ with sqlite3.connect(DB) as conn:
     checar("e nenhum evento ficou sem autor", 0, conn.execute(
         "SELECT COUNT(*) FROM car_evento WHERE por IS NULL OR trim(por) = ''"
     ).fetchone()[0])
+
+print("\n[20] G2 — a fila variavel pela rota, com a regra dele")
+r = c.get(f"{PREFIXO}/variavel")
+checar("200", 200, r.status_code)
+d = r.json()
+checar("1 OS a gerar (a outra nao tem item a cobrar)", 1, d["totais"]["os_a_gerar"])
+checar("1 cliente", 1, d["totais"]["clientes"])
+checar("R$ 120,00 -- so o item `cobrar`", "120,00", d["totais"]["total"])
+checar("a 99001 esta na fila", True,
+       any(o["numero_os"] == 99001 for o in d["a_gerar"]))
+# 🚨 PAGAMENTO DE TÉCNICO e KM ficam fora: `cobrar` é cobrar DO CLIENTE.
+checar("a 99002 ficou fora", True,
+       any(o["numero_os"] == 99002 for o in d["fora"]))
+checar("com o motivo", "sem_item_a_cobrar",
+       [o for o in d["fora"] if o["numero_os"] == 99002][0]["estado"])
+checar("a regra fica declarada", 15746, d["regra"]["situacao_id"])
+checar("`por_cliente` nao vem duplicando `a_gerar`", False, "por_cliente" in d)
+
+print("\n[21] G3 — a ficha da OS mostra o `cobrar` de CADA item")
+r = c.get(f"{PREFIXO}/os/99001")
+checar("200", 200, r.status_code)
+d = r.json()
+checar("os DOIS itens aparecem, nao so o cobravel", 2, len(d["itens_todos"]))
+checar("e so um deles cobra", 1,
+       sum(1 for i in d["itens_todos"] if i["cobrar"]))
+checar("o total e o do item que cobra", "120,00", d["total"])
+checar("o estado diz por que ela entra", "a_gerar", d["estado"])
+checar("e a causa vem escrita", True, bool(d["porque"]))
+checar("nenhum lancamento no Harmonit por enquanto", 0,
+       len(d["lancamentos_no_harmonit"]))
+r = c.get(f"{PREFIXO}/os/404404")
+checar("OS fora da varredura da 404", 404, r.status_code)
+checar("com a situacao na mensagem", True, "15746" in r.json()["detail"])
+
+print("\n[22] G1 — o lote: um documento por cliente, fixo x variavel")
+r = c.get(f"{PREFIXO}/gerar?vencimento=2026-11-10")
+checar("200", 200, r.status_code)
+d = r.json()
+checar("vencimento atravessa", "2026-11-10", d["vencimento"])
+checar("competencia por extenso", True, bool(d["competencia_extenso"]))
+checar("ha documento", True, len(d["documentos"]) > 0)
+# O 9003 ganhou preço "77,70" no bloco [17], então ele gera linha.
+alvo = [x for x in d["documentos"] if x["cnpj"] == "WQ0P6GLD000108"]
+checar("o cliente alfanumerico tem documento", 1, len(alvo))
+checar("com fixo lancado", "77,70", alvo[0]["fixo"])
+checar("e o mesmo valor em centavos para a tela somar", 7770,
+       alvo[0]["fixo_centavos"])
+checar("e e geravel", True, alvo[0]["geravel"])
+mensalidades = [l for l in d["lancamentos"] if l["tipo"] == "mensalidade"]
+checar("a linha nasce no formato do Harmonit", True,
+       all(l["descricao"].startswith("Faturamento do contrato Nr. ")
+           for l in mensalidades))
+checar("com o centro de custo medido", True,
+       all(l["centro_custo"] == "Mensalidades" for l in mensalidades))
+servicos = [l for l in d["lancamentos"] if l["tipo"] == "servico"]
+checar("e a OS entra como servico", 1, len(servicos))
+checar("com a descricao que o espelho reconhece", "Ordem de Serviço Nr. 99001",
+       servicos[0]["descricao"])
+checar("o lote DECLARA que nao emite boleto", False, d["limites"]["emite_boleto"])
+checar("nem escreve no Harmonit", False, d["limites"]["escreve_no_harmonit"])
+# 🚨 A LEITURA NÃO ESCREVE: recarregar a tela não pode lançar nada.
+with sqlite3.connect(DB) as conn:
+    antes = conn.execute("SELECT COUNT(*) FROM car_leitura "
+                         "WHERE escopo = 'lote'").fetchone()[0]
+checar("GET /gerar nao gravou fechamento nenhum", 0, antes)
+
+r = c.get(f"{PREFIXO}/gerar?vencimento=10-11-2026")
+checar("vencimento torto e RECUSADO, nao virado em nulo", 400, r.status_code)
+
+print("\n[23] G1 — o CSV do lote")
+r = c.get(f"{PREFIXO}/gerar.csv?vencimento=2026-11-10")
+checar("200", 200, r.status_code)
+checar("cabecalho do lote", True,
+       r.text.startswith("cnpj;cliente;tipo;contrato;numero_os;descricao"))
+checar("anexa com o nome do mes", True, COMP in r.headers["content-disposition"])
+# ⚠️ Nenhuma linha pode ter coluna a mais: `;` na descrição quebraria o CSV.
+colunas = r.text.split("\n")[0].count(";")
+checar("nenhuma linha com coluna a mais", True,
+       all(l.count(";") == colunas for l in r.text.split("\n") if l))
+
+print("\n[24] G4 — fechar o lote GRAVA com autor, e assina as linhas")
+r = c.post(f"{PREFIXO}/gerar/fechar",
+           json={"vencimento": "2026-11-10"})
+checar("200", 200, r.status_code)
+d = r.json()
+checar("o autor saiu do TOKEN", "zz_teste_car", d["por"])
+checar("com assinatura", 64, len(d["assinatura"]))
+checar("e o vencimento gravado", "2026-11-10", d["vencimento"])
+checar("a resposta repete o limite", False, d["limites"]["escreve_no_harmonit"])
+# 🚨 RELER SEM MUDAR NADA DÁ A MESMA ASSINATURA -- é o que transforma "o número
+# mudou" de discussão em fato.
+r2 = c.post(f"{PREFIXO}/gerar/fechar", json={"vencimento": "2026-11-10"})
+checar("o segundo fechamento reconhece o primeiro", True,
+       r2.json()["fechamentos_anteriores"][0]["igual_a_este"])
+# 🚨 E MUDAR O VENCIMENTO **NÃO** MUDA A ASSINATURA: ela é das linhas (cliente,
+# tipo, contrato, valor), e o vencimento é escolha do fechamento, gravada à
+# parte. Se ele entrasse na assinatura, trocar a data faria o mês parecer outro.
+r3 = c.post(f"{PREFIXO}/gerar/fechar", json={"vencimento": "2026-12-10"})
+checar("vencimento novo, mesma assinatura das linhas", True,
+       r3.json()["fechamentos_anteriores"][0]["igual_a_este"])
+checar("mas o vencimento gravado e o novo", "2026-12-10", r3.json()["vencimento"])
+
+r = c.post(f"{PREFIXO}/gerar/fechar",
+           json={"vencimento": "2026-11-10", "cnpjs": []})
+checar("fechar lote VAZIO e recusado", 400, r.status_code)
+checar("e a recusa diz a causa provavel", True,
+       "preço" in r.json()["detail"] or "preco" in r.json()["detail"])
+r = c.post(f"{PREFIXO}/gerar/fechar",
+           json={"vencimento": "2026-11-10", "cnpjs": "nao sou lista"})
+checar("cnpjs que nao e lista e recusado", 400, r.status_code)
+
+r = c.get(f"{PREFIXO}/gerar/fechamentos")
+checar("200", 200, r.status_code)
+checar("os fechamentos aparecem, do mais novo para o mais velho", True,
+       len(r.json()["fechamentos"]) >= 3)
+checar("e cada um traz o autor", True,
+       all(f["por"] for f in r.json()["fechamentos"]))
+
+with sqlite3.connect(DB) as conn:
+    checar("os fechamentos de lote tem escopo proprio", True, conn.execute(
+        "SELECT COUNT(*) FROM car_leitura WHERE escopo = 'lote'"
+    ).fetchone()[0] >= 3)
+    # 🚨 A LEITURA ANALÍTICA DO [17] NÃO FOI CONFUNDIDA COM O LOTE: são fatos
+    # diferentes, e a coluna `escopo` é o que os separa. Sem ela, o histórico da
+    # competência misturaria "eu olhei" com "eu gerei".
+    checar("e as leituras do bloco [17] seguem sem escopo de lote", True,
+           conn.execute("SELECT COUNT(*) FROM car_leitura "
+                        "WHERE escopo IS NULL").fetchone()[0] >= 1)
 
 print(f"\n{'='*60}\n{ok} OK, {len(falhas)} falhas")
 for f in falhas:

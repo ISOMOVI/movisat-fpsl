@@ -40,10 +40,12 @@ from ...services import sync_faturado
 from ..auth import requer_aba
 from .. import car_busca as busca
 from .. import car_faturado as cf
+from .. import car_lote as lote
 from .. import car_motor as motor
 from .. import car_prefatura as prefatura
 from .. import car_registro as registro
 from .. import car_tabelas as tabelas
+from .. import car_variavel as cvar
 
 log = logging.getLogger("fpsl.car_router")
 
@@ -481,6 +483,338 @@ async def fechar_prefatura(corpo: dict | None = None,
                 "por": por, "assinatura": assinatura, "totais": t,
                 "leituras_anteriores": anteriores}
     return await _exec(_gravar)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# G1 · G2 · G3 · G4 · G5 — a tela operacional: gerar os contas a receber
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔵 Pedido dele em 30/10: *"proponha uma tela operacional paa o contas a
+# receber, onde possamos realmente gerar os contas a receber exibindo claramente
+# o que é fixo de contrato (com essa informação para consulta se precisar
+# - aqueles vinculos atraves de clique que falei - e tbm os variaveis que vierem
+# de OS do tipo financeiro que estão marcados para cobrar e finalizados)"*.
+# Mockup APROVADO: `https://claude.ai/artifact/RnvbtMzgCE44mgfqQsvKDt`.
+#
+# 🚨 TUDO AQUI É LEITURA, menos o fechamento. Gerar não escreve no Harmonit --
+# a API financeira dele é 100% leitura (varrida no `swagger.json`), e o lote é
+# a lista pronta para lançamento. A tela declara isso em `limites`.
+def _os_financeiras(conn) -> list:
+    """As OS da situação 15746, com o cliente já resolvido. Uma consulta.
+
+    🚨 A FONTE É A `os_historico`, a varredura que já roda de 5 em 5 minutos --
+    e não o Harmonit. Não existe no `swagger.json` rota que LISTE OS por
+    situação (só `ObterOrdemServico` por id e `ObterOrdemServicoPorNumero`), e
+    montar esta fila pela API seria uma chamada por OS.
+
+    ⚠️ `excluida = 0`: OS apagada no Harmonit continua na tabela, marcada, e
+    cobrar por ela seria cobrar pelo que não existe mais.
+
+    ⚠️ `clientes` é indexada pelo `harmonit_id`, e o LEFT JOIN é de propósito:
+    OS cujo cliente não está nesta base **aparece** na tela com a causa (medido
+    em 03/11: a OS 16846, `cliente_id` 1036572). Um JOIN interno a esconderia,
+    e com ela R$ 1.080,00 de cobrança real.
+    """
+    try:
+        cru = conn.execute(
+            """SELECT h.numero_os, h.os_id, h.situacao_id, h.status_str,
+                      h.cliente_id, h.data_previsao, h.materiais_json,
+                      c.cnpjcpf, cc.nome
+                 FROM os_historico h
+                 LEFT JOIN clientes c ON c.harmonit_id = h.cliente_id
+                 LEFT JOIN contrato_cliente cc ON cc.cnpj = c.cnpjcpf
+                WHERE h.excluida = 0 AND h.situacao_id = ?""",
+            (cvar.SITUACAO_FINANCEIRO,)).fetchall()
+    except sqlite3.Error:
+        # Banco sem a varredura (cópia restaurada, banco de teste de outra
+        # suíte): ausência da tabela é "a varredura não passou aqui", e a fila
+        # variável nasce vazia -- nunca erro na tela do lote inteiro.
+        log.warning("os_historico indisponível: a fila variável sai vazia")
+        return []
+
+    linhas = []
+    for (numero, os_id, situacao, status, cliente_id, previsao, materiais,
+         cnpj, nome) in cru:
+        try:
+            itens = json.loads(materiais) if materiais else []
+        except (ValueError, TypeError):
+            # 🚨 JSON ILEGÍVEL NÃO VIRA "OS SEM ITEM": sem item a cobrar e item
+            # que não deu para ler são afirmações diferentes, e a segunda é
+            # defeito de dado que tem de aparecer.
+            itens = []
+            log.warning("materiais_json ilegível na OS %s", numero)
+        linhas.append({
+            "numero_os": numero, "os_id": os_id, "situacao_id": situacao,
+            "status_str": status, "cliente_id": cliente_id,
+            "data_previsao": previsao, "materiais": itens,
+            "cnpj": cnpj, "cliente": nome})
+    return linhas
+
+
+def _faturadas(conn) -> set:
+    """Os `numero_os` que o Harmonit já lançou, do espelho (F1).
+
+    ⚠️ SEM FILTRO DE COMPETÊNCIA, de propósito: o lançamento de serviço do
+    Harmonit **não traz período de referência** na descrição (é o grupo
+    "sem competência" da `faturado_do_mes`), então restringir a comparação a um
+    mês deixaria passar OS já faturada em outro vencimento -- e o cliente
+    receberia dois boletos da mesma OS.
+    """
+    try:
+        return {r[0] for r in conn.execute(
+            "SELECT DISTINCT numero_os FROM car_faturado "
+            "WHERE numero_os IS NOT NULL")}
+    except sqlite3.Error:
+        # Banco anterior ao bloco F1: ausência da tabela é "o espelho não leu",
+        # e nesse caso NENHUMA OS pode ser dita já faturada.
+        return set()
+
+
+def _variavel(conn, competencia: str | None) -> dict:
+    return cvar.fila(_os_financeiras(conn), competencia, _faturadas(conn))
+
+
+def _vencimento(bruto) -> str | None:
+    """A data escolhida pelo operador, `AAAA-MM-DD`. Vazia é `None`.
+
+    🔴 NÃO EXISTE DIA DE VENCIMENTO EM COLUNA NENHUMA desta base (medido em
+    30/10), e por isso ele é entrada da tela, não derivação. Data ilegível é
+    recusada com 400 em vez de virar `None` em silêncio: lote com vencimento
+    perdido é lote que ninguém consegue lançar.
+    """
+    t = (bruto or "").strip()
+    if not t:
+        return None
+    try:
+        return date.fromisoformat(t).isoformat()
+    except ValueError:
+        raise HTTPException(400, f"vencimento inválido: {t!r} (use AAAA-MM-DD)")
+
+
+def _montar_lote(conn, competencia: str, vencimento: str | None,
+                 apenas=None) -> dict:
+    pre = _montar_com_weso(conn, competencia)
+    var = _variavel(conn, competencia)
+    saida = lote.montar(pre, var, vencimento=vencimento, apenas=apenas)
+    # O que a tela precisa para desenhar o cabeçalho sem uma segunda chamada:
+    # de quando é a WESO, se o espelho leu, e a cobertura da janela.
+    saida["weso"] = pre["weso"]
+    saida["faturado"] = {
+        "lido": pre["faturado"].get("lido"),
+        "lido_em": pre["faturado"].get("lido_em"),
+        "porque": pre["faturado"].get("porque"),
+        "cobertura": pre["faturado"].get("cobertura"),
+        "totais": pre["faturado"].get("totais"),
+    }
+    saida["variavel"] = {k: v for k, v in var.items() if k != "por_cliente"}
+    saida["prefatura_totais"] = pre["totais"]
+    return saida
+
+
+@router.get("/variavel")
+async def variavel_do_mes(competencia: str | None = Query(None),
+                          todas: bool = Query(False)):
+    """A fila variável: OS em "Financeiro", finalizada, com item a cobrar.
+
+    `todas = true` ignora a competência -- serve à conferência *"esta OS caiu em
+    que mês?"*, que a tela faz ao abrir a ficha de uma OS.
+    """
+    comp = None if todas else _competencia(competencia)
+
+    def _ler(conn):
+        fila = _variavel(conn, comp)
+        # `por_cliente` tem a mesma informação de `a_gerar`, agrupada; mandar as
+        # duas dobraria a resposta sem acrescentar fato.
+        return {k: v for k, v in fila.items() if k != "por_cliente"}
+    return await _exec(_ler)
+
+
+@router.get("/os/{numero_os}")
+async def os_do_variavel(numero_os: int):
+    """A ficha de UMA OS: os itens com o `cobrar` de cada um à vista (G3).
+
+    🚨 É o vínculo por clique do lado variável, e ele mostra o `cobrar` item por
+    item porque é esse booleano que decide o valor da linha. Tela que mostra só
+    o total faz o operador abrir o Harmonit para saber de onde ele veio.
+    """
+    def _ler(conn):
+        todas = _os_financeiras(conn)
+        achada = next((o for o in todas if o["numero_os"] == numero_os), None)
+        if achada is None:
+            raise HTTPException(
+                404, f"a OS {numero_os} não está na varredura local com "
+                     f"situação {cvar.SITUACAO_FINANCEIRO} (Financeiro)")
+        ficha = cvar.classificar(achada, _faturadas(conn))
+        # 🚨 TODOS os itens, não só os a cobrar: é o contraste que explica a
+        # conta. O item com `cobrar = false` (PAGAMENTO DE TÉCNICO, KM) aparece
+        # esmaecido no mockup, e sem ele a soma parece arbitrária.
+        ficha["itens_todos"] = [
+            {"descricao": i.get("descricao"),
+             "quantidade": i.get("quantidade"),
+             "valor": cvar.valor_texto(i.get("valor")),
+             "valor_total": cvar.valor_texto(i.get("valorTotal")),
+             "cobrar": bool(i.get("cobrar")),
+             "comodato": bool(i.get("comodato"))}
+            for i in achada["materiais"] if isinstance(i, dict)]
+        # Os lançamentos que o Harmonit já tem desta OS -- a prova de "já
+        # faturada", com número e valor, em vez da palavra sozinha.
+        try:
+            ficha["lancamentos_no_harmonit"] = [
+                {"lancamento_id": i, "estado": e, "valor": v, "vencimento": vc,
+                 "descricao": d}
+                for i, e, v, vc, d in conn.execute(
+                    """SELECT id, estado, valor, vencimento, descricao
+                         FROM car_faturado WHERE numero_os = ?
+                        ORDER BY id""", (numero_os,))]
+        except sqlite3.Error:
+            ficha["lancamentos_no_harmonit"] = []
+        return ficha
+    return await _exec(_ler)
+
+
+@router.get("/gerar")
+async def gerar(competencia: str | None = Query(None),
+                vencimento: str | None = Query(None)):
+    """O lote da competência: um documento por cliente, fixo × variável.
+
+    🚨 **NÃO GRAVA NADA.** É a tela de conferência antes do fechamento, e o
+    fechamento é outra rota, com autor. Gerar na leitura faria recarregar a
+    página lançar dinheiro.
+    """
+    comp = _competencia(competencia)
+    venc = _vencimento(vencimento)
+
+    def _ler(conn):
+        return _montar_lote(conn, comp, venc)
+    return await _exec(_ler)
+
+
+@router.get("/gerar.csv", response_class=PlainTextResponse)
+async def gerar_csv(competencia: str | None = Query(None),
+                    vencimento: str | None = Query(None),
+                    cnpjs: str | None = Query(None)):
+    """As linhas de lançamento do lote, em CSV -- o formato do Harmonit.
+
+    🚨 É ISTO QUE TORNA A SUBSTITUIÇÃO POSSÍVEL HOJE: a API financeira do
+    Harmonit não tem rota de criar cobrança, então a ponte entre a CAR e o
+    lançamento é a lista. O Asaas (que é quem de fato emite) é o bloco G6/D8.
+    """
+    comp = _competencia(competencia)
+    venc = _vencimento(vencimento)
+    # 🚨 `None` (parâmetro ausente) É A CARTEIRA INTEIRA; lista VAZIA é seleção
+    # vazia, e as duas não podem colapsar. O `or None` que eu havia escrito
+    # fazia a seleção vazia virar "tudo" -- e foi o teste do fechamento que
+    # pegou isso, na versão gêmea desta linha: quem desmarca todos e exporta
+    # receberia a carteira inteira, calado.
+    apenas = (None if cnpjs is None
+              else [c.strip() for c in cnpjs.split(",") if c.strip()])
+
+    def _ler(conn):
+        return _montar_lote(conn, comp, venc, apenas=apenas)
+    doc = await _exec(_ler)
+    return PlainTextResponse(
+        lote.para_csv(doc), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition":
+                 f"attachment; filename=contas_a_receber_{comp}.csv"})
+
+
+@router.post("/gerar/fechar")
+async def fechar_lote(corpo: dict | None = None,
+                      usuario: dict = Depends(requer_aba("contas_receber"))):
+    """Fecha o lote da competência: grava em `car_leitura` com escopo `lote`.
+
+    🚨 ISTO FECHA O ACHADO **A2** da auditoria de 28/10: a rota
+    `POST /prefatura/fechar` existia **sem botão**, e `car_leitura` seguia sem
+    escritor *pelo uso* -- que é justo o que eu disse ter consertado ao criar a
+    rota. Agora o fechamento tem tela, e tem a sua, própria: fechar o lote e
+    tirar uma leitura analítica são fatos diferentes (coluna `escopo`).
+
+    🚨 **NÃO EMITE NADA E NÃO ESCREVE NO HARMONIT**, e a resposta repete isso em
+    `limites`. O que ele grava é a assinatura das linhas geradas, para a
+    pergunta que vai aparecer: *"reabri setembro e o número mudou, por quê?"*.
+    """
+    corpo = corpo or {}
+    comp = _competencia(corpo.get("competencia"))
+    venc = _vencimento(corpo.get("vencimento"))
+    apenas = corpo.get("cnpjs")
+    if apenas is not None and not isinstance(apenas, list):
+        raise HTTPException(400, "cnpjs deve ser uma lista de CNPJ")
+    por = _autor(usuario)
+
+    def _gravar(conn):
+        # 🚨 LISTA VAZIA É SELEÇÃO VAZIA, não "a carteira inteira". O
+        # `if apenas else None` que eu havia escrito aqui fazia `cnpjs: []`
+        # fechar TODOS os clientes -- quem desmarcasse tudo e clicasse em fechar
+        # fecharia o mês inteiro, calado. Quem pegou foi o teste.
+        doc = _montar_lote(conn, comp, venc,
+                           apenas=None if apenas is None
+                           else [str(c).strip() for c in apenas])
+        if not doc["lancamentos"]:
+            # 🚨 FECHAR LOTE VAZIO É RECUSADO, e a frase diz a causa provável.
+            # Em 03/11 `car_evento` tem 0 linhas: sem adotar as propostas, o
+            # fixo inteiro é R$ 0 e o lote traz só as 3 OS. Gravar um
+            # fechamento vazio deixaria a assinatura de um mês que ninguém
+            # gerou, e no mês seguinte ela pareceria prova.
+            raise HTTPException(
+                400, "o lote não tem nenhuma linha para fechar. Se o fixo está "
+                     "vazio, é porque nenhum preço foi lançado na CAR ainda — "
+                     "adote as propostas da semeadura antes de fechar")
+        # A assinatura é das LINHAS, normalizadas: a hora e o cache mudam a cada
+        # chamada e fariam todo fechamento parecer diferente do anterior.
+        corpo_assinado = sorted(
+            (l["cnpj"], l["tipo"], l.get("numero_contrato"), l.get("numero_os"),
+             l["valor"]) for l in doc["lancamentos"])
+        assinatura = hashlib.sha256(
+            json.dumps(corpo_assinado, ensure_ascii=False,
+                       sort_keys=True).encode("utf-8")).hexdigest()
+        t = doc["totais"]
+        cur = conn.execute(
+            """INSERT INTO car_leitura (competencia, cnpj, gerada_em, por,
+                                        clientes, placas, sem_valor, total,
+                                        assinatura, escopo, vencimento,
+                                        lancamentos)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (comp, None, _agora(), por, t["a_gerar"],
+             doc["prefatura_totais"]["placas"],
+             doc["prefatura_totais"]["sem_valor"], t["total"], assinatura,
+             "lote", venc, t["lancamentos"]))
+        anteriores = [
+            {"id": i, "gerada_em": g, "por": p, "total": tt,
+             "lancamentos": n, "vencimento": vc, "assinatura": a,
+             "igual_a_este": a == assinatura}
+            for i, g, p, tt, n, vc, a in conn.execute(
+                """SELECT id, gerada_em, por, total, lancamentos, vencimento,
+                          assinatura
+                     FROM car_leitura
+                    WHERE competencia = ? AND escopo = 'lote' AND id <> ?
+                    ORDER BY id DESC LIMIT 10""", (comp, cur.lastrowid))]
+        return {"leitura_id": cur.lastrowid, "competencia": comp,
+                "vencimento": venc, "por": por, "assinatura": assinatura,
+                "totais": t, "fechamentos_anteriores": anteriores,
+                "limites": doc["limites"]}
+    return await _exec(_gravar)
+
+
+@router.get("/gerar/fechamentos")
+async def fechamentos(competencia: str | None = Query(None)):
+    """Os fechamentos de lote desta competência, do mais novo para o mais velho.
+
+    É o que permite a tela dizer *"este mês já foi fechado, por quem e quando"*
+    em vez de oferecer o botão como se fosse a primeira vez.
+    """
+    comp = _competencia(competencia)
+
+    def _ler(conn):
+        return {"competencia": comp, "fechamentos": [
+            {"id": i, "gerada_em": g, "por": p, "total": t,
+             "lancamentos": n, "clientes": cl, "vencimento": v,
+             "assinatura": a}
+            for i, g, p, t, n, cl, v, a in conn.execute(
+                """SELECT id, gerada_em, por, total, lancamentos, clientes,
+                          vencimento, assinatura
+                     FROM car_leitura
+                    WHERE competencia = ? AND escopo = 'lote'
+                    ORDER BY id DESC LIMIT 20""", (comp,))]}
+    return await _exec(_ler)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

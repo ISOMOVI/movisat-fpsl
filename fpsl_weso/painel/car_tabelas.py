@@ -159,6 +159,20 @@ def criar(conn) -> None:
             placas        INTEGER,
             sem_valor     INTEGER,
             total         TEXT,
+            -- 🆕 03/11, bloco G4. `prefatura` = a leitura analítica do mês (o
+            -- que existia). `lote` = o fechamento do lote operacional, que é
+            -- outro fato: ele diz "estas linhas foram geradas para lançamento".
+            -- 🚨 Sem esta coluna os dois caberiam na mesma linha e o histórico
+            -- da competência misturaria "eu olhei" com "eu gerei" -- e é
+            -- exatamente a diferença que a pergunta "por que o número mudou?"
+            -- precisa separar. NULO = linha anterior a 03/11, que é prefatura.
+            escopo        TEXT,
+            -- Só no escopo `lote`: o vencimento que o operador escolheu. 🔴 Não
+            -- existe coluna de "dia de vencimento" em contrato nenhum desta
+            -- base (medido em 30/10), então ele é ESCOLHA do fechamento, e
+            -- fica gravado com a linha em vez de ser derivado de nada.
+            vencimento    TEXT,
+            lancamentos   INTEGER,
             -- sha256 do resultado normalizado. Serve para uma pergunta só, e é
             -- uma pergunta que vai aparecer: "reabri outubro e o número mudou,
             -- por quê?". Com a assinatura, a mudança é FATO; sem ela, é
@@ -259,4 +273,17 @@ def migrar(conn) -> list:
             "SELECT name FROM sqlite_master WHERE type='table'")}             and "venc_ano_mes" not in _colunas(conn, "car_faturado"):
         conn.execute("ALTER TABLE car_faturado ADD COLUMN venc_ano_mes TEXT")
         feitas.append("car_faturado.venc_ano_mes")
+    # 03/11, bloco G4: o fechamento do lote operacional precisa de escopo, do
+    # vencimento escolhido e de quantas linhas gerou. A base de producao ja tem
+    # a `car_leitura` criada desde 28/10, entao o `CREATE` sozinho nao bastaria.
+    tabelas = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if "car_leitura" in tabelas:
+        tem = _colunas(conn, "car_leitura")
+        for coluna, tipo in (("escopo", "TEXT"), ("vencimento", "TEXT"),
+                             ("lancamentos", "INTEGER")):
+            if coluna not in tem:
+                conn.execute(
+                    f"ALTER TABLE car_leitura ADD COLUMN {coluna} {tipo}")
+                feitas.append(f"car_leitura.{coluna}")
     return feitas

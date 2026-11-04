@@ -127,7 +127,12 @@
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <button class="btn btn-linha" onclick="exportarGrid()"><i class="bi bi-filetype-csv"></i> Exportar contratos</button>
         <button class="btn btn-linha" onclick="exportarPrefatura()"><i class="bi bi-filetype-csv"></i> Exportar pré-fatura</button>
-        <button class="btn btn-primary" onclick="abrirLote()"><i class="bi bi-tags"></i> Lançar preço em lote</button>
+        <button class="btn btn-linha" onclick="abrirLote()"><i class="bi bi-tags"></i> Lançar preço em lote</button>
+        <!-- 🆕 03/11, bloco G1: a tela OPERACIONAL, onde o contas a receber é
+             de fato gerado. Mesma permissão e mesma posição no menu -- é a
+             segunda página desta tela, não uma aba nova. -->
+        <a class="btn btn-primary" href="/painel/contas-receber/gerar">
+          <i class="bi bi-file-earmark-plus"></i> Gerar contas a receber</a>
       </div>
     </div>
 

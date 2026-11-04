@@ -70,8 +70,15 @@ async def main():
         # ficou vermelha de 06/10 a 13/10 (exit=1) sem ninguém olhar.
         # 11 desde 13/10: CTR_1.1 (Gestão de Contratos).
         # 12 desde 28/10: CAR_1.1 (Contas a Receber).
-        checar("owner enxerga as 12 telas do menu",
-               len(me.get("abas", [])) == 12, str(len(me.get("abas", []))))
+        # 🆕 13 DESDE 03/11: CAR_1.2 (Gerar Contas a Receber), a tela
+        # operacional. 🚨 ELA SUBIU EM 03/11 SEM ENTRADA NO MENU e ficou
+        # invisível -- ele foi procurar o que havia aprovado, não achou, e
+        # perguntou se estava no ar. Estava; não havia porta. ⚠️ E repare que
+        # ESTE número subiu e o de abas concedíveis **não**: a CAR_1.2 reusa a
+        # permissão `contas_receber`, e as duas contagens medem coisas
+        # diferentes -- confundi-las é o X0 de 28/10.
+        checar("owner enxerga as 13 telas do menu",
+               len(me.get("abas", [])) == 13, str(len(me.get("abas", []))))
         checar("e Operações é uma delas",
                any(a.get("id") == "operacoes" for a in me.get("abas", [])),
                str([a.get("id") for a in me.get("abas", [])]))

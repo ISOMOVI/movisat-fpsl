@@ -83,7 +83,12 @@ async def main():
     # e ninguém olhou. A trava funcionou; quem falhou foi a leitura dela.
     # 13 desde 13/10: `contratos.html` (CTR_1.1, Gestão de Contratos).
     # 14 desde 28/10: `contas_receber.html` (CAR_1.1, Contas a Receber).
-    checar("achou as 14 paginas do painel", paginas == 14, f"achou {paginas}")
+    # 🆕 15 desde 03/11: `contas_receber_gerar.html`, a tela OPERACIONAL da
+    # CAR_1.1 (bloco G1). ⚠️ É PÁGINA NOVA SEM TELA NOVA -- a segunda página da
+    # mesma `CAR_1.1`, com a mesma permissão e sem entrada nova em `telas.py`.
+    # Por isso este número subiu e a trava de telas do `teste_perfis` NÃO: são
+    # duas contagens diferentes, e confundi-las é o X0 de 28/10 de volta.
+    checar("achou as 15 paginas do painel", paginas == 15, f"achou {paginas}")
 
     print("\n[3] o servidor devolve o req id")
     u = await storage.buscar_usuario_painel("admin")

@@ -340,3 +340,14 @@ async def painel_contratos_page():
 @app.get("/painel/contas-receber")
 async def painel_contas_receber_page():
     return FileResponse("frontend/contas_receber.html")
+
+
+# -- Contas a Receber, tela OPERACIONAL (CAR_1.1, bloco G1, 03/11) ------------
+# 🚨 SEGUNDA PAGINA DA MESMA TELA, nao tela nova: mesma permissao
+# (`contas_receber`), mesmo lugar no menu, nenhuma entrada nova em `telas.py`.
+# O motivo e decisao dele em aberto -- *"a posicao no menu"* esta na lista do
+# que espera decisao desde 28/10 --, e as duas pessoas que vao usar isto chegam
+# por um botao na propria carteira. A pagina da carteira continua a porta.
+@app.get("/painel/contas-receber/gerar")
+async def painel_contas_receber_gerar_page():
+    return FileResponse("frontend/contas_receber_gerar.html")
