@@ -89,7 +89,10 @@ def banco_de_mentira():
             os_id INTEGER, tecnicos_json TEXT,
             -- 🔵 A prioridade entrou no cache em 29/10: o card fechado precisa
             -- dela, e a varredura ja lia a OS inteira.
-            prioridade INTEGER)""")
+            prioridade INTEGER,
+            -- 🔵 O termo entrou em 05/11 (Area E). 🚨 NAO e campo do Harmonit:
+            -- e extraido do texto da `descricao`, que nao esta neste cache.
+            termo TEXT)""")
     conn.execute("CREATE TABLE tipos_os (tipo_id INTEGER PRIMARY KEY, nome TEXT)")
     conn.executemany("INSERT INTO tipos_os VALUES (?, ?)",
                      [(1783, "Solicitação de Cliente"), (76, "Instalação rastreador")])
@@ -98,12 +101,16 @@ def banco_de_mentira():
             """INSERT INTO os_historico
                    (numero_os, situacao_id, status_str, cliente_id,
                     data_previsao, excluida, tipo, os_id, visto_em,
-                    atualizado_em, oficinas_json, tecnicos_json, prioridade)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    atualizado_em, oficinas_json, tecnicos_json, prioridade,
+                    termo)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (numero, situacao, status, cliente, previsao, excluida, 1783,
              900000 + numero, "2026-10-29T18:00:00Z", "2026-10-29T18:00:00Z",
              '[{"veiculoPlaca": "ABC1D23", "veiculoNome": "zz"}]',
-             '[{"usuarioId": 14316, "nome": "zz Tecnico"}]', 382))
+             '[{"usuarioId": 14316, "nome": "zz Tecnico"}]', 382,
+             # ⚠️ A 90004 fica SEM termo de proposito: OS sem termo e o caso
+             # normal (27 de 200 medidas) e tem de atravessar a rota como nulo.
+             None if numero == 90004 else "88%02d" % (numero - 90000)))
     conn.commit()
     conn.close()
     yield
@@ -196,6 +203,23 @@ class TestPorSituacao:
         r = cliente.get("/api/os/por-situacao?desde=2026-10-24", headers=CAB)
         um = next(o for o in r.json()["os"] if o["numero_os"] == 90001)
         assert um["tem_coluna"] is True
+
+    def test_o_termo_vem_na_rota(self, cliente):
+        """🔵 Área E (05/11): o card escreve *"OS 90001 · TERMO 8801"*, e a
+        busca do painel casa por ele. Sem este campo na rota, achar uma OS
+        pelo termo custaria **uma leitura do ERP por card**."""
+        r = cliente.get("/api/os/por-situacao?desde=2026-10-24", headers=CAB)
+        um = next(o for o in r.json()["os"] if o["numero_os"] == 90001)
+        assert um["termo"] == "8801"
+
+    def test_os_sem_termo_devolve_nulo_e_nao_some(self, cliente):
+        """⚠️ **OS SEM TERMO É NORMAL** — 27 de 200 medidas em 05/11 (venda,
+        cartão RFID, manutenção). Ela continua no quadro, com `termo` nulo;
+        quem desenha escreve só o número da OS."""
+        r = cliente.get("/api/os/por-situacao?desde=2026-10-24&so_abertas=0",
+                        headers=CAB)
+        sem = next(o for o in r.json()["os"] if o["numero_os"] == 90004)
+        assert sem["termo"] is None
 
     def test_placa_e_tecnico_vem_partidos(self, cliente):
         r = cliente.get("/api/os/por-situacao?desde=2026-10-24", headers=CAB)

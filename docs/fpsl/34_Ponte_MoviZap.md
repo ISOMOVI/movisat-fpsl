@@ -223,6 +223,50 @@ causa de uma escrita, isso grita.
 
 ---
 
+## 5-B. 🔵 O TERMO da OS (Área E, 05/11)
+
+🚨 **O TERMO NÃO É CAMPO DA OS NO HARMONIT.** Ele só existe **dentro do texto**
+da `descricao`, e `descricao` **não está no cache** `os_historico` — vem ao
+vivo, uma chamada por OS. Procurar uma OS pelo termo lendo ficha a ficha
+custaria **uma leitura do ERP por card do painel**.
+
+**O caminho:** coluna `os_historico.termo` (TEXT), preenchida pela varredura
+que **já lê a OS inteira** — ela tinha a `descricao` na mão e não gravava nada
+dela. A extração vive em `fpsl_weso/termo_da_os.py`, com a medição que a
+desenhou. A rota `GET /api/os/por-situacao` devolve `termo` em cada OS.
+
+📏 **A medição (200 OS lidas ao vivo em 05/11):** 173 com termo · 27 sem ·
+**0** descrições com mais de um termo distinto · **0** com a palavra `TERMO`
+sem número ao lado. Os formatos reais:
+
+```
+FINANCEIRO — TERMO 8937 | placas: DMD 0324, ...
+Retirada: BUS 0168 | ... | TERMO 8937 | O.S: 17081
+SUBSTITUIÇÃO INSTALAÇÃO: A_DEFINIR_2_8927 | TERMO:8927 | ... | TERMO 8927
+RESSARCIMENTO: TERMO 8924 | placas: TKZ 6A06 | O.S: 17025
+```
+
+⚠️ **OS SEM TERMO É NORMAL, não é falha** — venda, compra de cartão RFID,
+entrega de chaveiro e manutenção não nascem de termo. O card do MoviZap escreve
+só o número da OS; não existe *"sem termo"* escrito em tela.
+
+🚨 **Dois termos distintos na mesma descrição devolvem `None`**, de propósito:
+o caso não existe em nenhuma das 200 medidas, então é desconhecido — e escolher
+o primeiro calado poria no card um termo que pode ser o errado.
+
+🚨 **O NÚMERO É EXIGIDO** (`\d{1,10}`, não `\S+`): com `\S+`, `TERMO DE ADESÃO`
+viraria o termo chamado *DE*.
+
+**A carga inicial** é à mão, uma vez: `scripts/termo_das_os.py` — por padrão só
+relata, `--um` faz uma, `--aplicar` o lote; **só toca linha com `termo IS
+NULL`**, então a segunda rodada não muda nada. Medido em 05/11: **493 das 603**
+OS do cache ficaram com termo, **109 não têm termo nenhum** e **1** (a 16576) o
+ERP já não encontra — está no cache como não excluída e o `resync` não a
+alcança, porque a janela dele é recente. ⚠️ Isso é achado de dado, **não** foi
+tocado.
+
+---
+
 ## 6. As travas
 
 | arquivo | o que mede | quantas |
@@ -231,6 +275,7 @@ causa de uma escrita, isso grita.
 | `tests/teste_endereco_ponte.py` | a escrita de endereço e o 2º vínculo | 20 |
 | `tests/teste_criar_os_ponte.py` | o corpo da criação e o das OS por situação | 35 |
 | `tests/teste_ponte_rotas_http.py` | **as rotas, por HTTP** — a chave, os códigos, a validação | **25** |
+| `tests/teste_termo_da_os.py` | a extração do termo e a coluna no cache | **17** |
 
 ⚠️ **O projeto do FPSL não coleta teste por padrão** — rodar pelo nome:
 

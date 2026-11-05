@@ -1246,7 +1246,7 @@ async def os_por_situacao(
         "SELECT numero_os, os_id, situacao_id, tipo, problema, produto_id,",
         "       cliente_id, data_previsao, status, status_str, n_oficinas,",
         "       oficinas_json, tecnicos_json, visto_em, atualizado_em,",
-        "       prioridade",
+        "       prioridade, termo",
         "  FROM os_historico",
         " WHERE coalesce(excluida, 0) = 0",
         f"   AND {_PREVISAO_ISO} >= ?",
@@ -1270,7 +1270,7 @@ async def os_por_situacao(
     saida = []
     for (numero, os_id, situacao, tipo, problema, produto, cliente, previsao,
          status, status_str, n_oficinas, oficinas, tecnicos, visto,
-         atualizado, prioridade) in linhas:
+         atualizado, prioridade, termo) in linhas:
         saida.append({
             "numero_os": numero,
             "os_id": os_id,
@@ -1305,6 +1305,15 @@ async def os_por_situacao(
             # de 5 min atrás" em vez de deixar o operador supor que é agora.
             "visto_em": visto,
             "atualizado_em": atualizado,
+            # 🔵 Area E (05/11): o TERMO, para o card escrever "OS 17081 ·
+            # TERMO 8937" e para a busca do painel casar por ele.
+            # ⚠️ NULO E NORMAL -- 27 de 200 OS medidas nao nascem de termo
+            # (venda, cartao RFID, manutencao). Quem mostra escreve so o numero
+            # da OS; nao existe "sem termo" escrito no card.
+            # ⚠️ E nulo tambem quando a varredura ainda nao releu a OS desde
+            # 05/11. Os dois casos sao indistinguiveis aqui, de proposito: o
+            # card nao tem o que dizer de diferente em nenhum deles.
+            "termo": termo,
         })
 
     return {

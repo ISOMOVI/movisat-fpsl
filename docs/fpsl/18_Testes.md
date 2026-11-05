@@ -342,6 +342,30 @@ documentado acima. ⚠️ Quem contar arquivos com `pytest` **não conta esse** 
 o laço do `for` acima, que é o critério oficial, conta. Os dois da ponte rodam
 nos dois modos.
 
+🆕 **05/11 — o termo da OS (Área E do painel da Operação do MoviZap):**
+
+| arquivo | o que mede |
+|---|---|
+| `tests/teste_termo_da_os.py` | a extração do termo do texto da `descricao` (os 4 formatos reais, os 3 sem termo, os 2 termos distintos) e a coluna `os_historico.termo`, com a proteção de não sobrescrever — **17** |
+
+🚨 **ESTE ARQUIVO RODA NOS DOIS MODOS, e isso é uma correção do INSTRUMENTO,
+não um enfeite.** O critério de verde abaixo roda cada arquivo **como script**.
+Arquivo só-de-pytest executado assim **não roda nada e sai com 0** — o laço o
+conta como verde sem ter verificado uma linha. Medido em 05/11:
+
+| arquivo | `python <arquivo>` roda? | o laço conta como |
+|---|---|---|
+| `tests/teste_ponte_rotas_http.py` | **não** (0 testes, exit 0) | ✅ verde |
+| `tests/teste_criar_os_ponte.py` | **não** (0 testes, exit 0) | ✅ verde |
+| `tests/teste_termo_da_os.py` | **sim** (tem `__main__`) | ✅ verde de verdade |
+
+⚠️ Os dois primeiros estão assim **desde 29/10**, e esta doc afirmava que
+*"os dois da ponte rodam nos dois modos"* — **a afirmação era falsa**, e é
+`M12`: a doc dizia uma coisa e o comando fazia outra. São **60 verificações**
+no placar que ninguém executa. 🔴 **Consertá-los é decisão dele**, porque muda
+o placar do projeto; o conserto é duas linhas por arquivo
+(`if __name__ == "__main__": raise SystemExit(pytest.main([__file__, "-q"]))`).
+
 🚨 **A PARTIR DE 28/10 O PLACAR SE MEDE POR ARQUIVO, NÃO POR VERIFICAÇÃO**, e o
 critério de verde do projeto é *"os mesmos vermelhos de antes, e nenhum novo"*. ⚠️ **Em 30/10 passou de 2 para 1**: o `teste_higiene_placas_weso` voltou ao verde sozinho (era falha de DADO, placa com espaço na WESO), e sobrou só o `teste_extrair_termo`:
 

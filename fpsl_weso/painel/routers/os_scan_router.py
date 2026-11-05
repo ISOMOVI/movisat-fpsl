@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from ..auth import requer_aba
 from ...harmonit_client import harmonit_get
 from ... import rotinas, storage
+from ...termo_da_os import termo_da_descricao
 from ...services.conferencia_oficina import conferir_do_banco
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,13 @@ async def varrer_os(desde: int | None = None, limite_buracos: int = LIMITE_BURAC
                 # fechado precisa dela, e a varredura ja lia a OS
                 # inteira -- tinha o dado na mao e nao o gravava.
                 prioridade=d.get("prioridade"),
+                # 🔵 Area E (05/11): o TERMO entra no cache pela mesma porta e
+                # pela mesma razao -- a varredura ja le a OS inteira e tinha a
+                # `descricao` na mao sem gravar nada dela. 🚨 E a `descricao`
+                # NAO entra no cache: so o termo, que e o que o card mostra e a
+                # busca compara. Guardar o texto inteiro seria copiar um campo
+                # livre de 600 OS para nao usar.
+                termo=termo_da_descricao(d.get("descricao")),
             )
             if nova:
                 novas += 1
@@ -136,6 +144,13 @@ async def resync_os(janela: int = RESYNC_JANELA) -> dict:
                 # fechado precisa dela, e a varredura ja lia a OS
                 # inteira -- tinha o dado na mao e nao o gravava.
                 prioridade=d.get("prioridade"),
+                # 🔵 Area E (05/11): o TERMO entra no cache pela mesma porta e
+                # pela mesma razao -- a varredura ja le a OS inteira e tinha a
+                # `descricao` na mao sem gravar nada dela. 🚨 E a `descricao`
+                # NAO entra no cache: so o termo, que e o que o card mostra e a
+                # busca compara. Guardar o texto inteiro seria copiar um campo
+                # livre de 600 OS para nao usar.
+                termo=termo_da_descricao(d.get("descricao")),
             )
             reencontradas += 1
         return {"janela": len(numeros), "reencontradas": reencontradas, "excluidas": excluidas, "erros": erros}
