@@ -1338,6 +1338,30 @@ async def os_por_situacao(
 # cadastro, não em operação. Se divergirem, quem manda é o MoviZap — e o
 # sintoma será `tem_coluna` errado, não card perdido: quem monta o quadro
 # reconfere pela tupla dele.
+def _nome_da_situacao(situacao_id) -> str:
+    """O nome da etapa entre aspas, para o aviso de conflito.
+
+    🔵 Pedido dele (11/11): *"ajustar para aparecer o nome das etapas entre
+    \" \" ao invés do numero, somente nesse aviso"*.
+
+    🚨 O NOME SAI DO `_SITUACOES_DO_PAINEL` deste arquivo, que ja existe. Uma
+    segunda lista de nomes divergiria na primeira renomeacao -- e as etapas JA
+    foram renomeadas uma vez (30/10: a 15694 era "Servico Realizado" e virou
+    "Atendimento finalizado").
+
+    ⚠️ SITUACAO DESCONHECIDA CAI NO NUMERO, nunca num rotulo inventado: este
+    aviso dispara justamente quando a OS esta onde a tela nao esperava, e isso
+    inclui situacao fora das 17. "situacao 99999" diz a verdade; um nome
+    inventado nao.
+    ⚠️ E NULO E LEGITIMO: a tela manda `situacao_esperada` nulo quando o card
+    nunca teve situacao lida.
+    """
+    if situacao_id is None:
+        return "nenhuma situacao lida"
+    nome = dict(_SITUACOES_DO_PAINEL).get(situacao_id)
+    return f'"{nome}"' if nome else f"situacao {situacao_id}"
+
+
 _SITUACOES_DO_PAINEL = (
     (38, "Novo Solicitação 1ª"),
     (16487, "Pendente de ação da Movisat"),
@@ -1483,10 +1507,11 @@ async def gravar_situacao_da_os(entrada: SituacaoDaOS):
         return {
             "ok": False, "gravou": False, "numero_os": entrada.numero_os,
             "de": de, "para": entrada.situacao_id,
-            "motivo": (f"a OS {entrada.numero_os} esta na situacao {de} no "
-                       f"Harmonit, e a tela carregou "
-                       f"{entrada.situacao_esperada}. Alguem mudou no meio -- "
-                       f"recarregue o painel antes de mover"),
+            "motivo": (f"a OS {entrada.numero_os} esta em "
+                       f"{_nome_da_situacao(de)} no Harmonit, e a tela "
+                       f"carregou {_nome_da_situacao(entrada.situacao_esperada)}"
+                       f". Alguem mudou no meio -- recarregue o painel antes "
+                       f"de mover"),
             "conflito": True,
         }
 

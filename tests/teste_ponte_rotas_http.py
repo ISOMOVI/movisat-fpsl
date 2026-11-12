@@ -312,3 +312,50 @@ class TestCriar:
         assert r.status_code == 200, r.text
         assert r.json()["criada"] is None
         assert "nascem duas" in r.json()["motivo"]
+
+
+# ============================================================================
+# O AVISO DE CONFLITO DIZ O NOME DA ETAPA — 11/11
+# ============================================================================
+class TestOAvisoDeConflitoDizONome:
+    """🔵 Ele: *"O aviso de, po exemplo: 'a OS 17118 esta na situação 890 no
+    harmonit, e a tela carregou 38...' ajustar para aparecer o nome das etapas
+    entre \" \" ao invés do numero, somente nesse aviso."*
+
+    🚨 ESTE AVISO É LIDO POR QUEM OPERA, e era o único da ponte que mostrava
+    número de situação a quem move card. "890" não diz nada para quem está
+    olhando colunas com nome.
+    """
+
+    def test_o_nome_entre_aspas_no_lugar_do_numero(self):
+        assert os_ponte._nome_da_situacao(890) == '"Agendar serviço"'
+        assert os_ponte._nome_da_situacao(38) == '"Novo Solicitação 1ª"'
+
+    def test_situacao_DESCONHECIDA_cai_no_numero(self):
+        """⚠️ Nunca um rótulo inventado: este aviso dispara justamente quando a
+        OS está onde a tela não esperava, e isso inclui situação fora das 17.
+        "situacao 99999" diz a verdade; um nome inventado não."""
+        assert os_ponte._nome_da_situacao(99999) == "situacao 99999"
+
+    def test_nulo_e_legitimo_e_tem_frase_propria(self):
+        """A tela manda `situacao_esperada` nulo quando o card nunca teve
+        situação lida."""
+        assert os_ponte._nome_da_situacao(None) == "nenhuma situacao lida"
+
+    def test_o_nome_sai_do_CATALOGO_do_arquivo(self):
+        """🚨 Uma segunda lista de nomes divergiria na primeira renomeação -- e
+        as etapas JÁ foram renomeadas uma vez (30/10: a 15694 era "Serviço
+        Realizado" e virou "Atendimento finalizado")."""
+        for sid, nome in os_ponte._SITUACOES_DO_PAINEL:
+            assert os_ponte._nome_da_situacao(sid) == f'"{nome}"', sid
+
+    def test_o_aviso_de_conflito_NAO_tem_mais_o_numero_cru(self):
+        """A prova na frase montada, e não só no auxiliar."""
+        import inspect
+        fonte = inspect.getsource(os_ponte.gravar_situacao
+                                  if hasattr(os_ponte, "gravar_situacao")
+                                  else os_ponte)
+        trecho = fonte[fonte.index("A TRAVA DE CONCORR"):]
+        trecho = trecho[:trecho.index("conflito")]
+        assert "_nome_da_situacao(de)" in trecho
+        assert "{de} no" not in trecho
