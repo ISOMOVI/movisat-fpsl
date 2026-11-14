@@ -366,6 +366,28 @@ async def resolver_vinculos(itens: list[ItemContrato], perfil_chave: str | None 
                 and tipo.startswith("AQUISI")):
             resolvido.update({"valor_unitario": 0.0, "cobrar": False,
                               "aquisicao_do_cliente": True})
+
+        # 🔵 13/11, DECISAO DELE: *"os termos de rescisao, a informacao de
+        # comodato so serve para informar que aquele item sera devolvido. O
+        # flag do Harmonit em 'comodato' e para emitir NF. E nao e o caso deste
+        # termo, ja que e um distrato ... So nao marcar o 'comodato' no item."*
+        #
+        # 🚨 E NAO BASTA DESMARCAR A FLAG. O corte entre operacional e
+        # financeira e feito POR ELA (`separar_itens`), e `itens_de_cobranca`
+        # RECALCULA o `cobrar` a partir do valor -- desmarcar sozinho jogaria o
+        # rastreador de R$ 1.100 no lado financeiro COBRADO. Seria o mesmo
+        # defeito do LEITOR I-BUTTON, corrigido em 24/09, de volta e maior.
+        # Por isso o item vira `sem_flag_retirada`: continua na OPERACIONAL,
+        # sem comodato e sem cobrar, COM O VALOR preservado -- o tecnico tem de
+        # saber o que esta retirando.
+        #
+        # ⚠️ VALE SO NA RESCISAO. Os outros dois perfis de retirada
+        # (transferencia antigo titular e termo novo) ja saiam sem comodato por
+        # caminho proprio, e o `financeira_embutida` da substituicao nao passa
+        # por este corte.
+        if perfil_chave == "rescisao" and resolvido.get("comodato"):
+            resolvido.update({"comodato": False, "cobrar": False,
+                              "sem_flag_retirada": True})
         resolvidos.append(resolvido)
     return resolvidos, pendentes, descartados, ocultados
 
@@ -696,7 +718,11 @@ def itens_de_cobranca(resolvidos: list[dict]) -> list[dict]:
     """
     saida = []
     for item in resolvidos:
-        if item.get("comodato"):
+        # 🔵 13/11: `sem_flag_retirada` e o equipamento que volta na rescisao.
+        # Ele nao tem mais a flag de comodato (distrato nao emite NF), mas
+        # continua sendo da OPERACIONAL -- se caisse aqui, o `cobrar` abaixo o
+        # recalcularia pelo valor e a casa cobraria o rastreador devolvido.
+        if item.get("comodato") or item.get("sem_flag_retirada"):
             continue
         copia = dict(item)
         copia["cobrar"] = float(copia.get("valor_unitario") or 0) > 0
@@ -739,7 +765,9 @@ def separar_itens(perfil: dict, resolvidos: list[dict]):
     if perfil.get("sem_flags"):
         return [{**i, "cobrar": False, "comodato": False}
                 for i in resolvidos], []
-    return ([i for i in resolvidos if i.get("comodato") or i.get("nas_duas")],
+    return ([i for i in resolvidos
+             if i.get("comodato") or i.get("nas_duas")
+             or i.get("sem_flag_retirada")],
             itens_de_cobranca(resolvidos))
 
 

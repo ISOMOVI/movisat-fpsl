@@ -105,13 +105,31 @@ async def teste_contrato_continua_cobrando():
            _leitor(sem_perfil)["cobrar"] is True)
 
 
-async def teste_comodato_intocado():
-    print("\n4. Comodato na retirada não perde o valor patrimonial")
+async def teste_rescisao_sem_comodato():
+    print("\n4. Rescisao: NENHUM item com comodato, e o valor fica de pe")
     resolvidos, *_ = await oos.resolver_vinculos(TERMO_8893, perfil_chave="rescisao")
     rastreador = next(i for i in resolvidos if i["descricao"] == "RASTREADOR")
-    checar("rastreador segue comodato com R$ 999,90",
-           rastreador["comodato"] is True and rastreador["valor_unitario"] == 999.9,
-           str(rastreador))
+    # 🔵 13/11, DECISAO DELE: *"o flag do Harmonit em 'comodato' e para emitir
+    # NF. E nao e o caso deste termo, ja que e um distrato ... So nao marcar o
+    # 'comodato' no item."*
+    # 🚨 ESTE TESTE TROCOU DE SINAL COM AUTORIZACAO: ate 24/09 ele guardava o
+    # oposto ("rastreador segue comodato"). O que continua valendo e o VALOR.
+    checar("rastreador SEM comodato na rescisao",
+           rastreador["comodato"] is False, str(rastreador))
+    checar("e sem cobrar -- distrato nao cobra o que volta",
+           rastreador["cobrar"] is False, str(rastreador))
+    checar("mas o valor patrimonial de R$ 999,90 fica",
+           rastreador["valor_unitario"] == 999.9, str(rastreador))
+
+    # 🚨 O ITEM NAO PODE CAIR NA FINANCEIRA. O corte era feito pela flag de
+    # comodato, e `itens_de_cobranca` RECALCULA o `cobrar` pelo valor: sem esta
+    # trava, tirar a flag faria a casa cobrar o rastreador devolvido -- o mesmo
+    # defeito do LEITOR I-BUTTON, de volta e maior.
+    operacional, financeiro = oos.separar_itens({}, resolvidos)
+    checar("o rastreador fica na OPERACIONAL",
+           any(i["descricao"] == "RASTREADOR" for i in operacional))
+    checar("e NAO aparece na financeira",
+           not any(i["descricao"] == "RASTREADOR" for i in financeiro))
 
 
 async def teste_perfis():
@@ -129,7 +147,7 @@ async def teste_perfis():
 async def main():
     instalar_dubles()
     for t in (teste_termo_8893, teste_contrato_continua_cobrando,
-              teste_comodato_intocado, teste_perfis):
+              teste_rescisao_sem_comodato, teste_perfis):
         await t()
     print(f"\n{'=' * 62}")
     print(f"{ok} verificações OK, {len(falhas)} falhas")

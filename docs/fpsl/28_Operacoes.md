@@ -2110,3 +2110,41 @@ Partir `os_router.py` (fica a metade do Vínculos); apagar `gerar_os.html`,
 `cadastro_placas_log`; e editar 4 testes da Operação + o `teste_higiene_placas_weso`,
 `teste_aviso_weso`, `teste_tela_gerar_os`, `teste_cadastro_log`, `teste_cache_frio`.
 Mapa linha a linha levantado em 02/10.
+
+
+---
+
+## 🆕 13/11 — RESCISÃO NÃO MARCA COMODATO (decisão dele)
+
+🔵 Dele, 13/11: *"os termos de rescisão, a informação de comodato só serve para
+informar que aquele item será devolvido. O flag do Harmonit em 'comodato' é
+para emitir NF. E não é o caso deste termo, já que é um distrato. (...) É
+somente para quando for escrever a OS, para a rescisão. Não marcar o
+'comodato' no item. Só."*
+
+**O que mudou, em uma linha:** no perfil `rescisao`, todo item que vinha
+`COMODATO` no termo sai com a flag **desmarcada**.
+
+🚨 **E NÃO FOI SÓ DESMARCAR A FLAG — era aí que estava o risco.** O corte entre
+OS operacional e financeira é feito **por essa flag** (`separar_itens`), e
+`itens_de_cobranca` **recalcula o `cobrar` a partir do valor**. Desmarcar
+sozinho jogaria o rastreador de R$ 1.100 no lado financeiro **cobrado** — o
+mesmo defeito do LEITOR I-BUTTON corrigido em 24/09, de volta e maior.
+
+**Como ficou:** o item recebe `sem_flag_retirada = True` e continua na **OS
+operacional**, com `comodato = False`, `cobrar = False` e **o valor patrimonial
+preservado** — o técnico tem de saber o que está retirando. `itens_de_cobranca`
+ignora esses itens, como já ignorava os de comodato.
+
+⚠️ **Vale só na rescisão.** Os outros dois perfis de `PERFIS_RETIRADA`
+(transferência antigo titular e termo novo) já saíam sem comodato por caminho
+próprio, e a `financeira_embutida` da substituição não passa por este corte.
+🔴 **A Substituição Retirada fica fora até ele dizer** — perguntado, ele tratou
+só da rescisão.
+
+**Provas (13/11):** `tests/teste_aquisicao_retirada.py` trocou de sinal (o
+antigo `teste_comodato_intocado` virou `teste_rescisao_sem_comodato`) e agora
+exige quatro coisas: sem comodato, sem cobrar, valor de pé, e o item **na
+operacional e não na financeira**. 20 verificações OK. Junto:
+`teste_operacoes_f4` (116), `teste_perfis` (29), `teste_regressao_extracao`
+(57), `teste_manutencao` (68) e `teste_upgrade_8820` (68), todos sem falha.
