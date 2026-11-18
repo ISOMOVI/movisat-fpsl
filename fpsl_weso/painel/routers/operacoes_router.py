@@ -51,6 +51,7 @@ from ...harmonit_client import harmonit_get, harmonit_post
 from ... import placas as regra_placa
 from .. import operacoes_equipamentos as eqp
 from .. import operacoes_os as oos
+from .. import operacoes_retirada as retirada
 from .. import operacoes_extracao as extracao
 from ... import storage
 
@@ -1088,7 +1089,14 @@ def _montar_tudo(body: "oos.MontarInput", pre: dict) -> list[dict]:
                            pre["ctx"]["seriais"], pre["ctx"]["recipientes"],
                            pre["ctx"]["dados"])
     _aplicar_cabecalho(operacoes, pre["perfil"], pre["cabecalho"], body)
-    return operacoes
+    # 🔵 17/11, DECISÃO DELE: *"nenhuma OS de retirada pode ter item de comodato
+    # flegado"*. A regra mora no `operacoes_retirada` porque a tela velha
+    # (`os_router`) tem a dela e precisa da MESMA -- *"1 regra só para as duas,
+    # evitar lixo"*.
+    # 🚨 DEPOIS DO CABEÇALHO, que é quem fecha o `tipo_id`, e DENTRO da
+    # montagem, que a prévia e a gravação dividem (o selo "comodato" aparece na
+    # prévia: regra só na gravação faria a tela mentir).
+    return retirada.aplicar(operacoes)
 
 
 async def _estado_das_placas(body: "oos.MontarInput", ctx: dict) -> list[dict]:

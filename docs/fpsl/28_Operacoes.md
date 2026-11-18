@@ -2148,3 +2148,122 @@ exige quatro coisas: sem comodato, sem cobrar, valor de pé, e o item **na
 operacional e não na financeira**. 20 verificações OK. Junto:
 `teste_operacoes_f4` (116), `teste_perfis` (29), `teste_regressao_extracao`
 (57), `teste_manutencao` (68) e `teste_upgrade_8820` (68), todos sem falha.
+
+---
+
+## 🆕 17/11 — NENHUMA OS DE RETIRADA SAI COM COMODATO (uma regra, dois caminhos)
+
+🔵 Dele, 17/11: *"nenhuma OS de retirada pode ter item de comodato flegado"* —
+e, delimitado por ele no mesmo dia, em três frases: *"somente na de retirada.
+Demais tipos não pode mexer"*, *"Sub retirada não é só retirada"*, *"somente
+rescisão"*. Sobre o desenho: *"1 regra só para as duas, evitar lixo"*. Sobre o
+passado: *"não devemos corrigir, apenas evitar que nasçam novamente"*.
+
+**Por que ainda havia o que fazer depois de 13/11.** A regra de 13/11 (seção
+acima) entrou no `resolver_vinculos`, que trata o item do **termo**. Mas o
+rastreador que vai para a OS não é o item do termo: `substituir_rastreador`
+troca ele pelo **equipamento que a WESO diz estar na placa**, e esse vem de
+`material_do_equipamento`, com `comodato = not sem_flags` — ou seja, `True` na
+rescisão. Medido em 17/11, com o de-para resolvido: a OS de rescisão saía com
+`RASTREADOR ST310U, comodato=True`. A suíte não via porque
+`teste_rescisao_sem_comodato` parava no `resolver_vinculos` e nunca passava pelo
+equipamento.
+
+🚨 **E A GERAÇÃO NASCEU DUAS VEZES.** A aba Operações
+(`routers/operacoes_router.py`) e a tela **Gerar OS** (`routers/os_router.py`,
+`POST /painel/api/gerar-os`, montada no `main.py`) têm **cada uma a sua cópia**
+de `resolver_vinculos`, `material_do_equipamento` e `substituir_rastreador`, e
+configs separados (`operacoes_config` e `templates_config`), os dois com um
+perfil `rescisao` de `tipo_id: 57`. A marca `sem_flag_retirada` existia em **um
+arquivo só**, o `operacoes_os.py`: na tela velha **nem o item do contrato**
+recebeu a regra de 13/11 — o `_resolver_vinculos` dela não recebe o perfil,
+então não tinha como aplicá-la. Medido: naquele caminho a rescisão saía com
+**três** itens flegados (CHIP DE DADOS, BLOQUEIO VEICULAR e o equipamento).
+
+**A regra, e ela é uma só:** `painel/operacoes_retirada.py`, com
+`TIPO_OS_RETIRADA = 57` e `aplicar(operacoes)`. Mora **fora dos dois caminhos**
+de propósito — copiá-la pela terceira vez seria repetir o erro que a escondeu.
+
+🚨 **A CHAVE É O TIPO DA OS, NÃO O PERFIL.** Os dois caminhos têm perfis de
+nomes próprios, mas a OS de retirada é o **tipo 57** nos dois, e os dois montam
+o mesmo dicionário `{"tipo_id": ..., "materiais": [...]}`. O tipo é a única
+pergunta que as duas sabem responder igual — e é a pergunta que a decisão dele
+faz. ⚠️ Na tela velha o operador pode trocar o Tipo pelo **nome**, então a
+regra é chamada **depois do cabeçalho**, quando o `tipo_id` já é o definitivo.
+
+| Onde | Linha | Por que ali |
+|---|---|---|
+| `operacoes_router._montar_tudo` | no `return` | é a montagem que *"a prévia e a gravação"* dividem, logo após `_aplicar_cabecalho` |
+| `os_router`, no `gerar-os` | após o laço que fecha `tipo_id` | antes da prévia, porque esta tela promete que *"o dry-run mostra o mesmo"* que o real |
+
+🚨 **VALE NA MONTAGEM, E ISSO É OBRIGATÓRIO.** A prévia mostra o selo
+`comodato` por material (`frontend/operacoes.html`). Regra aplicada só na
+gravação faria a tela afirmar um flag que o Harmonit não recebeu — tela que
+mente é defeito.
+
+⚠️ **O QUE A REGRA PODE FAZER, E SÓ:** apagar a flag de comodato de material de
+OS tipo 57. Não lê valor, não toca `cobrar`, não remove nem reordena item, não
+cria nem apaga OS. **A financeira da rescisão é tipo 2** (`TIPO_CONTRATO_ID`)
+nos dois caminhos, e por isso nunca passa por aqui — o corte
+operacional × financeira (`separar_itens`) já aconteceu antes do `montar`, então
+desmarcar o equipamento não reencaminha item nenhum (ao contrário de 13/11,
+onde a ordem era a inversa).
+
+**Fica de fora, por decisão dele:**
+1. **Substituição Retirada (tipo 73)** — *"Sub retirada não é só retirada"*: ali
+   o equipamento sai de um veículo e entra em outro, não é distrato.
+2. **Todos os outros tipos** — contrato (76), upgrade (77), manutenção (1783),
+   financeira (2) e a transferência para novo contrato.
+3. **As OS já geradas** — *"não devemos corrigir"*. O que já saiu flegado fica.
+
+⚠️ **A WESO NÃO MEXE NO FLAG, e isto foi varrido em 17/11:**
+`services/conferencia_oficina.py` não tem nenhum `post` (é leitura pura); a
+ponte do MoviZap grava a OS inteira mas mantém `materiais` **fora do corpo da
+escrita** (`_LISTAS_DA_OS`), com conferência que grita se uma lista encurtar; o
+`_escrever_serie_na_os` da rotina regrava o que acabou de ler; e o único
+`comodato: True` da rotina (`_anexar_equipamento`) só roda no caso
+`recipiente`, que é instalação com placa de teste e nunca uma rescisão.
+
+**Provas (17/11):** `tests/teste_retirada_sem_comodato.py`, **39 verificações
+OK**, e ele prende sete coisas: a trava do tipo nos dois configs (incluindo que
+nenhum `tipo_id_retirada` é 57, o que mantém o 73 fora); a montagem de produção
+do caminho novo com o **termo 8893 real**; o defeito guardado (sem a regra a
+montagem *ainda* flega — teste que não reprova no código de antes não prova
+nada); o caminho velho, com o item do contrato; o que a regra não faz; os cinco
+tipos que saem idênticos; e a **ordem da chamada no próprio fonte**, mais a
+ausência do 57 escrito nos routers — a trava que impede o gêmeo de nascer de
+novo. ⚠️ A primeira versão dessa trava olhava também `"comodato": False` e
+reprovava: o `os_router` tem **4 ocorrências legítimas e antigas** dele (o
+`_material_fixo` e os ramos de transferência, que limpam a flag por caminho
+próprio desde 29/07). Era a trava errada, não o código.
+
+**Regressão, tudo sem falha:** `teste_aquisicao_retirada` (20),
+`teste_operacoes_f4` (116), `teste_perfis` (29), `teste_regressao_extracao`
+(57), `teste_manutencao` (68), `teste_upgrade_8820` (68),
+`teste_central_nas_duas` (65). Mais a cadeia de import do `main` (36 rotas) —
+`py_compile` não pega import faltando.
+
+✅ **NO AR em 17/11, 09:33**, por autorização dele (*"suba só a da rescisão"*).
+O reinício é `systemctl --user restart fpsl-weso` — **unidade de USUÁRIO, não
+precisa de `vps-root`**. PID 2285099 → 3852223, arranque limpo no journal e
+`/painel/` respondendo.
+
+⚠️ **O `uvicorn` roda sem `--reload`:** código no disco não vale nada até o
+reinício, e foi por isso que a correção ficou provada mas inerte entre 09:27 e
+09:33.
+
+🔵 **Como conferir em produção:** a regra registra
+`retirada: OS tipo 57 saiu SEM comodato em <itens>` no journal
+(`journalctl --user -u fpsl-weso`) a cada rescisão gerada — é a prova de que ela
+pegou, sem precisar abrir a OS no Harmonit.
+
+⚠️ **A financeira nunca flegou, e isto foi MEDIDO em 17/11** (zero itens nos
+dois caminhos): `itens_de_cobranca` descarta todo item com `comodato` ou
+`sem_flag_retirada`, e o ENTREGA OS nasce sem flag. 🚨 Mas **tipo 2 não quer
+dizer "financeira"**: `TIPO_CONTRATO_ID` é o tipo padrão de quase toda OS do
+painel, e a OS **operacional** do novo titular também é tipo 2 -- e essa carrega
+comodato de propósito (regra 10, a DANFE de quem assume). Regra que precise
+falar de OS financeira usa `eh_financeira`, nunca o tipo. Perguntado se queria
+trava para isso, ele disse que não precisa.
+
+**Status:** ✅ No ar e testado — 2026-11-17.

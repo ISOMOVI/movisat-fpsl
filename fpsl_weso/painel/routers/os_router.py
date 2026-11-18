@@ -25,6 +25,7 @@ from ..pdf_extractor import extrair_campos
 # direção segura: Vínculos FICA na F7, e `operacoes_extracao` é da aba nova,
 # que também fica.
 from .. import operacoes_extracao as extracao_operacoes
+from .. import operacoes_retirada as retirada
 from ..equipamentos import (MARCADOR_NAO_LOCALIZADO, MARCADOR_SERIE_A_PREENCHER,
                             buscar_seriais, chave_recipiente, dados_das_placas,
                             descricao_da_placa, liberar_recipiente,
@@ -1029,6 +1030,16 @@ async def gerar_os(body: GerarOsInput, _=Depends(requer_aba("gerar_os"))):
         op.setdefault("situacao_id", SITUACAO_NOVA_ID)
         op.setdefault("produto_servico_id", body.produto_servico_id)
         op["prioridade_id"] = body.prioridade_id  # OPs usam a prioridade do painel (financeira já traz Normal)
+
+    # 🔵 17/11, DECISÃO DELE: *"nenhuma OS de retirada pode ter item de comodato
+    # flegado"*. Mesma regra do caminho novo, de propósito -- ela mora no
+    # `operacoes_retirada` para não existir duas vezes.
+    # 🚨 AQUI E NÃO ANTES: é o laço de cima que fecha o `tipo_id` (esta tela
+    # troca o Tipo pelo NOME), e é antes da prévia, porque esta tela promete que
+    # o dry-run mostra o mesmo que o real.
+    # ⚠️ A financeira fica fora por construção: ela é tipo 2, não 57.
+    retirada.aplicar(operacoes)
+
     solucao_tecnica_txt = _formatar_solucao_tecnica(body.solucao_tecnica, body.observacao)
 
     # Lista pra exibição/contagem: operacionais + financeira (por último).
