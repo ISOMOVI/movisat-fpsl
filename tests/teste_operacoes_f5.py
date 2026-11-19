@@ -29,6 +29,8 @@ import asyncio
 import pathlib
 import sys
 
+import pytest
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from fpsl_weso import storage  # noqa: E402
 from fpsl_weso.painel import operacoes_espera as esp  # noqa: E402
@@ -54,6 +56,21 @@ def limpar():
     esp._criar()
     with storage._connect() as c:
         c.execute("DELETE FROM operacoes_espera WHERE lote = ?", (LOTE,))
+
+
+# 🚨 Pelo mesmo motivo do `teste_operacoes_f5b`: este arquivo nasceu script, e
+# sob pytest o `main()` -- onde mora a limpeza do fim -- nunca e chamado. Aqui
+# cada teste ja chama `limpar()` no comeco, entao o que sobra e o resíduo do
+# ULTIMO teste da rodada, que ninguem apaga.
+#
+# ⚠️ O que isso deixava em PRODUCAO e uma linha em `operacoes_espera` com
+# `estado='esperando'`, que e justamente o que `pendentes()` seleciona: a fila
+# de retentativa real tentaria processar uma OS de mentira. O `teste_residuo_da_suite`
+# e quem acusa, e este fixture e quem evita.
+@pytest.fixture(autouse=True, scope="module")
+def _limpa_no_fim_sob_pytest():
+    yield
+    limpar()
 
 
 async def meus(caso=None):

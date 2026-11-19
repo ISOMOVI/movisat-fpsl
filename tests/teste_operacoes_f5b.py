@@ -33,6 +33,8 @@ import asyncio
 import pathlib
 import sys
 
+import pytest
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from fpsl_weso import storage  # noqa: E402
 from fpsl_weso.painel import operacoes_equipamentos as eqp  # noqa: E402
@@ -58,6 +60,25 @@ def limpar():
     with storage._connect() as c:
         c.execute("DELETE FROM operacoes_espera WHERE lote = ?", (LOTE,))
         c.execute("DELETE FROM os_historico WHERE numero_os >= 990000")
+
+
+# 🚨 A LIMPEZA DO FIM TAMBEM PRECISA RODAR SOB PYTEST, e nao rodava. Este
+# arquivo nasceu script: o `limpar()` final mora no `main()`, e sob pytest o
+# `main()` nunca e chamado -- o pytest chama cada `teste_*` direto. O resultado,
+# medido em 18/11 na primeira vez que a suite inteira rodou, foi uma linha de
+# teste deixada em PRODUCAO:
+#
+#   id=2815 lote=TESTE-F5B numero_os=990001 placa='AAA 0A00' estado=esperando
+#
+# ⚠️ E `estado='esperando'` e exatamente o que `operacoes_espera.pendentes()`
+# seleciona: a fila de retentativa de VERDADE iria tentar processar uma OS que
+# nao existe, gastando chamadas num ERP que esgota o pool todo dia.
+#
+# ⚠️ O `main()` fica como esta -- rodar este arquivo a mao continua valendo.
+@pytest.fixture(autouse=True, scope="module")
+def _limpa_no_fim_sob_pytest():
+    yield
+    limpar()
 
 
 class Espiao:

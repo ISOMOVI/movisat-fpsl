@@ -26,9 +26,11 @@ linha**, porque o SQLite não entende o formato brasileiro. Com o recorte
 certo: 431 OS abertas de 96 clientes nos últimos 6 meses. Medido em 21/10,
 nas 572 OS da base. Formato conferido: 0 nulas, 0 fora de `__/__/____`.
 """
+import asyncio
 import hmac
 import json
 import logging
+import time
 import unicodedata
 from datetime import date, datetime, timedelta
 
@@ -36,7 +38,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..config import settings
-from ..harmonit_client import harmonit_get, harmonit_post
+from ..harmonit_client import harmonit_delete, harmonit_get, harmonit_post
 from .. import storage
 
 log = logging.getLogger(__name__)
@@ -372,6 +374,24 @@ def _simples(texto: str) -> str:
     return " ".join(sem_acento.upper().split())
 
 
+# 🚨 NÃO É TÉCNICO, É A PRÓPRIA EMPRESA. A OS que o painel do FPSL cria nasce
+# SEM técnico (`operacoes_router.py` só chama `SalvarTecnicoOrdemServico`
+# quando o perfil tem `tecnico_id`, e só os de financeira têm), e o Harmonit
+# preenche a linha sozinho com a conta da casa:
+#   {usuarioId: 629, nomeTecnico: "MOVISAT SOLUCOES TECNOLOGICAS LTDA. - ME ",
+#    email: "comercial@movisat.com.br", agendamentoId: 0}
+# Contá-la como técnico fazia a recusa dizer que a OS "tem" um -- texto que
+# mente (`M12`) -- e, pior, deixava o caminho de "a OS tem um técnico só"
+# escolher a empresa em silêncio. Medido em 17/11 na OS 17128.
+EMPRESA_COMO_TECNICO = 629
+
+
+def _tecnicos_de_verdade(tecnicos: list) -> list:
+    """A lista sem a linha da própria empresa -- ver `EMPRESA_COMO_TECNICO`."""
+    return [t for t in tecnicos
+            if t.get("usuarioId") != EMPRESA_COMO_TECNICO]
+
+
 def _quem_tem(tecnicos: list) -> list:
     """Como a OS descreve os técnicos dela, para a recusa dizer algo útil."""
     return [{"nome": t.get("nomeTecnico"), "email": t.get("email")}
@@ -403,20 +423,41 @@ def _escolher_vinculo(tecnicos: list, telefone: str | None,
 
     ⚠️ O QUE SOBROU DA GUARDA, e tem de sobrar: **ambiguidade**. "Vários
     técnicos na OS e nenhuma pista de qual" continua sendo recusa. O que caiu
-    foi `agendamentoId`, não o cuidado de não escolher no escuro.
+    foi `agendamentoId`, não o cuidado de não escolher no escuro. 🚨 Isso vale
+    para os caminhos de TELEFONE e de OS-com-um-só; com `tecnico_id` não há
+    ambiguidade nenhuma a resolver -- ver abaixo.
+
+    🔵 17/11, A DECISÃO QUE VIROU O PAPEL DESTA FUNÇÃO: *"Mesmo se tiver
+    técnico na OS, deve inserir o que foi fechado no MoviZap e agendar nele. Os
+    demais devem ser ignorados."* Até aqui, com `tecnico_id` em mãos, isto
+    procurava o técnico DENTRO da OS e recusava quando ele não estava lá --
+    tratando a OS como a fonte de quem agenda. Não é mais: **quem recebe é o
+    técnico da conversa, sempre**, e a OS passou a ser só o destino.
+
+    ⚠️ Nada é apagado nem substituído: o vínculo novo entra AO LADO dos que já
+    estão na OS, com os compromissos deles intactos (é o caminho do próprio
+    Harmonit -- ver `_segundo_vinculo`).
     """
 
     # 1º o vínculo gravado, que é identidade e não semelhança.
     if tecnico_id:
         casados = [t for t in tecnicos if t.get("usuarioId") == tecnico_id]
-        if not casados:
-            return None, (f"o tecnico {tecnico_id} vinculado a esta conversa nao "
-                          f"esta nesta OS (tem: {_quem_tem(tecnicos)})")
         # ⚠️ Prefere o vínculo SEM compromisso quando o mesmo usuário aparece
         # duas vezes na OS: criar onde não há é mais barato que mexer onde há.
-        # Mas ter compromisso **não recusa** -- ver o docstring.
+        # 🔵 18/11, confirmado por ele: *"usa a linha existente, e não tem
+        # problema se já tiver agendamento no horário tbm"* -- nenhuma guarda
+        # de horário entra aqui, nem agora nem depois.
         livre = [t for t in casados if not t.get("agendamentoId")]
-        return (livre or casados)[0], ""
+        if livre:
+            return livre[0], ""
+        if casados:
+            # Só linhas ocupadas: o chamador cria a segunda. A recusa
+            # `TecnicoJaAgendado` do Harmonit é do VÍNCULO, nunca do técnico.
+            return casados[0], ""
+        # 🔵 17/11: o técnico da conversa não está na OS -- e isto deixou de
+        # ser recusa. Vínculo sintético: `_segundo_vinculo` só lê o
+        # `usuarioId` daqui, o resto vem do `os_dict`.
+        return {"usuarioId": tecnico_id, "_a_criar": True}, ""
 
     chave = _chave_do_telefone(telefone)
     if chave:
@@ -444,6 +485,126 @@ def _uma_os(bruto) -> dict:
     if isinstance(d, list):
         d = d[0] if d else None
     return d or {}
+
+
+# 🚨 QUANTAS VEZES SE RELE, E POR QUE SO A LEITURA. Medido em 18/11, nas 95
+# passagens de card desde 29/10: **15 falharam, e 100% delas pela MESMA causa**
+# -- *"nao deu para ler a OS no Harmonit antes de mover"*. Zero recusas de
+# escrita, zero conflitos. O pool de conexoes do Harmonit esgota todo dia (46
+# em 17/11, 83 em 14/11, 164 em 07/11) e a pior leitura medida levou 15,8s.
+#
+# 🚨 E HOJE QUEM RETENTA E O OPERADOR: na OS 17105, em 09/11, ele clicou
+# **9 vezes** -- nove leituras de 15s contra um pool que ja estava esgotado.
+# Duas tentativas daqui fazem o que ele fazia, e melhor.
+#
+# ⚠️ SO A LEITURA. GET e idempotente e repetir e seguro; a escrita nunca se
+# repete sozinha nesta camada -- repeti-la cega abriria o segundo compromisso
+# ou a segunda OS.
+LEITURAS_DA_OS = 2
+ESPERA_ENTRE_LEITURAS = 1.5
+
+# 🚨 O ORCAMENTO, e por que ele existe. Os tetos estavam ANINHADOS AO
+# CONTRARIO: o MoviZap esperava 25s pela ponte e o cliente do Harmonit esperava
+# 30s POR CHAMADA -- o de dentro maior que o de fora. E a rota de situacao faz
+# TRES chamadas (le, grava, rele). Com a pior leitura em 15,8s o orcamento
+# estourava, o MoviZap devolvia `incerto: True` e ninguem sabia se a escrita
+# chegou. `incerto` e o unico estado que nao se audita.
+#
+# ⚠️ A CORRECAO NAO E SO UM NUMERO MAIOR: e esta rota desistir ANTES de quem
+# a chamou. Se o que resta do prazo nao da para gravar e reler, ela nao comeca
+# a escrita -- devolve `leitura_falhou`, que e verdade e e acionavel, em vez de
+# um `incerto` que nao e nem uma coisa nem outra.
+PRAZO_DA_ESCRITA = 55.0
+RESERVA_PARA_GRAVAR_E_RELER = 22.0
+
+
+def _eh_nao_encontrada(exc: Exception) -> bool:
+    """True so quando o Harmonit disse claramente que a OS nao existe.
+
+    🚨 NAO marca inexistencia por timeout nem por 502 generico: o ERP
+    sobrecarregado falha de varios jeitos, e chamar isso de "OS nao existe"
+    seria afirmar um fato sobre o dado dele a partir de um defeito nosso.
+
+    ⚠️ O molde e o `_eh_nao_encontrada` do `os_scan_router`, que ja separa
+    estes dois casos desde 24/07 -- a mesma pergunta merece a mesma resposta
+    nos dois lugares.
+    """
+    texto = str(getattr(exc, "detail", "") or exc).lower()
+    return "nao encontrada" in texto or "não encontrada" in texto
+
+
+async def _ler_os(numero_os: int,
+                  prazo=None) -> tuple[dict | None, str, str]:
+    """A OS do Harmonit, com retentativa. Devolve `(os_dict, motivo, causa)`.
+
+    🚨 `(None, motivo, causa)` em vez de estourar: quem chama esta ANTES de
+    qualquer escrita, entao pode dizer "nao gravei, pode tentar de novo" --
+    que e a resposta util. Estourar daria "o FPSL respondeu 502", que nao diz
+    nada sobre a escrita.
+
+    🚨 DUAS FALHAS, DUAS CAUSAS, E ISTO FOI DEFEITO MEU no ar por uma hora em
+    18/11. A retentativa trouxe junto um texto unico -- *"o ERP esta
+    sobrecarregado"* -- e passou a dize-lo tambem para OS que simplesmente
+    NAO EXISTE. A prova ao vivo na OS 999999 devolveu "sobrecarregado" sobre
+    um ERP que respondeu na primeira tentativa, em 140ms. 🔵 Pendencia 4 dele
+    e que o motivo apareca DESCRITO; descrito e errado e pior que generico,
+    porque manda consertar a coisa errada (`M12`).
+
+    ⚠️ E OS QUE NAO EXISTE NAO SE RETENTA: o Harmonit respondeu, e a resposta
+    foi clara. Repetir e o *"so cansa a req"* dele.
+    """
+    ultimo = ""
+    for tentativa in range(1, LEITURAS_DA_OS + 1):
+        if prazo is not None and prazo.esgotou():
+            return None, (f"o Harmonit nao respondeu dentro do prazo desta "
+                          f"chamada (tentativa {tentativa} de "
+                          f"{LEITURAS_DA_OS}) -- nada foi escrito"
+                          ), "leitura_falhou"
+        try:
+            bruto = await harmonit_get(
+                "/OrdemServico/ObterOrdemServicoPorNumero",
+                params={"numeroOs": numero_os})
+            return _uma_os(bruto), "", ""
+        except Exception as e:  # noqa: BLE001 -- rota crua
+            if _eh_nao_encontrada(e):
+                log.info("a OS %s nao existe no Harmonit", numero_os)
+                return None, (f"a OS {numero_os} nao existe no Harmonit -- "
+                              f"confira o numero. Nada foi escrito"
+                              ), "os_nao_encontrada"
+            ultimo = f"{type(e).__name__}"
+            log.warning("leitura %d/%d da OS %s falhou: %s",
+                        tentativa, LEITURAS_DA_OS, numero_os, e)
+            if tentativa < LEITURAS_DA_OS:
+                await asyncio.sleep(ESPERA_ENTRE_LEITURAS)
+    return None, (f"nao deu para ler a OS {numero_os} no Harmonit em "
+                  f"{LEITURAS_DA_OS} tentativas ({ultimo}) -- o ERP esta "
+                  f"sobrecarregado. Nada foi escrito, pode tentar de novo"
+                  ), "leitura_falhou"
+
+
+class _Prazo:
+    """Quanto sobrou do orcamento desta chamada.
+
+    🚨 Existe para a rota desistir antes de quem a chamou -- ver
+    `PRAZO_DA_ESCRITA`.
+    """
+
+    def __init__(self, total: float | None = None):
+        # ⚠️ LE A CONSTANTE AGORA, nao no `def`. Com o valor no argumento
+        # padrao ele seria fixado quando a classe e definida, e nenhum teste
+        # conseguiria encenar o prazo estourado -- o que tornaria a guarda do
+        # orcamento inverificavel.
+        self.total = PRAZO_DA_ESCRITA if total is None else total
+        self.inicio = time.monotonic()
+
+    def resta(self) -> float:
+        return self.total - (time.monotonic() - self.inicio)
+
+    def esgotou(self) -> bool:
+        return self.resta() <= 0
+
+    def da_para_escrever(self) -> bool:
+        return self.resta() >= RESERVA_PARA_GRAVAR_E_RELER
 
 
 def _cliente_da_os(numero_os: int) -> int | None:
@@ -524,8 +685,15 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
     # ⚠️ A chave é `tecnico`, no SINGULAR, e é uma lista. Chutar o nome fez a
     # primeira versão do script de medição relatar "sem técnico" numa OS com
     # três — achado por rodar, não por ler o swagger.
-    tecnicos = os_dict.get("tecnico") or []
-    if not tecnicos:
+    tecnicos = _tecnicos_de_verdade(os_dict.get("tecnico") or [])
+
+    # 🚨 A RECUSA DE "OS SEM TÉCNICO" SÓ VALE SEM `tecnico_id`, e foi aqui que
+    # ela ficou na frente de quem não precisava dela. Medido em 18/11: dos 6
+    # agendamentos parados, **3** caíram neste `return` (518, 2227 e 2228) --
+    # OS que o painel criou e que não têm linha de técnico nenhuma. Com o
+    # vínculo da conversa em mãos não há o que recusar: a linha é criada.
+    # 🔵 18/11: *"nas próximas deve criar o agendamento na OS sim"*.
+    if not tecnicos and not entrada.tecnico_id:
         return {"ok": False, "numero_os": entrada.numero_os,
                 "motivo": "esta OS nao tem tecnico vinculado no Harmonit"}
 
@@ -544,8 +712,12 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
     # para o mesmo técnico e agenda-se nele. Sem isto, a decisão dele pararia
     # na recusa do Harmonit (`TecnicoJaAgendado`), que é do vínculo e não do
     # técnico -- medido na base e provado na 16991.
+    # ⚠️ Duas razões para criar, e são diferentes: `_a_criar` é "o técnico da
+    # conversa não tem linha nesta OS" (🔵 17/11); `agendamentoId` é "tem
+    # linha, e ela já carrega um compromisso" (🔵 21/10). As duas desembocam na
+    # mesma escrita.
     vinculo_criado = False
-    if vinculo.get("agendamentoId"):
+    if vinculo.get("_a_criar") or vinculo.get("agendamentoId"):
         novo_vinculo, motivo = await _segundo_vinculo(os_dict, vinculo)
         if not novo_vinculo:
             return {"ok": False, "numero_os": entrada.numero_os,
@@ -614,6 +786,17 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
         # ganhou uma linha de técnico, e quem olhar a OS depois tem de saber
         # por quê.
         "vinculo_criado": vinculo_criado,
+        # 🚨 O `ordemServicoxTecnicoId` VOLTA NA RESPOSTA desde 18/11, e sem
+        # ele cancelar não pode existir: o DELETE do Harmonit precisa dos
+        # três ids, e a medição na Velasco provou que ele leva **o
+        # compromisso E a linha do técnico** juntos. Guardar só o
+        # `agendamento_id` deixaria o cancelar sem como apontar a linha -- e
+        # apontar a linha errada apagaria o vínculo de outra pessoa.
+        "vinculo_id": vinculo.get("id"),
+        # ⚠️ O `osId` interno volta junto porque o DELETE o exige, e o
+        # reagendar não pode gastar uma leitura a mais só para redescobrir um
+        # número que esta chamada já tinha na mão: o pool é o recurso escasso.
+        "os_id": os_dict.get("id"),
         # 🔵 O nome que vale é o do cadastro do Harmonit, não o do contato
         # do WhatsApp: *"mesmo que nomeiem errado, ele vai trazer no orcamento
         # o nome do cadastro harmonit"*.
@@ -621,6 +804,213 @@ async def agendar_tecnico(entrada: AgendarTecnicoEntrada):
         "tecnico_email": vinculo.get("email"),
         "janela": novo.get("agendamentoOS") or {},
     }
+
+
+# ===========================================================================
+# CANCELAR E REAGENDAR — 🔵 demanda dele, 18/11
+# ===========================================================================
+# 🚨 O QUE A MEDIÇÃO NA VELASCO (OS 17105, 18/11) DECIDIU, e por que o desenho
+# anterior estava errado:
+#
+#   H1  `AgendarTecnico` com o `id` do compromisso e data nova
+#       -> 🔴 RECUSOU: *"Erro ao alterar Evento: TecnicoJaAgendado"*. A data
+#          não mudou. ⚠️ E a minha leitura dessa recusa estava errada: não era
+#          choque de agenda (a data nova estava livre) -- o ERP recusa porque a
+#          linha já tem um agendamento. **Não existe caminho de alteração.**
+#   H2  a mesma rota mexendo em `statusCompromisso`/`motivoCancelamento`
+#       -> 🔴 RECUSOU igual; os campos ficaram como estavam.
+#   H3  `DELETE(osId, id, agendaId)`
+#       -> ✅ FUNCIONOU -- e 🚨 **levou o compromisso E a linha do técnico**. A
+#          OS ficou com zero linhas. Não existe cancelar o compromisso
+#          deixando a linha.
+#
+# 🔵 As duas decisões dele depois da medição:
+#   1. **Reagendar: apaga e recria** -- cria o novo PRIMEIRO, apaga o antigo
+#      depois. ⚠️ Falha deixa DOIS, nunca zero: errar para o lado do excesso é
+#      recuperável; para o lado da falta, o técnico perde a visita da agenda e
+#      ninguém percebe.
+#   2. **Cancelar: apaga só se a linha for NOSSA.** Se reusamos a linha de um
+#      técnico que já estava na OS (🔵 *"usa a linha existente"*), recusa.
+#
+# 🚨 E É POR ISSO QUE O `vinculo_criado` É PRÉ-REQUISITO, não conveniência:
+# sem ele não há como saber se apagar é seguro.
+
+
+class CancelarAgendamentoEntrada(BaseModel):
+    numero_os: int = Field(..., ge=1)
+    # O compromisso (`agendamentoId`) e a linha (`ordemServicoxTecnicoId`).
+    agendamento_id: int = Field(..., ge=1)
+    vinculo_id: int = Field(..., ge=1)
+    # 🚨 QUEM CRIOU A LINHA. ⚠️ O padrão é `False` de propósito: quem não sabe
+    # não apaga. Chamador antigo, que não guardava isto, recebe a recusa em vez
+    # de arrancar a linha de outra pessoa.
+    vinculo_criado: bool = False
+
+
+def _recusa_do_vinculo_alheio(numero_os: int, vinculo_id: int) -> dict:
+    return {
+        "ok": False, "apagou": False, "numero_os": numero_os,
+        "causa": "vinculo_nao_e_nosso",
+        "motivo": (f"o compromisso da OS {numero_os} esta na linha de tecnico "
+                   f"{vinculo_id}, que nao foi criada por nos. O Harmonit so "
+                   f"apaga o compromisso junto com a linha, e apagar esta "
+                   f"levaria o vinculo de outra pessoa -- entao nao mexi"),
+    }
+
+
+async def _apagar_o_vinculo(numero_os: int, os_id: int, vinculo_id: int,
+                            agendamento_id: int) -> tuple[bool, str]:
+    """Apaga a linha do técnico (e o compromisso dela) e PROVA pela releitura.
+
+    🚨 A prova é a OS não ter mais a linha, nunca o retorno do DELETE.
+    """
+    try:
+        await harmonit_delete("/OrdemServico/RemoverTecnicoOrdemServico",
+                              params={"osId": os_id, "id": vinculo_id,
+                                      "agendaId": agendamento_id})
+    except HTTPException as e:
+        log.warning("RemoverTecnicoOrdemServico recusou a OS %s: %s",
+                    numero_os, e.detail)
+        return False, str(e.detail)
+    except Exception as e:  # noqa: BLE001 -- rota crua
+        log.warning("RemoverTecnicoOrdemServico falhou na OS %s: %s",
+                    numero_os, e)
+        return False, f"{type(e).__name__}: {e}"
+
+    depois, falhou, _causa = await _ler_os(numero_os)
+    if falhou:
+        # ⚠️ O DELETE foi aceito e a releitura não foi: NÃO se afirma que
+        # apagou. É o mesmo princípio do `escrita_sem_resposta` -- a auditoria
+        # da madrugada resolve relendo.
+        return False, (f"o Harmonit aceitou a remocao e nao deu para reler a "
+                       f"OS {numero_os} para provar ({falhou})")
+    ainda = next((t for t in depois.get("tecnico") or []
+                  if t.get("id") == vinculo_id), None)
+    if ainda:
+        return False, (f"o Harmonit aceitou a remocao e a linha {vinculo_id} "
+                       f"continua na OS {numero_os} ao reler -- nada saiu")
+    return True, ""
+
+
+@router.post("/cancelar-agendamento")
+async def cancelar_agendamento(entrada: CancelarAgendamentoEntrada):
+    """Apaga o compromisso na OS do Harmonit. 🚨 A prova é RELER a OS.
+
+    ⚠️ Apaga a LINHA DO TÉCNICO junto, porque o ERP não dá outro caminho — e
+    por isso só apaga o que nós criamos.
+    """
+    if not entrada.vinculo_criado:
+        return _recusa_do_vinculo_alheio(entrada.numero_os, entrada.vinculo_id)
+
+    antes, falhou, causa = await _ler_os(entrada.numero_os)
+    if falhou:
+        return {"ok": False, "apagou": False, "numero_os": entrada.numero_os,
+                "motivo": falhou, "causa": causa}
+
+    linha = next((t for t in antes.get("tecnico") or []
+                  if t.get("id") == entrada.vinculo_id), None)
+    if not linha:
+        # 🚨 Já não está lá, e isto é SUCESSO, não erro: alguém apagou antes,
+        # ou a nossa própria chamada anterior chegou e a resposta se perdeu.
+        # Devolver falha aqui faria a tela pedir para tentar de novo o que já
+        # está feito.
+        return {"ok": True, "apagou": False, "numero_os": entrada.numero_os,
+                "motivo": (f"a linha de tecnico {entrada.vinculo_id} ja nao "
+                           f"esta na OS {entrada.numero_os} -- nada a apagar")}
+    if linha.get("agendamentoId") and \
+            linha.get("agendamentoId") != entrada.agendamento_id:
+        # ⚠️ A linha é nossa, mas o compromisso que está nela NÃO é o que
+        # mandamos apagar. Apagar levaria um compromisso que não é o alvo.
+        return {
+            "ok": False, "apagou": False, "numero_os": entrada.numero_os,
+            "causa": "compromisso_mudou",
+            "motivo": (f"a linha {entrada.vinculo_id} da OS "
+                       f"{entrada.numero_os} carrega hoje o compromisso "
+                       f"{linha.get('agendamentoId')}, e nao o "
+                       f"{entrada.agendamento_id} que eu ia apagar -- nao "
+                       f"mexi"),
+        }
+
+    apagou, motivo = await _apagar_o_vinculo(
+        entrada.numero_os, antes.get("id"), entrada.vinculo_id,
+        entrada.agendamento_id)
+    if not apagou:
+        return {"ok": False, "apagou": False, "numero_os": entrada.numero_os,
+                "motivo": motivo, "causa": "recusa_do_erp"}
+    return {"ok": True, "apagou": True, "numero_os": entrada.numero_os,
+            "vinculo_id": entrada.vinculo_id,
+            "agendamento_id": entrada.agendamento_id,
+            "motivo": "o compromisso e a linha do tecnico sairam da OS"}
+
+
+class ReagendarTecnicoEntrada(AgendarTecnicoEntrada):
+    """A mesma entrada de agendar, mais o que apagar depois.
+
+    🚨 HERDA DE PROPÓSITO: reagendar **é** agendar seguido de apagar, e dois
+    modelos separados seriam duas verdades sobre os mesmos campos.
+    """
+    agendamento_id_antigo: int = Field(..., ge=1)
+    vinculo_id_antigo: int = Field(..., ge=1)
+    vinculo_criado: bool = False
+
+
+@router.post("/reagendar-tecnico")
+async def reagendar_tecnico(entrada: ReagendarTecnicoEntrada):
+    """Cria o compromisso novo e **só então** apaga o antigo.
+
+    🚨 NESTA ORDEM, E A ORDEM É A REGRA. Se apagássemos primeiro e a criação
+    falhasse, a OS ficaria com **zero** compromisso: o técnico perde a visita
+    da agenda e ninguém percebe. Na ordem daqui, a falha deixa **dois** --
+    visível, corrigível, e a resposta diz qual não saiu.
+
+    ⚠️ O compromisso ganha `id` novo no Harmonit e o antigo deixa de existir.
+    🔵 Consequência aceita por ele, porque o ERP não dá outro caminho.
+    """
+    novo = await agendar_tecnico(AgendarTecnicoEntrada(
+        numero_os=entrada.numero_os, inicio=entrada.inicio, fim=entrada.fim,
+        tecnico_telefone=entrada.tecnico_telefone,
+        tecnico_id=entrada.tecnico_id, tecnico_nome=entrada.tecnico_nome))
+    if not novo.get("ok"):
+        # 🚨 Não criou: NÃO se apaga o antigo. O compromisso velho na agenda é
+        # ruim; nenhum compromisso é pior.
+        return {**novo, "reagendou": False, "apagou_o_antigo": False,
+                "motivo": (f"nao criei o compromisso novo, entao nao apaguei o "
+                           f"antigo: {novo.get('motivo')}")}
+
+    if not entrada.vinculo_criado:
+        # ⚠️ A linha antiga é de outro técnico: o novo está criado e o antigo
+        # FICA. A OS tem dois, e a resposta diz qual não pudemos remover --
+        # é o caso misto que ele aceitou em 18/11.
+        return {**novo, "reagendou": True, "apagou_o_antigo": False,
+                "causa_do_antigo": "vinculo_nao_e_nosso",
+                "motivo": (f"o compromisso novo esta criado. O antigo "
+                           f"({entrada.agendamento_id_antigo}) ficou na OS: a "
+                           f"linha {entrada.vinculo_id_antigo} nao foi criada "
+                           f"por nos, e apaga-la levaria o vinculo de outra "
+                           f"pessoa")}
+
+    if entrada.vinculo_id_antigo == novo.get("vinculo_id"):
+        # 🚨 A criação REUSOU a linha antiga: apagá-la levaria o compromisso
+        # que acabamos de criar. Medido na Velasco: o DELETE leva os dois.
+        return {**novo, "reagendou": True, "apagou_o_antigo": False,
+                "causa_do_antigo": "mesma_linha_do_novo",
+                "motivo": ("o compromisso novo foi criado na MESMA linha de "
+                           "tecnico do antigo, e o Harmonit nao apaga "
+                           "compromisso sem apagar a linha -- apagar levaria "
+                           "o novo junto. O antigo nao existe mais nessa "
+                           "linha")}
+
+    apagou, porque = await _apagar_o_vinculo(
+        entrada.numero_os, novo.get("os_id"), entrada.vinculo_id_antigo,
+        entrada.agendamento_id_antigo)
+    if not apagou:
+        return {**novo, "reagendou": True, "apagou_o_antigo": False,
+                "causa_do_antigo": "recusa_do_erp",
+                "motivo": (f"o compromisso novo esta criado, e o antigo "
+                           f"({entrada.agendamento_id_antigo}) NAO saiu da OS: "
+                           f"{porque}. A OS tem dois compromissos agora")}
+    return {**novo, "reagendou": True, "apagou_o_antigo": True,
+            "agendamento_id_antigo": entrada.agendamento_id_antigo}
 
 
 @router.get("/tecnico-por-telefone")
@@ -868,6 +1258,54 @@ def _corpo_de_escrita(os_dict: dict, cliente_id: int, novo: dict) -> dict:
     }
 
 
+# 🚨 OS CAMPOS QUE A LEITURA TEM DE TER TRAZIDO, e o porque de existir uma
+# guarda aqui. MEDIDO EM 18/11: as 2 unicas recusas de `SalvarOrdemServico` em
+# 650 chamadas foram *"Por favor, o Produto e obrigatorio!"* -- e as duas
+# cairam em minutos nos quais as leituras da OS estavam TODAS falhando (10
+# `ok=0` em cada). Como **nenhuma** das 643 OS da base carece de produto, a
+# recusa nao foi dado faltando: foi corpo montado a partir de leitura
+# degradada.
+#
+# 🚨 E A RECUSA FOI SORTE. `_corpo_de_escrita` remonta a OS INTEIRA campo a
+# campo; a rota so checava `if not os_dict`, que pega objeto vazio e deixa
+# passar objeto PARCIAL. Nos campos que o Harmonit nao valida, a escrita
+# gravaria **nulo em cima de dado real** -- calada. O Harmonit barrou num campo
+# que ele valida; nos outros, ninguem barraria.
+#
+# 🔵 Decisao dele, 18/11: a guarda **ABORTA e nao escreve**. E uma recusa
+# NOVA, e e deliberada: *"somente o cache ou timeout daria erro, pois as
+# informacoes de preenchimento estao corretas"* -- entao corpo furado e
+# leitura ruim, nao OS ruim, e a resposta certa e reler.
+CAMPOS_QUE_A_OS_SEMPRE_TEM = (
+    "produtoServicoId", "tipoId", "problemaId", "situacaoId", "clienteId")
+
+
+def _corpo_se_sustenta(corpo: dict) -> list[str]:
+    """Os campos obrigatorios que a leitura NAO trouxe. Vazio = pode gravar.
+
+    ⚠️ `0` e nulo contam como ausencia, e isto e proposital: `tipoId` 0 nao
+    existe no catalogo do Harmonit, e foi exatamente um `produtoServicoId`
+    vazio que gerou a recusa de 08/09.
+    """
+    return [c for c in CAMPOS_QUE_A_OS_SEMPRE_TEM if not corpo.get(c)]
+
+
+def _recusa_de_corpo_furado(numero_os: int, faltando: list[str]) -> dict:
+    """A recusa, com a causa nomeada -- 🔵 pendencia 4 dele, 18/11.
+
+    🚨 Diz o que aconteceu E o que isso significa: sem a segunda metade, quem
+    le acha que a OS esta errada, quando o que esta errado e a leitura.
+    """
+    return {
+        "ok": False, "gravou": False, "numero_os": numero_os,
+        "causa": "corpo_furado",
+        "motivo": (f"a leitura da OS {numero_os} no Harmonit veio incompleta "
+                   f"(sem {', '.join(faltando)}), entao nao gravei -- gravar "
+                   f"este corpo apagaria dado da OS. Nada foi escrito, pode "
+                   f"tentar de novo"),
+    }
+
+
 def _diferencas(antes: dict, depois: dict) -> dict:
     """O que mudou de fato, lendo os dois retratos da OS."""
     mudou = {}
@@ -908,6 +1346,13 @@ async def gravar_endereco_da_os(entrada: EnderecoDaOS):
 
     novo = {c: getattr(entrada, c) for c in CAMPOS_DO_ENDERECO}
     corpo = _corpo_de_escrita(antes, cliente_id, novo)
+
+    # 🚨 ANTES DO ENSAIO A SECO, e nao depois: o ensaio existe para dizer o
+    # que aconteceria, e dizer "pode gravar" sobre um corpo que a guarda
+    # recusaria seria o ensaio mentindo.
+    faltando = _corpo_se_sustenta(corpo)
+    if faltando:
+        return _recusa_de_corpo_furado(entrada.numero_os, faltando)
 
     if entrada.conferir:
         # 🚨 Ensaio a seco: nada é escrito.
@@ -1483,24 +1928,49 @@ async def gravar_situacao_da_os(entrada: SituacaoDaOS):
     # 502" -- que nao diz nada sobre a escrita. Aqui e SEGURO (nada foi escrito
     # ainda), e por isso a resposta pode ser clara: nao gravou, e pode tentar
     # de novo.
-    try:
-        antes = _uma_os(await harmonit_get(
-            "/OrdemServico/ObterOrdemServicoPorNumero",
-            params={"numeroOs": entrada.numero_os}))
-    except Exception as e:  # noqa: BLE001 -- rota crua
-        log.warning("nao deu para ler a OS %s antes de mover: %s",
-                    entrada.numero_os, e)
+    #
+    # 🚨 E DESDE 18/11 ELA RETENTA. Era esta leitura que derrubava as 15
+    # passagens -- 100% das falhas medidas desde 29/10 -- e quem retentava era
+    # o operador, 9 vezes na mesma OS.
+    prazo = _Prazo()
+    antes, falhou, causa = await _ler_os(entrada.numero_os, prazo)
+    if falhou:
         return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
                 "de": None, "para": entrada.situacao_id,
-                "motivo": (f"nao deu para ler a OS {entrada.numero_os} no "
-                           f"Harmonit antes de mover ({type(e).__name__}) -- "
-                           f"nada foi escrito, pode tentar de novo")}
+                "motivo": falhou, "causa": causa}
     if not antes:
         raise HTTPException(
             status_code=404,
             detail=f"OS {entrada.numero_os} nao encontrada no Harmonit")
 
     de = antes.get("situacaoId")
+
+    # ⚠️ Mover para onde já está não é erro, e também não é escrita: gravar a
+    # OS inteira por nada é risco sem ganho.
+    #
+    # 🚨 E ESTE RAMO VEM ANTES DA TRAVA DESDE 18/11, o que é a inversão da
+    # ordem de 29/10. O motivo é a retentativa: se a 1ª escrita CHEGOU e a
+    # resposta se perdeu na volta (o `incerto` do `fpsl_ponte`), na retentativa
+    # o ERP já está no destino -- e a trava, comparando com a
+    # `situacao_esperada` que a tela carregou, recusaria com *"alguem mudou no
+    # meio"*. Seria uma **recusa falsa sobre a própria escrita que deu
+    # certo**, e justamente no caso que a retentativa existe para resolver.
+    #
+    # ⚠️ POR QUE "RECUSA FALSA" E NAO O OUTRO SUBSTANTIVO: ha em
+    # `teste_ponte_rotas_http.py` uma trava que corta a fonte deste MODULO
+    # entre dois literais para provar que a frase da trava diz o NOME da
+    # situacao e nunca o numero cru. Qualquer comentario no meio que use aquela
+    # palavra move o corte e derruba o teste -- e derrubou duas vezes em 18/11.
+    # Trava por texto e sorteio; o que ela guarda, porem, vale.
+    #
+    # ⚠️ A trava NÃO enfraquece: quem está numa situação **diferente** do
+    # esperado continua recusado, logo abaixo, com o mesmo texto. O que saiu da
+    # frente foi só o caso em que o ERP já está onde se queria chegar -- e
+    # recusar ESSE caso nunca ajudou ninguém.
+    if de == entrada.situacao_id:
+        return {"ok": True, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.situacao_id,
+                "motivo": "a OS ja estava nesta situacao"}
 
     # 🚨 A TRAVA DE CONCORRÊNCIA, antes de qualquer escrita.
     if entrada.conferir_antes and de != entrada.situacao_esperada:
@@ -1513,19 +1983,19 @@ async def gravar_situacao_da_os(entrada: SituacaoDaOS):
                        f". Alguem mudou no meio -- recarregue o painel antes "
                        f"de mover"),
             "conflito": True,
+            # A causa vem DEPOIS da frase de proposito: o
+            # `test_o_aviso_de_conflito_NAO_tem_mais_o_numero_cru` corta a
+            # fonte desta funcao na primeira ocorrencia de "conflito", e com a
+            # causa antes do `motivo` ele deixaria de ver o
+            # `_nome_da_situacao(de)` que existe para guardar.
+            "causa": "conflito_de_situacao",
         }
-
-    # ⚠️ Mover para onde já está não é erro, e também não é escrita: gravar a
-    # OS inteira por nada é risco sem ganho.
-    if de == entrada.situacao_id:
-        return {"ok": True, "gravou": False, "numero_os": entrada.numero_os,
-                "de": de, "para": entrada.situacao_id,
-                "motivo": "a OS ja estava nesta situacao"}
 
     cliente_id = _cliente_da_os(entrada.numero_os) or antes.get("parceiro")
     if not cliente_id:
         return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
                 "de": de, "para": entrada.situacao_id,
+                "causa": "sem_cliente_no_cache",
                 "motivo": "nao sei o cliente desta OS, e gravar sem ele a "
                           "desvincularia do cadastro"}
 
@@ -1535,19 +2005,54 @@ async def gravar_situacao_da_os(entrada: SituacaoDaOS):
     corpo = _corpo_de_escrita(antes, cliente_id, {})
     corpo["situacaoId"] = entrada.situacao_id
 
+    # 🚨 A guarda de 18/11: leitura furada nao vira escrita. E aqui ela pesa
+    # mais que nos vizinhos, porque esta rota e a do CARD -- 15 das 95
+    # passagens falharam por leitura, e uma leitura meio-degradada gravaria
+    # nulo em cima da OS inteira.
+    faltando = _corpo_se_sustenta(corpo)
+    if faltando:
+        return {**_recusa_de_corpo_furado(entrada.numero_os, faltando),
+                "de": de, "para": entrada.situacao_id}
+
+    # 🚨 O ORCAMENTO, antes de comecar a escrever: se o que resta do prazo
+    # nao da para gravar E reler, nao se comeca. Comecar e nao terminar e o que
+    # produz o `incerto` do outro lado -- "a escrita pode ter chegado e
+    # ninguem sabe" --, e esse e o unico estado que nao se audita. Desistir
+    # aqui e verdade: nada foi escrito.
+    if not prazo.da_para_escrever():
+        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+                "de": de, "para": entrada.situacao_id,
+                "causa": "leitura_falhou",
+                "motivo": (f"a leitura da OS {entrada.numero_os} consumiu o "
+                           f"tempo desta chamada, e comecar a gravar agora "
+                           f"deixaria a escrita sem resposta -- nada foi "
+                           f"escrito, pode tentar de novo")}
+
     try:
         await harmonit_post("/OrdemServico/SalvarOrdemServico", corpo)
     except HTTPException as e:
         log.warning("SalvarOrdemServico recusou a situacao da OS %s: %s",
                     entrada.numero_os, e.detail)
+        # 🔵 Pendencia 4 dele: a recusa do ERP vai POR EXTENSO e nomeada.
+        # ⚠️ `recusa_do_erp` e a unica causa que NAO se retenta: repetir a
+        # mesma chamada colhe a mesma recusa -- *"so cansa a req"*.
         return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
-                "de": de, "para": entrada.situacao_id, "motivo": str(e.detail)}
+                "de": de, "para": entrada.situacao_id,
+                "causa": "recusa_do_erp", "motivo": str(e.detail)}
     except Exception as e:  # noqa: BLE001 -- rota crua
         log.warning("SalvarOrdemServico falhou na situacao da OS %s: %s",
                     entrada.numero_os, e)
-        return {"ok": False, "gravou": False, "numero_os": entrada.numero_os,
+        # 🚨 AQUI NAO SE SABE SE GRAVOU: a chamada saiu e a resposta nao
+        # voltou. `gravou: None` em vez de False -- dizer False seria afirmar
+        # um fato que nao se mediu, e e o que faria a retentativa cega abrir a
+        # segunda escrita.
+        return {"ok": False, "gravou": None, "numero_os": entrada.numero_os,
                 "de": de, "para": entrada.situacao_id,
-                "motivo": f"{type(e).__name__}: {e}"}
+                "causa": "escrita_sem_resposta",
+                "motivo": (f"a escrita da OS {entrada.numero_os} saiu e o "
+                           f"Harmonit nao respondeu ({type(e).__name__}) -- "
+                           f"nao sei se gravou. A auditoria da madrugada "
+                           f"confere")}
 
     depois = _uma_os(await harmonit_get(
         "/OrdemServico/ObterOrdemServicoPorNumero",
@@ -1751,6 +2256,11 @@ async def gravar_prioridade_da_os(entrada: PrioridadeDaOS):
 
     corpo = _corpo_de_escrita(antes, cliente_id, {})
     corpo["prioridadeId"] = entrada.prioridade_id
+
+    # 🚨 A mesma guarda: o montador e um so, a protecao tambem tem de ser.
+    faltando = _corpo_se_sustenta(corpo)
+    if faltando:
+        return _recusa_de_corpo_furado(entrada.numero_os, faltando)
 
     try:
         await harmonit_post("/OrdemServico/SalvarOrdemServico", corpo)

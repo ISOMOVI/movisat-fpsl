@@ -354,6 +354,20 @@ def init_db():
         car_tabelas.criar(conn)
         car_tabelas.migrar(conn)
 
+        # 🆕 18/11: as 3 tabelas de **Serviço dos Técnicos** (a aba 2 do
+        # Financeiro do MoviZap) -- `pagamento_artefato`, `pagamento_lote` e
+        # `pagamento_evento`. Mesmo motivo dos dois blocos de cima: a DDL mora
+        # em `painel/pagamento_tabelas.py` e o diff neste arquivo, que o painel
+        # inteiro lê, são estas duas chamadas.
+        # 🔵 *"É possível fazer tudo no FPSL com as rotas e etc, mas o painel é
+        # aqui"* -- os dados moram neste lado, a tela no MoviZap.
+        # 🚨 A frente NÃO ALTERA nenhuma tabela existente: ela LÊ a
+        # `os_historico` (o cache, 633 OS), a `tecnicos`, a
+        # `conferencia_fechamento` (111 linhas) e a `datascope_respostas` (175).
+        from .painel import pagamento_tabelas
+        pagamento_tabelas.criar(conn)
+        pagamento_tabelas.migrar(conn)
+
         # 🆕 21/10: o NOME de cada tipo de OS, para o cabecalho da mensagem do
         # agendamento (ponta 1 do plano). A rotina `sync_tipos_os` a preenche
         # 1x/dia. 🚨 DICIONARIO, NAO AUTORIDADE: 173 das 547 OS tem `tipo`

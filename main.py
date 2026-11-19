@@ -12,7 +12,7 @@ from fpsl_weso.client import start_client, stop_client
 from fpsl_weso.harmonit_client import start_harmonit_client, stop_harmonit_client
 from fpsl_weso.datascope_client import start_datascope_client, stop_datascope_client
 from fpsl_weso.routers import clientes, simcards, rastreadores, veiculos, admin
-from fpsl_weso.routers import os_ponte
+from fpsl_weso.routers import os_ponte, pagamento_ponte
 from fpsl_weso.painel.routers import login_router, os_router as painel_os_router
 from fpsl_weso.painel.routers import harmonit_hist_router as painel_harmonit_hist_router
 from fpsl_weso.painel.routers import usuarios_router as painel_usuarios_router
@@ -236,6 +236,12 @@ app.include_router(onboarding.router)
 # compartilhado, NÃO por sessão: toda rota do painel exige `requer_aba`, e
 # chamada servidor-a-servidor não tem cookie. Ver o topo de `os_ponte.py`.
 app.include_router(os_ponte.router)
+# 🔵 18/11: a ponte de **Serviço dos Técnicos** — a aba 2 do Financeiro
+# do MoviZap. Mesma chave e mesma guarda da de cima: servidor-a-servidor.
+# 🚨 NENHUMA ROTA DELA FALA COM O HARMONIT: tudo sai do cache e das
+# tabelas da frente. 🔵 *"É possível fazer tudo no FPSL com as rotas e
+# etc, mas o painel é aqui."*
+app.include_router(pagamento_ponte.router)
 app.include_router(admin.router)
 app.include_router(login_router.router)
 app.include_router(painel_os_router.router)

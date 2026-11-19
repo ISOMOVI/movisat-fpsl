@@ -89,9 +89,27 @@ def _checar_disjuntor() -> None:
 
 # ── Ciclo de vida ────────────────────────────────────────────────────────────
 
+# 🚨 O TETO POR CHAMADA, E POR QUE ELE DIMINUIU. Ate 18/11 eram 30s --
+# MAIOR que os 25s que o MoviZap esperava pela ponte. Os tetos estavam
+# aninhados ao contrario: o de dentro sobrevivia ao de fora, entao quem chamava
+# desistia primeiro e recebia `incerto: True` ("a escrita pode ter chegado e
+# ninguem sabe"), que e o unico estado que nao se audita.
+#
+# 🔵 18 SEGUNDOS, decidido por ele em 18/11, e o numero vem da medicao: a
+# pior leitura de OS registrada na auditoria levou **15,8s**, e 18 cobre isso
+# com folga sem manter de pe uma chamada que ja nao vai voltar.
+#
+# ⚠️ A CONTA QUE ESTE NUMERO TEM DE FECHAR: a rota de situacao faz ate 4
+# chamadas (2 leituras, gravar, reler). 2x18 de leitura + 22s de reserva para
+# gravar e reler = 58s, dentro dos 60s que a ponte do MoviZap agora espera.
+# Mexer num destes tres numeros sem os outros reabre o `incerto`.
+TETO_POR_CHAMADA = 18
+
+
 async def start_harmonit_client():
     global _client
-    _client = httpx.AsyncClient(base_url=settings.harmonit_base_url, timeout=30)
+    _client = httpx.AsyncClient(base_url=settings.harmonit_base_url,
+                                timeout=TETO_POR_CHAMADA)
 
 
 async def stop_harmonit_client():

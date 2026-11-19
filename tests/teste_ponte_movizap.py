@@ -166,12 +166,61 @@ class TestOVinculoGravadoManda:
             tecnico_id=7493)
         assert com_vinculo["usuarioId"] == 7493
 
-    def test_vinculado_mas_fora_desta_OS_e_recusado_COM_a_lista(self):
+    def test_vinculado_e_FORA_desta_OS_e_ACEITO_com_vinculo_A_CRIAR(self):
+        """🔵 17/11, decisao dele: *"Mesmo se tiver tecnico na OS, deve inserir
+        o que foi fechado no MoviZap e agendar nele. Os demais devem ser
+        ignorados."*
+
+        🚨 ESTE TESTE AFIRMAVA O CONTRARIO ATE 17/11, e a troca e deliberada --
+        a mesma natureza da inversao de 21/10 logo acima. Era esta recusa que
+        deixava o agendamento 2226 (OS 17128) parado: *"o tecnico 14262
+        vinculado a esta conversa nao esta nesta OS"*.
+        """
         achado, motivo = os_ponte._escolher_vinculo(
             [self.FRANCK], telefone=None, tecnico_id=7493)
-        assert achado is None
-        assert "7493" in motivo
-        assert "Franck" in motivo
+        assert motivo == ""
+        assert achado["usuarioId"] == 7493
+        # ⚠️ Sem `id` de vinculo: ele ainda nao existe na OS. E a marca que
+        # manda o chamador criar a linha antes de agendar.
+        assert achado["_a_criar"] is True
+        assert "id" not in achado
+
+    def test_OS_SEM_TECNICO_NENHUM_tambem_aceita(self):
+        """🚨 O caso mais comum em 18/11: 3 dos 6 parados (518, 2227 e 2228).
+
+        A OS que o painel do FPSL cria nasce sem tecnico, e a lista chega
+        vazia aqui. 🔵 *"nas proximas deve criar o agendamento na OS sim"*.
+        """
+        achado, motivo = os_ponte._escolher_vinculo(
+            [], telefone=None, tecnico_id=14262)
+        assert motivo == ""
+        assert achado == {"usuarioId": 14262, "_a_criar": True}
+
+    def test_o_tecnico_que_JA_ESTA_na_OS_nao_ganha_linha_nova(self):
+        """🔵 18/11, decisao dele: *"usa a linha existente"*.
+
+        Sem isto a OS acumularia uma linha repetida do mesmo tecnico a cada
+        reagendamento.
+        """
+        achado, _ = os_ponte._escolher_vinculo(
+            [self.IAGO, self.FRANCK], telefone=None, tecnico_id=14262)
+        assert achado["id"] == 2
+        assert not achado.get("_a_criar")
+
+    def test_os_DEMAIS_tecnicos_da_OS_nao_recusam_nada(self):
+        """*"Os demais devem ser ignorados"* -- nem contados, nem lidos.
+
+        Tres tecnicos, todos ocupados, e nenhum deles e o da conversa: o que
+        antes era ambiguidade agora nem chega a ser pergunta.
+        """
+        outros = [dict(self.IAGO, agendamentoId=1),
+                  dict(self.FRANCK, agendamentoId=2),
+                  {"id": 9, "usuarioId": 555, "nomeTecnico": "Outro",
+                   "email": "911112222@movisat.com.br", "agendamentoId": 3}]
+        achado, motivo = os_ponte._escolher_vinculo(
+            outros, telefone=None, tecnico_id=99999)
+        assert motivo == ""
+        assert achado == {"usuarioId": 99999, "_a_criar": True}
 
     def test_vinculado_e_JA_AGENDADO_e_ACEITO(self):
         """🔵 A barreira caiu em 21/10 (ver `TestEscolherOTecnico`). Este e
@@ -182,6 +231,40 @@ class TestOVinculoGravadoManda:
             [ocupado], telefone=None, tecnico_id=7493)
         assert achado["usuarioId"] == 7493
         assert motivo == ""
+
+
+class TestAEmpresaNaoEhTecnico:
+    """🚨 `usuarioId 629` e a propria Movisat, nao um tecnico de campo.
+
+    O Harmonit preenche sozinho a linha da OS que nasce sem tecnico, e ate
+    17/11 ela era contada: a recusa da OS 17128 dizia que o tecnico da conversa
+    *"nao esta nesta OS (tem: MOVISAT SOLUCOES TECNOLOGICAS LTDA. - ME)"* --
+    texto que mente, porque nao ha tecnico nenhum lá (`M12`).
+    """
+
+    EMPRESA = {"id": 1166101, "usuarioId": 629,
+               "nomeTecnico": "MOVISAT SOLUCOES TECNOLOGICAS LTDA. - ME ",
+               "email": "comercial@movisat.com.br", "agendamentoId": 0}
+    FRANCK = {"id": 2, "usuarioId": 14262, "nomeTecnico": "Franck",
+              "email": "997394026@movisat.com.br"}
+
+    def test_a_linha_da_empresa_sai_da_lista(self):
+        assert os_ponte._tecnicos_de_verdade([self.EMPRESA]) == []
+
+    def test_o_tecnico_de_verdade_fica(self):
+        assert os_ponte._tecnicos_de_verdade(
+            [self.EMPRESA, self.FRANCK]) == [self.FRANCK]
+
+    def test_lista_vazia_nao_quebra(self):
+        assert os_ponte._tecnicos_de_verdade([]) == []
+
+    def test_a_empresa_NAO_pode_ser_escolhida_como_tecnico_unico(self):
+        """🚨 O risco calado: sem o filtro, a OS "com um tecnico so" entregaria
+        o compromisso para a conta `comercial@` em silencio."""
+        so_empresa = os_ponte._tecnicos_de_verdade([self.EMPRESA])
+        achado, motivo = os_ponte._escolher_vinculo(so_empresa, None)
+        assert achado is None
+        assert "MOVISAT" not in motivo
 
 
 class TestORecorteDasOS:
