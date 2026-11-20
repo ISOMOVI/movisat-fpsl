@@ -304,3 +304,82 @@ não exercita a chave da ponte, o código de estado nem a validação do corpo �
 | o lado do MoviZap | `movizap/fpsl_ponte.py` |
 | a prova de criação no ERP (cria e apaga) | `provar_criacao_os.py` |
 | o plano da frente | `movizap_painel/docs/16_Pipeline_da_Operacao.md` |
+
+## 🚨 19/11 — A ESCRITA PERDIDA: `ok = true` sem o ERP ter ficado no valor
+
+🔵 Ele, vendo o status errado na Operação: *"OS 17137 erro de leitura FPSL com o
+status no OP, não haviamos resolvido isso já??????"* · depois:
+*"valide ambos e traga situação"*.
+
+⚠️ **Isto registra uma MEDIÇÃO, não um conserto.** Nada foi alterado: os dois
+passos de ação (a varredura das escritas de 18–19/11 e o cron da fila) estão
+**segurados por decisão dele** em 19/11.
+
+### A validação das três fontes, 19/11 ~15:20
+
+| fonte | situação da OS 17137 |
+|---|---|
+| nosso cache (`os_historico`) | **251** |
+| ficha ao vivo do ERP (3 leituras: 0,64 s · 0,21 s · 0,20 s) | **251** |
+| a coluna em que o card está, e que a tela mandou no `/checklist` | **16488** |
+
+📏 **E uma sonda de 25 OS, duas rodadas com 35 s de intervalo, 50 leituras:**
+**zero** discordância entre cache e ERP, **zero** mudança de resposta entre as
+rodadas, **zero** falha.
+
+🚨 **Conclusão que corrige a minha anterior: NÃO é a leitura que atrasa.** A
+leitura do ERP está sólida. O que está errado é a **escrita**.
+
+### A `os_passagem` da 17137, hora por hora
+
+| hora | de → para | quem | resultado |
+|---|---|---|---|
+| 14:48:47 | 38 → **251** | 123 | `ok = true` |
+| 14:50:42 | 251 → **16488** | 62440 | `ok = true` |
+| 15:01:52 | 251 → 1316 | 123 | **`ok = false`** → foi para a **fila** |
+
+**Aplicando a régua de 18/11** (*o valor que o ERP mostra é um que NÓS
+escrevemos?*): o ERP está em **251**; 251 **é nosso**, escrito às 14:48:47; e é
+**mais velho** que o 16488 de 14:50:42. Logo — **nosso + velho = ESCRITA
+PERDIDA**. A passagem para 16488 foi marcada `ok = true` e **não ficou no
+Harmonit**.
+
+### Os três defeitos que isto expõe
+
+1. 🚨 **A confirmação de escrita é falsa.** O `ok` diz que **o POST não deu
+   erro** — não que o ERP ficou no valor. **Confirmar sem reler é confirmar
+   nada.** 📏 Em 19/11 houve **6 passagens `ok = true`**, e não se sabe quantas
+   pegaram.
+2. 🚨 **A FILA NÃO TEM QUEM A PROCESSE.** 📏 `resolvida_em IS NOT NULL` =
+   **zero em toda a história da tabela**. A passagem de 15:01:52 está lá com
+   **0 tentativas** e vai ficar: o cron da fila nunca foi criado. **Tudo que
+   entra na fila morre nela**, e quem moveu o card não é avisado.
+3. 🚨 **A tela mostra a coluna da última passagem `ok = true`**, que pode não
+   ser o ERP. Foi por isso que a Operação exibiu 16488 com o ERP em 251.
+
+### ⚠️ O que FUNCIONOU, e precisa ficar escrito
+
+A trava de 18/11 **pegou** a terceira passagem: recusou em vez de atropelar,
+registrou `ok = false`, pôs na fila e escreveu a frase certa ao operador —
+
+> *"a OS 17137 está em 'Configurar equipamentos e Sistemas' no Harmonit, e a
+> tela carregou 'Entrega de materiais prontos'. Alguém mudou no meio —
+> recarregue o painel antes de mover"*
+
+O diagnóstico de 18/11 estava certo. **O que ficou pela metade foi a fila sem
+processador e a confirmação sem verificação.**
+
+### O erro da ficha não deixa rastro
+
+📏 Quatro `502` em 19/11, **todos** na ficha da OS 17137 — 14:41:02, 14:41:29,
+14:59:45 e 15:00:48 — e **zero linha no log**. A causa é o `except Exception` do
+`_ficha_da_os`, que põe o erro no **corpo da resposta**
+(*"não deu para ler a OS N no Harmonit agora: {e}"*) e **não registra nada**.
+
+⚠️ **Dois dos quatro foram de restart de serviço** (14:59:45 e 15:00:48 caem na
+janela do deploy da `PNL_1.6`): reiniciar derruba a ficha de quem está com um
+card aberto, e não há retentativa.
+
+🚨 **Consequência, e é a pior parte:** cada ocorrência só pode ser entendida
+**reproduzindo ao vivo**. Foi o que se fez aqui. Enquanto o `except` não
+registrar a causa, nenhum 502 da ficha é diagnosticável depois do fato.

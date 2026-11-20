@@ -61,7 +61,11 @@ def base():
                 numero_os INTEGER PRIMARY KEY, cliente_id INTEGER,
                 data_previsao TEXT, atualizado_em TEXT, visto_em TEXT,
                 excluida INTEGER DEFAULT 0, materiais_json TEXT,
-                situacao_id INTEGER, tecnicos_json TEXT, termo TEXT)
+                situacao_id INTEGER, tecnicos_json TEXT, termo TEXT,
+                -- 🚨 AS TRÊS QUE O ENRIQUECIMENTO DE 19/11 LÊ. Sem elas o
+                -- `quadro()` morre com *"no such column: h.tipo"* -- e o
+                -- defeito seria do banco de teste, não do código.
+                tipo INTEGER, status_str TEXT, n_oficinas INTEGER)
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tecnicos (
@@ -73,8 +77,27 @@ def base():
                 form_answer_id INTEGER PRIMARY KEY, numero_os INTEGER,
                 form_state TEXT, updated_at TEXT, sincronizado_em TEXT)
         """)
+        # 🚨 O CAMINHO DO NOME DO CLIENTE DÁ TRÊS SALTOS (19/11), porque a
+        # `clientes` não guarda nome:
+        #   os_historico.cliente_id -> clientes.cnpjcpf -> contrato_cliente.nome
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS clientes (
+                harmonit_id INTEGER PRIMARY KEY, cnpjcpf TEXT,
+                criado_em TEXT)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS contrato_cliente (
+                cnpj TEXT PRIMARY KEY, nome TEXT, nome_fonte TEXT,
+                atualizado_em TEXT, atualizado_por TEXT)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tipos_os (
+                tipo_id INTEGER PRIMARY KEY, nome TEXT, codigo TEXT,
+                atualizado_em TEXT)
+        """)
         pagamento_tabelas.criar(conn)
         for t in ("os_historico", "tecnicos", "datascope_respostas",
+                  "clientes", "contrato_cliente", "tipos_os",
                   "pagamento_artefato", "pagamento_lote", "pagamento_evento"):
             conn.execute("DELETE FROM %s" % t)
         conn.execute(

@@ -225,6 +225,46 @@ def quadro() -> dict:
             "SELECT %s FROM pagamento_artefato ORDER BY tecnico_id, numero_os"
             % ", ".join(cols)).fetchall()]
 
+        # 🔵 19/11: os dados da OS no artefato -- *"faltam várias coisas (...)
+        # como a aba1 apresenta"*. 🚨 O card da aba 1 mostra cliente, tipo e
+        # status; o da aba 2 mostrava só OS, termo e valor, e nenhum estilo
+        # conserta campo que o servidor não manda.
+        #
+        # 🚨 JOIN NA LEITURA, NÃO COLUNA NOVA: o dono deste fato é o
+        # `os_historico`, que a varredura relê. Copiá-lo para o artefato faria
+        # dois donos do mesmo dado -- e um retrato velho no dia em que a OS
+        # trocasse de status. ⚠️ Sem coluna nova não há migração.
+        #
+        # ⚠️ O NOME DO CLIENTE DÁ TRÊS SALTOS porque a `clientes` não o guarda:
+        # cliente_id -> clientes.cnpjcpf -> contrato_cliente.cnpj -> nome.
+        # 📏 Medido em 19/11: 65 dos 79 artefatos resolvem nome. Os outros a
+        # tela DIZ, com a frase da aba 1 ("fora do nosso cadastro").
+        dados_da_os: dict = {}
+        if linhas:
+            numeros = sorted({a["numero_os"] for a in linhas})
+            lacunas = ",".join("?" * len(numeros))
+            for r in conn.execute(
+                    "SELECT h.numero_os, h.cliente_id, cc.nome, t.nome, "
+                    "       h.status_str, h.situacao_id, h.n_oficinas "
+                    "  FROM os_historico h "
+                    "  LEFT JOIN clientes cl ON cl.harmonit_id = h.cliente_id "
+                    "  LEFT JOIN contrato_cliente cc ON cc.cnpj = cl.cnpjcpf "
+                    "  LEFT JOIN tipos_os t ON t.tipo_id = h.tipo "
+                    " WHERE h.numero_os IN (%s)" % lacunas, numeros).fetchall():
+                dados_da_os[r[0]] = {
+                    "cliente_id": r[1], "cliente": r[2], "tipo_nome": r[3],
+                    "status_str": r[4], "situacao_id_os": r[5],
+                    "n_oficinas": r[6],
+                }
+        for a in linhas:
+            # ⚠️ AUSENTE É AUSENTE: a OS que não está mais no cache entra com
+            # os campos nulos, e não com cadeia vazia -- nulo quer dizer "não
+            # medido", e a tela sabe dizer isso.
+            a.update(dados_da_os.get(a["numero_os"]) or {
+                "cliente_id": None, "cliente": None, "tipo_nome": None,
+                "status_str": None, "situacao_id_os": None,
+                "n_oficinas": None})
+
     # 🚨 O CARD DA COLUNA 1 É POR TÉCNICO E PERMANENTE (🔵 decisão dele); os das
     # outras colunas são LOTES. Por isso o agrupamento é diferente nas duas, e
     # não é inconsistência: é o desenho dele.

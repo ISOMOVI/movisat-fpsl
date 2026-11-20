@@ -92,8 +92,37 @@ def base():
                 form_answer_id INTEGER PRIMARY KEY, numero_os INTEGER,
                 form_state TEXT, updated_at TEXT, sincronizado_em TEXT)
         """)
+        # 🚨 AS TRÊS DO ENRIQUECIMENTO (19/11). O `quadro()` passou a trazer
+        # cliente, tipo e status da OS -- 🔵 *"faltam várias coisas (...) como
+        # a aba1 apresenta"* -- e o nome do cliente dá três saltos, porque a
+        # `clientes` não o guarda:
+        #   os_historico.cliente_id -> clientes.cnpjcpf -> contrato_cliente.nome
+        # ⚠️ Sem elas aqui, TODO teste que chama `quadro()` morre com *"no such
+        # table: clientes"* -- e o defeito seria do banco de teste, não do
+        # código. É o mesmo motivo da `datascope_respostas` logo acima.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS clientes (
+                harmonit_id INTEGER PRIMARY KEY, cnpjcpf TEXT,
+                criado_em TEXT)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS contrato_cliente (
+                cnpj TEXT PRIMARY KEY, nome TEXT, nome_fonte TEXT,
+                atualizado_em TEXT, atualizado_por TEXT)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tipos_os (
+                tipo_id INTEGER PRIMARY KEY, nome TEXT, codigo TEXT,
+                atualizado_em TEXT)
+        """)
         pagamento_tabelas.criar(conn)
         conn.execute("DELETE FROM datascope_respostas")
+        # ⚠️ LIMPA AS TRÊS TAMBÉM: banco de teste que guarda linha de uma
+        # rodada para a outra passa na primeira e reprova na segunda -- é o
+        # `feedback_teste_que_conta_em_sqlite_compartilhado`.
+        conn.execute("DELETE FROM clientes")
+        conn.execute("DELETE FROM contrato_cliente")
+        conn.execute("DELETE FROM tipos_os")
         conn.execute("DELETE FROM os_historico")
         conn.execute("DELETE FROM pagamento_artefato")
         conn.execute("DELETE FROM pagamento_lote")
