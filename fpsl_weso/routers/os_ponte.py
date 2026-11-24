@@ -1828,6 +1828,40 @@ _SITUACOES_DO_PAINEL = (
 )
 
 
+def _janela_legivel(inicio: str | None, fim: str | None) -> str | None:
+    """"23/11/2026 16:00 às 18:00" -- a janela do compromisso, para ler.
+
+    🚨 UMA VEZ, AQUI, e não nas três telas que desenham este bloco
+    (`DialogoDeChamado`, `PainelOperacao`, `PainelServicoDosTecnicos`).
+
+    ⚠️ O FORMATO É O DO ERP: `dd/MM/yyyy HH:mm:ss`, com barra e sem fuso --
+    medido em 23/11 lendo o `agendamentoOS` cru. Não se adivinha ISO aqui.
+
+    ⚠️ E SE NÃO DER PARA LER, DEVOLVE O CRU em vez de `None`: data que o ERP
+    mandou e a tela não mostrou é pior que data feia. Quem muda o formato lá é
+    o Harmonit, e esconder a mudança faria o defeito voltar calado.
+    """
+    if not inicio:
+        return None
+    def _partes(txt):
+        pedacos = str(txt).strip().split(" ")
+        dia = pedacos[0] if pedacos else ""
+        hora = pedacos[1][:5] if len(pedacos) > 1 else ""
+        return dia, hora
+    d1, h1 = _partes(inicio)
+    if not d1 or not h1:
+        return " a ".join(x for x in (inicio, fim) if x)
+    if not fim:
+        return f"{d1} {h1}"
+    d2, h2 = _partes(fim)
+    if not d2 or not h2:
+        return f"{d1} {h1}"
+    # Mesmo dia: a data não se repete -- "16:00 às 18:00" é o que a pessoa lê.
+    if d2 == d1:
+        return f"{d1} {h1} às {h2}"
+    return f"{d1} {h1} às {d2} {h2}"
+
+
 def _tecnicos_da_os(tecnicos_json: str | None) -> list[dict]:
     """Quem está vinculado à OS, do `tecnicos_json`.
 
@@ -1860,8 +1894,25 @@ def _tecnicos_da_os(tecnicos_json: str | None) -> list[dict]:
             continue
         atual = por_usuario.setdefault(uid, {
             "usuario_id": uid,
-            "nome": t.get("nome") or t.get("usuarioNome") or None,
+            # 🚨 `nomeTecnico` PRIMEIRO, e isto é um conserto de 23/11: a
+            # versão anterior procurava `nome` e `usuarioNome`, e NENHUMA DAS
+            # DUAS existe no dado do Harmonit -- medido no cache da OS 17143,
+            # que tem `nomeTecnico='Franck'` e `nome=None`. O resumo saía com
+            # o nome nulo SEMPRE, e as três telas caíam no "usuário 14262".
+            # ⚠️ As outras duas chaves ficam como reserva: custam nada e
+            # cobrem o dia em que o ERP renomear o campo.
+            "nome": (t.get("nomeTecnico") or t.get("nome")
+                     or t.get("usuarioNome") or None),
             "agendamento_id": None,
+            # 🚨 A JANELA, que faltava: `start` e `end` estão no
+            # `agendamentoOS` guardado e eram DESCARTADOS aqui. Sem eles a
+            # tela mostrava "compromisso 969544" e nenhuma data -- e quem
+            # olhava concluía, com razão, que o agendamento não tinha sido
+            # escrito. O cru vai junto para poder ser auditado contra o que
+            # mandamos.
+            "inicio": None,
+            "fim": None,
+            "janela": None,
             "vinculos": 0,
         })
         atual["vinculos"] += 1
@@ -1869,6 +1920,12 @@ def _tecnicos_da_os(tecnicos_json: str | None) -> list[dict]:
         # técnico com dois vínculos tem o compromisso em apenas um deles.
         if t.get("agendamentoId") and not atual["agendamento_id"]:
             atual["agendamento_id"] = t.get("agendamentoId")
+            ag = t.get("agendamentoOS")
+            if isinstance(ag, dict):
+                atual["inicio"] = ag.get("start") or None
+                atual["fim"] = ag.get("end") or None
+                atual["janela"] = _janela_legivel(atual["inicio"],
+                                                  atual["fim"])
     return list(por_usuario.values())
 
 

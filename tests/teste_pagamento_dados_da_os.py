@@ -149,6 +149,24 @@ def base():
                      "VALUES (?, ?)", (CNPJ, NOME_DO_CLIENTE))
         conn.execute("INSERT INTO tipos_os (tipo_id, nome) VALUES (?, ?)",
                      (TIPO_CONTRATO, "Contrato"))
+
+        # 🚨 **ESTE ARQUIVO NÃO É SOBRE O CORTE DE DATA**, e a partir de 23/11
+        # ele tem de dizer isso. 🔵 D6 dele: a aba 2 enxerga serviço a partir
+        # de **16/11/2026**, e as duas OS daqui são de **05/08** e **10/09** --
+        # então a varredura passou a (corretamente) não criar artefato nenhum e
+        # as 6 travas daqui morreram com `KeyError: 16689`.
+        #
+        # ⚠️ **A DATA DA FIXTURE NÃO FOI MUDADA**, de propósito: o
+        # `test_o_artefato_continua_com_tudo_que_ja_tinha` cobra
+        # `data_os == "05/08/2026 08:00:00"`, e mexer nela faria a trava medir
+        # outra coisa. O que se declara aqui é o CORTE, e assim cada arquivo
+        # cobra uma regra só: o corte tem travas próprias no
+        # `teste_pagamento_desde.py`, e aqui ficam os três saltos do nome do
+        # cliente, o tipo pelo catálogo e o status.
+        conn.execute(
+            "INSERT OR REPLACE INTO config (chave, valor, atualizado_em) "
+            "VALUES (?, '2026-01-01', '2026-11-23')",
+            (pagamento_servico.CHAVE_DESDE,))
         conn.commit()
     yield
 

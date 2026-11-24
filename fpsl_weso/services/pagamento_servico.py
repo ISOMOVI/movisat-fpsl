@@ -116,6 +116,82 @@ def _agora() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# ===========================================================================
+# A DATA INICIAL DA ABA 2 — 🔵 D6 e D7 dele, 23/11
+# ===========================================================================
+# 🔵 *"use 16/11/2026 de inicio para o financeiro, não mexa na data do OP"*, e
+# os artefatos anteriores se **escondem, não se apagam**.
+#
+# 🚨 **CHAVE PRÓPRIA, E NO CONFIG DO FPSL.** Não é a `painel_operacao_desde` do
+# Postgres do MoviZap: ele foi explícito em não mexer na data da Operação, e
+# compartilhar a chave faria mover uma mover a outra. E mora **aqui** porque
+# quem precisa dela primeiro é a VARREDURA, que roda neste lado — a do MoviZap
+# o painel nem veria na hora de criar artefato.
+#
+# 📏 MEDIDO EM 23/11, e ele soube antes de decidir: dos 79 artefatos do
+# `fpsl.db`, o corte de 16/11 deixa **2** à vista (OS 17124 do Franck, em
+# Validação, e OS 17131 sem técnico, em Movimentação) e esconde **77**.
+CHAVE_DESDE = "pagamento_servico_desde"
+DESDE_PADRAO = "2026-11-16"
+
+
+def _iso_da_data(bruto) -> str:
+    """`dd/mm/aaaa HH:MM:SS` ou `aaaa-mm-dd...` -> `aaaa-mm-dd`.
+
+    ⚠️ A `data_previsao` do cache e a `data_os` do artefato são TEXTO no
+    formato brasileiro, não ISO. Comparar os dois como string daria ordem
+    alfabética, que para datas é lixo -- foi a armadilha de 05/11.
+    """
+    if not bruto:
+        return ""
+    s = str(bruto).strip()
+    if len(s) >= 10 and s[2] == "/" and s[5] == "/":
+        return "%s-%s-%s" % (s[6:10], s[3:5], s[0:2])
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    return ""
+
+
+def desde(conn=None) -> str:
+    """Desde quando a aba 2 enxerga serviço. 🔵 D6: 16/11/2026, só o owner muda.
+
+    ⚠️ Valor torto no banco NÃO derruba a tela e NÃO vira silêncio: cai no
+    padrão e registra. É a mesma régua da `paineis.data_matriz` do MoviZap.
+    """
+    def _ler(c):
+        row = c.execute("SELECT valor FROM config WHERE chave = ?",
+                        (CHAVE_DESDE,)).fetchone()
+        return (row[0] if row else "") or ""
+
+    valor = _ler(conn) if conn is not None else None
+    if valor is None:
+        with storage._connect() as c:
+            valor = _ler(c)
+    if _iso_da_data(valor) == valor and len(valor) == 10:
+        return valor
+    if valor:
+        log.warning("data inicial da aba 2 invalida no config (%r); usando %s",
+                    valor, DESDE_PADRAO)
+    return DESDE_PADRAO
+
+
+def definir_desde(valor: str, *, por: str | None = None) -> dict:
+    """🔵 *"a data inicial é somente do Owner"*. Quem cobra isso é a rota."""
+    iso = _iso_da_data(valor)
+    if iso != (valor or "").strip() or len(iso) != 10:
+        return {"ok": False,
+                "motivo": "a data tem de estar no formato aaaa-mm-dd"}
+    with storage._connect() as conn:
+        pagamento_tabelas.criar(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO config (chave, valor, atualizado_em) "
+            "VALUES (?, ?, ?)", (CHAVE_DESDE, iso, _agora()))
+        _evento(conn, acao="definir_desde", de=None, para=iso, por=por)
+        conn.commit()
+    log.info("data inicial da aba 2: %s (por %s)", iso, por)
+    return {"ok": True, "desde": iso}
+
+
 def varrer(*, horas: int | None = 24) -> dict:
     """Uma rodada da varredura. 🚨 NÃO fala com o Harmonit.
 
@@ -148,9 +224,25 @@ def varrer(*, horas: int | None = 24) -> dict:
             params = (corte,)
         linhas = conn.execute(sql, params).fetchall()
 
+        # 🔵 D6/D7: o corte entra AQUI, e não só na tela. Artefato anterior à
+        # data **nem nasce** -- que é o que ele pediu: *"o artefato anterior à
+        # data nem nasce"*. Esconder só na tela deixaria a varredura criando
+        # linha nova de agosto toda madrugada.
+        corte_iso = desde(conn)
+        resumo["desde"] = corte_iso
+        resumo["antes_da_data"] = 0
+
         tecnicos_vistos = set()
         for numero, materiais, tecnicos, termo, previsao, _situacao in linhas:
             resumo["lidas"] += 1
+            # ⚠️ **SEM DATA NÃO SE DESCARTA**, e esta é decisão minha,
+            # declarada: a OS sem `data_previsao` não pode ser PROVADA anterior
+            # ao corte, e descartá-la sumiria com dinheiro em silêncio. Ela
+            # entra, e o card já diz "sem data". 📏 Medido em 23/11: 0 das 79.
+            data_iso = _iso_da_data(previsao)
+            if data_iso and data_iso < corte_iso:
+                resumo["antes_da_data"] += 1
+                continue
             pagamento, km = _valores_do_corpo(materiais)
             if pagamento <= 0 and km <= 0:
                 continue
@@ -224,6 +316,29 @@ def quadro() -> dict:
         linhas = [dict(zip(cols, r)) for r in conn.execute(
             "SELECT %s FROM pagamento_artefato ORDER BY tecnico_id, numero_os"
             % ", ".join(cols)).fetchall()]
+
+        # 🔵 D7: os anteriores à data se **ESCONDEM, não se apagam**. Nada sai
+        # do `fpsl.db`; trocando a data, voltam.
+        #
+        # 🚨 **O CORTE VALE SÓ NA MOVIMENTAÇÃO.** Em lote já formado, não --
+        # e o motivo é o mesmo que esta tela já escreveu sobre o filtro de
+        # período: *"o lote já foi fechado, e peneirá-lo por data esconderia
+        # parte de um pagamento que vai sair inteiro"*. Esconder metade de um
+        # lote faria o total da tela discordar do arquivo do Procfy.
+        #
+        # ⚠️ E artefato SEM data fica, pelo mesmo motivo da varredura: não se
+        # prova anterior ao corte, e sumir com ele perderia dinheiro calado.
+        corte_iso = desde(conn)
+        escondidos = 0
+        a_mostrar = []
+        for a in linhas:
+            if a["coluna"] == "movimentacao":
+                d = _iso_da_data(a.get("data_os"))
+                if d and d < corte_iso:
+                    escondidos += 1
+                    continue
+            a_mostrar.append(a)
+        linhas = a_mostrar
 
         # 🔵 19/11: os dados da OS no artefato -- *"faltam várias coisas (...)
         # como a aba1 apresenta"*. 🚨 O card da aba 1 mostra cliente, tipo e
@@ -306,7 +421,11 @@ def quadro() -> dict:
         else:
             cards = [l for l in lotes.values() if l["coluna"] == nome]
         colunas.append({"chave": nome, "cards": cards, "total": len(cards)})
-    return {"colunas": colunas, "artefatos": len(linhas)}
+    # 🚨 A TELA TEM DE DIZER O CORTE E O QUE ELE ESCONDEU. Contagem que cai de
+    # 79 para 2 sem explicação é a tela mentindo por omissão -- e foi assim que
+    # o "sumiço" de 19/11 pareceu defeito. 🔵 É a régua do `M12`.
+    return {"colunas": colunas, "artefatos": len(linhas),
+            "desde": corte_iso, "escondidos_pela_data": escondidos}
 
 
 # ===========================================================================
@@ -537,6 +656,68 @@ def devolver(artefato_id: int, justificativa: str, *,
                 detalhe=texto, por=por)
         conn.commit()
     return {"ok": True, "de": a["coluna"], "para": "movimentacao"}
+
+
+def devolver_lote(lote_id: int, justificativa: str, *,
+                  por: str | None = None) -> dict:
+    """🔵 *"Excluir o card inteiro devolvendo tudo à coluna 1, com
+    justificativa única"* -- tarefa 2.4.
+
+    🚨 **CHAMA O `devolver` DE UM, ARTEFATO POR ARTEFATO**, e isto é o ponto:
+    o que acontece com cada um (coluna 1, laranja, justificativa, ciente
+    apagado) é regra dele, já escrita e já travada. Repetir o UPDATE aqui
+    criaria uma segunda verdade que divergiria na primeira mudança -- foi
+    exatamente o que o `operacoes_retirada` do FPSL existe para evitar.
+
+    ⚠️ **A JUSTIFICATIVA É UMA, e vai em TODOS:** é o pedido dele. Cada
+    artefato guarda o mesmo texto, porque é o artefato que o mostra laranja no
+    card da coluna 1 -- guardar só no lote deixaria os itens laranjas e mudos.
+
+    ⚠️ **O LOTE FICA**, como registro, e sai do quadro sozinho: `colunas()`
+    monta os cards a partir dos artefatos, então lote sem artefato não
+    aparece. Apagar a linha perderia o rastro de que ele existiu.
+    """
+    texto = (justificativa or "").strip()
+    if not texto:
+        return {"ok": False,
+                "motivo": "excluir o card exige a justificativa: ela vai em "
+                          "todos os itens, e laranja sem motivo e cor sem "
+                          "informacao"}
+    with storage._connect() as conn:
+        pagamento_tabelas.criar(conn)
+        lote = conn.execute(
+            "SELECT id, coluna FROM pagamento_lote WHERE id = ?",
+            (lote_id,)).fetchone()
+        if not lote:
+            return {"ok": False, "motivo": "lote nao existe"}
+        ids = [r[0] for r in conn.execute(
+            "SELECT id FROM pagamento_artefato "
+            " WHERE lote_id = ? AND coluna <> 'movimentacao' "
+            " ORDER BY id", (lote_id,)).fetchall()]
+        de = lote[1]
+    if not ids:
+        # ⚠️ Não é erro: o card já está vazio, e dizer isso é melhor que um
+        # "ok" que não mexeu em nada.
+        return {"ok": False, "devolvidos": 0,
+                "motivo": "este lote nao tem item para devolver"}
+
+    devolvidos, recusados = [], []
+    for artefato_id in ids:
+        r = devolver(artefato_id, texto, por=por)
+        (devolvidos if r.get("ok") else recusados).append(
+            artefato_id if r.get("ok") else (artefato_id, r.get("motivo")))
+
+    with storage._connect() as conn:
+        pagamento_tabelas.criar(conn)
+        # 🚨 O EVENTO DO LOTE, além do de cada artefato: é o que responde
+        # depois *"quem esvaziou este lote, e por quê?"*. Sem ele, a resposta
+        # estaria espalhada em N linhas de artefato.
+        _evento(conn, artefato_id=None, lote_id=lote_id,
+                acao="devolver_lote", de=de, para="movimentacao",
+                detalhe="%d item(ns): %s" % (len(devolvidos), texto), por=por)
+        conn.commit()
+    return {"ok": bool(devolvidos), "devolvidos": len(devolvidos),
+            "recusados": recusados, "de": de, "para": "movimentacao"}
 
 
 def auditar(lote_id: int, *, por: str | None = None) -> dict:
@@ -919,8 +1100,21 @@ def montar_arquivo(lote_id: int, config: dict, *,
             return {"ok": False, "avancaram": 0, "ficaram": len(ficaram),
                     "motivo": "nenhum artefato deste lote tem comprovante nem "
                               "justificativa de dispensa"}
-        nome = "procfy_lote%s_%s.xlsx" % (
-            lote_id, datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"))
+        # 🚨 O SUFIXO DA REGERAÇÃO (23/11, tarefa 2.5). O nome tem segundo
+        # de precisão, e reabrir+gerar no mesmo segundo gerava o MESMO nome --
+        # o segundo arquivo sobrescrevia o primeiro no disco e a prova do que
+        # foi ao Procfy antes desaparecia, com os dois eventos apontando para
+        # ele. Antes da 2.5 não havia segunda geração; reabrir criou.
+        # ⚠️ Conta REABERTURAS, não é só anticolisão: o nome passa a dizer que
+        # este arquivo é a 2ª (ou 3ª) saída do mesmo lote. Microssegundo
+        # resolveria a colisão e não contaria nada a quem olha a pasta.
+        reaberturas = conn.execute(
+            "SELECT COUNT(*) FROM pagamento_evento "
+            " WHERE lote_id = ? AND acao = 'reabrir_lote'",
+            (lote_id,)).fetchone()[0]
+        nome = "procfy_lote%s%s_%s.xlsx" % (
+            lote_id, ("_r%d" % reaberturas) if reaberturas else "",
+            datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"))
         for aid in prontos:
             conn.execute(
                 "UPDATE pagamento_artefato SET coluna = 'procfy', "
@@ -948,6 +1142,62 @@ def montar_arquivo(lote_id: int, config: dict, *,
     return {"ok": True, "arquivo": nome, "avancaram": len(prontos),
             "ficaram": len(ficaram), "linhas": montado["linhas"],
             "total": montado["total"]}
+
+
+def reabrir_lote(lote_id: int, *, por: str | None = None) -> dict:
+    """🔵 *"Reabrir na coluna 5 e gerar o arquivo de novo"* -- tarefa 2.5.
+
+    O lote volta da `enviado` para a `validacao`, que é de onde o
+    `montar_arquivo` monta. 🚨 Por isso ele não precisou de nenhum `if` novo:
+    *"aceitar lote reaberto"* é o lote estar onde ele já olha.
+
+    🚨 **NÃO É DEVOLVER (2.4):** ciente, comprovante e semáforo FICAM. O lote
+    estava certo; o arquivo é que precisa sair outra vez. Apagar a conferência
+    aqui faria o operador refazer trabalho que estava bom.
+
+    ⚠️ **O `arquivo_procfy` É LIMPO**, e o nome antigo vai para o evento: se
+    ficasse no lote, o `enviar` aceitaria mandar de novo sem ninguém ter
+    gerado nada -- ele só confere que o campo existe.
+    """
+    with storage._connect() as conn:
+        pagamento_tabelas.criar(conn)
+        lote = conn.execute(
+            "SELECT coluna, arquivo_procfy FROM pagamento_lote WHERE id = ?",
+            (lote_id,)).fetchone()
+        if not lote:
+            return {"ok": False, "motivo": "lote nao existe"}
+        if lote[0] != "enviado":
+            # 🔵 Ele pediu reabrir NA COLUNA 5. De `procfy` o caminho é montar
+            # o arquivo de novo, que já existe; de antes disso não há o que
+            # reabrir.
+            return {"ok": False,
+                    "motivo": "reabrir vale na coluna 5 (enviado); este lote "
+                              "esta em " + str(lote[0])}
+        ids = [r[0] for r in conn.execute(
+            "SELECT id FROM pagamento_artefato "
+            " WHERE lote_id = ? AND coluna = 'enviado'",
+            (lote_id,)).fetchall()]
+        if not ids:
+            return {"ok": False, "reabertos": 0,
+                    "motivo": "este lote nao tem item na coluna 5"}
+        for aid in ids:
+            conn.execute(
+                "UPDATE pagamento_artefato SET coluna = 'validacao', "
+                "       atualizado_em = ? WHERE id = ?", (_agora(), aid))
+            _evento(conn, artefato_id=aid, lote_id=lote_id, acao="reabrir",
+                    de="enviado", para="validacao", detalhe=lote[1], por=por)
+        conn.execute(
+            "UPDATE pagamento_lote SET coluna = 'validacao', "
+            "       arquivo_procfy = NULL, gerado_em = NULL, "
+            "       gerado_por = NULL, atualizado_em = ? WHERE id = ?",
+            (_agora(), lote_id))
+        _evento(conn, artefato_id=None, lote_id=lote_id, acao="reabrir_lote",
+                de="enviado", para="validacao",
+                detalhe="arquivo anterior: %s" % (lote[1] or "nenhum"),
+                por=por)
+        conn.commit()
+    return {"ok": True, "reabertos": len(ids), "de": "enviado",
+            "para": "validacao", "arquivo_anterior": lote[1]}
 
 
 def enviar_pagamento(lote_id: int, *, por: str | None = None) -> dict:

@@ -36,6 +36,24 @@ def quadro():
     return pagamento_servico.quadro()
 
 
+class Desde(BaseModel):
+    # 🔵 D6: 16/11/2026. ⚠️ `aaaa-mm-dd`, e quem recusa torto é o serviço, com
+    # `ok`+`motivo` -- a régua desta ponte inteira: recusa é resposta.
+    desde: str = Field(..., min_length=10, max_length=10)
+    por: str | None = None
+
+
+@router.post("/desde")
+def definir_desde(entrada: Desde):
+    """A data inicial da aba 2. 🔵 D6 e D7 dele, 23/11.
+
+    🚨 **A PERMISSÃO NÃO MORA AQUI**, como em toda esta ponte: `X-Ponte-Key` é
+    servidor-a-servidor. Quem cobra *"a data inicial é somente do Owner"* é o
+    MoviZap, na rota dele -- mesma régua da data matriz da Operação.
+    """
+    return pagamento_servico.definir_desde(entrada.desde, por=entrada.por)
+
+
 class Varrer(BaseModel):
     # ⚠️ `None` varre o cache inteiro — é o que a primeira rodada precisa, e o
     # modo do ensaio a seco. Com 24h a primeira nasceria com 2 artefatos em vez
@@ -119,6 +137,21 @@ class UmLote(BaseModel):
     por: str | None = None
 
 
+class DevolverLote(UmLote):
+    # ⚠️ Mesma regra do artefato: sem justificativa não se devolve, e quem
+    # decide isso é o serviço -- aqui só se transporta.
+    justificativa: str = ""
+
+
+@router.post("/devolver-lote")
+def devolver_lote(entrada: DevolverLote):
+    """🔵 *"Excluir o card inteiro devolvendo tudo à coluna 1, com
+    justificativa única"* -- tarefa 2.4. 🚨 Sempre para a coluna 1, e a mesma
+    justificativa em todos os itens."""
+    return pagamento_servico.devolver_lote(
+        entrada.lote_id, entrada.justificativa, por=entrada.por)
+
+
 @router.post("/auditar")
 def auditar(entrada: UmLote):
     """🔵 *"o botão (...) 'Auditar' que irá mover o card somente com os cientes
@@ -191,6 +224,14 @@ def previa_do_arquivo(entrada: MontarArquivo):
     """
     return pagamento_servico.linhas_do_procfy(
         entrada.lote_id, entrada.config or {})
+
+
+@router.post("/reabrir")
+def reabrir(entrada: UmLote):
+    """🔵 *"Reabrir na coluna 5 e gerar o arquivo de novo"* -- tarefa 2.5.
+    🚨 Sem justificativa de propósito: nada é devolvido nem desfeito, o lote só
+    volta para a Validação para o arquivo ser gerado outra vez."""
+    return pagamento_servico.reabrir_lote(entrada.lote_id, por=entrada.por)
 
 
 @router.post("/enviar")

@@ -1,4 +1,4 @@
-"""Nenhuma OS de retirada sai com item de comodato flegado — 17/11.
+"""Nenhuma OS de retirada nem de Substituição sai com comodato — 17 e 23/11.
 
 🔵 DECISÃO DELE (17/11): *"nenhuma OS de retirada pode ter item de comodato
 flegado"*, delimitada no mesmo dia por *"somente rescisão"*, *"Sub retirada
@@ -6,9 +6,14 @@ não é só retirada"* e *"1 regra só para as duas, evitar lixo"*.
 
 O que este arquivo PRENDE, e que reprova se alguém desfizer:
   1. **A trava do tipo:** 57 é o `tipo_id` do perfil `rescisao` nos DOIS
-     configs, nenhum outro perfil usa 57, e o 73 da Substituição Retirada
-     fica de fora. Mudar um config faria a regra deixar de pegar em silêncio;
-     aqui ela reprova antes.
+     configs e nenhum outro perfil usa 57; **73 e 72 são a Substituição nos
+     dois configs**. Mudar um config faria a regra deixar de pegar em
+     silêncio; aqui ela reprova antes.
+     🔵 **23/11, ELE AMPLIOU:** *"as OS de substituição retirada e instalação,
+     NÃO DEVEM ter o flag de comodato"*. A delimitação de 17/11 (*"somente
+     rescisão"*) deixou de valer **por decisão dele**, e os pontos 1 e 6 deste
+     arquivo foram invertidos junto -- um teste que continuasse prendendo o 73
+     flegado estaria prendendo a decisão antiga.
   2. **Caminho novo (aba Operações), termo 8893 real:** a OS de rescisão sai
      com ZERO material flegado, inclusive o EQUIPAMENTO da WESO -- que era
      exatamente o que escapava da regra de 13/11.
@@ -19,8 +24,11 @@ O que este arquivo PRENDE, e que reprova se alguém desfizer:
      regra de 13/11 (não recebe nem o perfil).
   5. **O valor patrimonial fica de pé** e o que a regra NÃO faz: não toca
      `cobrar`, não toca valor, não remove nem reordena item.
-  6. **Os outros tipos não se movem:** Substituição Retirada (73), contrato
-     (76), upgrade (77), manutenção (1783) e a financeira (2) saem idênticos.
+  6. **Os outros tipos não se movem:** contrato (76), upgrade (77),
+     manutenção (1783) e a financeira (2) saem idênticos. **A Substituição
+     (73 e 72) agora se move**, e sai com o VALOR DE PÉ -- é o par que o
+     conserto errado (`sem_flags`) quebraria, e por isso as duas coisas são
+     cobradas na mesma trava.
   7. **A ordem da chamada:** nos dois routers a regra roda DEPOIS do cabeçalho,
      que é quem fecha o `tipo_id`. Trava no próprio fonte, como a do
      `teste_car_variavel`.
@@ -126,11 +134,23 @@ def teste_trava_do_tipo():
                   if k != "rescisao" and v.get("tipo_id") == ret.TIPO_OS_RETIRADA]
         checar(f"config {nome}: nenhum outro perfil usa 57", outros == [],
                str(outros))
-        # 🔵 DELE: *"Sub retirada não é só retirada"* -- o 73 fica fora.
-        subs = [k for k, v in perfis.items()
-                if v.get("tipo_id_retirada") == ret.TIPO_OS_RETIRADA]
-        checar(f"config {nome}: nenhum tipo_id_retirada é 57 (o 73 fica fora)",
-               subs == [], str(subs))
+        # 🔵 23/11, DELE: a Substituição ENTROU na regra. 🚨 Os números
+        # vêm do config, não da memória: se alguém trocar o tipo da
+        # Substituição num dos dois configs, a regra deixaria de pegar em
+        # silêncio -- e é isto que reprova antes.
+        sub = perfis["substituicao"]
+        checar(f"config {nome}: Sub retirada é 73 e está na regra",
+               sub["tipo_id_retirada"] == ret.TIPO_OS_SUB_RETIRADA
+               and sub["tipo_id_retirada"] in ret.TIPOS_SEM_COMODATO,
+               str(sub.get("tipo_id_retirada")))
+        checar(f"config {nome}: Sub instalação é 72 e está na regra",
+               sub["tipo_id_instalacao"] == ret.TIPO_OS_SUB_INSTALACAO
+               and sub["tipo_id_instalacao"] in ret.TIPOS_SEM_COMODATO,
+               str(sub.get("tipo_id_instalacao")))
+        # ⚠️ E a regra não cresceu além do que ele pediu: três tipos, e só.
+        checar(f"config {nome}: a regra tem exatamente 3 tipos",
+               ret.TIPOS_SEM_COMODATO == {57, 73, 72},
+               str(sorted(ret.TIPOS_SEM_COMODATO)))
 
 
 # ── 2 e 3. caminho novo: a montagem de produção ──────────────────────────────
@@ -246,8 +266,9 @@ def teste_nao_toca_o_resto():
     checar("não mexe no harmonit_id nem na quantidade",
            m["harmonit_id"] == 1 and m["quantidade"] == 1, str(m))
 
-    # 🔵 DELE: *"Demais tipos não pode mexer"*. 73 = Substituição Retirada.
-    outros = {"Substituição Retirada": 73, "contrato": 76, "upgrade": 77,
+    # 🔵 DELE: *"Demais tipos não pode mexer"*. ⚠️ O 73 SAIU desta lista em
+    # 23/11, quando ele ampliou a regra -- ver a seção 8.
+    outros = {"contrato": 76, "upgrade": 77,
               "manutenção": 1783, "financeira": cfg.TIPO_CONTRATO_ID}
     for nome, tipo in outros.items():
         op = {"tipo_id": tipo, "materiais": [dict(base)]}
@@ -262,6 +283,73 @@ def teste_nao_toca_o_resto():
     ret.aplicar([])
     ret.aplicar([{"tipo_id": ret.TIPO_OS_RETIRADA}])
     checar("lista vazia e OS sem materiais não estouram", True)
+
+
+# ── 8. a Substituição: sem comodato E com o valor de pé ──────────────────────
+
+def teste_substituicao_sem_comodato_com_valor():
+    """🔵 23/11, DELE: *"as OS de substituição retirada e instalação, NÃO DEVEM
+    ter o flag de comodato"*.
+
+    🚨 AS DUAS COISAS NA MESMA TRAVA, de propósito: é o par que o conserto
+    errado quebraria. Ligar `sem_flags` no perfil `substituicao` apagaria o
+    comodato **e** zeraria o `valor_unitario` (medido em 14/08: o ST310U
+    sairia R$ 0,00 contra os R$ 1.100,00 do contrato) **e** não geraria a OS
+    financeira. Cobrar só o comodato deixaria a porta aberta para esse
+    conserto passar verde.
+
+    ⚠️ O item é montado pelo CONSTRUTOR DE VERDADE
+    (`operacoes_os.material_do_equipamento`), não escrito à mão: é ele que
+    herda o valor do rastreador que está saindo, e é essa herança que precisa
+    sobreviver.
+    """
+    print("\n8. Substituição (73 e 72): sem comodato, com o valor de pé")
+    perfil = cfg.PERFIS["substituicao"]
+    checar("o perfil NÃO tem sem_flags (senão o valor zeraria)",
+           not perfil.get("sem_flags"), str(perfil.get("sem_flags")))
+
+    # O de-para sem valor patrimonial (os 2G) devolve 0.0, e aí o valor TEM de
+    # vir do item que está saindo -- a herança de 14/08.
+    saindo = [{"descricao": "RASTREADOR ST310U", "harmonit_id": 20314,
+               "quantidade": 1, "valor_unitario": 1100.0, "comodato": True}]
+    guardado_modelo = oos.modelo_da_operacao
+    guardado_produto = oos.storage.produto_do_modelo
+    try:
+        oos.modelo_da_operacao = (
+            lambda perfil, placa, materiais, recipientes=None, dados=None:
+            "ST310U")
+        oos.storage.produto_do_modelo = lambda modelo: {
+            "harmonit_id": 20314, "descricao": "RASTREADOR ST310U",
+            "valor": None}
+        item = oos.material_do_equipamento(perfil, PLACAS[0], saindo)
+    finally:
+        oos.modelo_da_operacao = guardado_modelo
+        oos.storage.produto_do_modelo = guardado_produto
+
+    checar("o construtor herda o valor do item que sai",
+           item and item["valor_unitario"] == 1100.0, str(item))
+    # 🚨 ANTES DA REGRA O ITEM VEM FLEGADO, e é isso que faz a trava provar
+    # algo: teste que não reprova no código de antes não prova nada.
+    checar("o construtor ainda flega comodato (a regra é quem apaga)",
+           item and item["comodato"] is True, str(item))
+
+    for nome, tipo in (("Sub retirada", ret.TIPO_OS_SUB_RETIRADA),
+                       ("Sub instalação", ret.TIPO_OS_SUB_INSTALACAO)):
+        op = {"tipo_id": tipo, "materiais": [dict(item)]}
+        ret.aplicar([op])
+        m = op["materiais"][0]
+        checar(f"{nome} ({tipo}): sai SEM comodato",
+               m["comodato"] is False, str(m))
+        checar(f"{nome} ({tipo}): o valor patrimonial FICA DE PÉ",
+               m["valor_unitario"] == 1100.0, str(m))
+
+    # ⚠️ E a financeira da Substituição é EMBUTIDA (`financeira_embutida`), com
+    # `cobrar = True` e sem comodato -- a regra não a alcança, e o valor dela
+    # não muda. Se mudasse, o conserto estaria matando a cobrança do serviço.
+    checar("a financeira embutida segue com valor e cobrança",
+           perfil.get("financeira_servico_valor") == 299.9
+           and perfil.get("financeira_servico_cobrar") is True,
+           str(perfil.get("financeira_servico_valor")))
 
 
 # ── 7. a ordem da chamada, no fonte ──────────────────────────────────────────
@@ -304,6 +392,7 @@ async def main():
     await teste_caminho_novo()
     await teste_caminho_velho()
     teste_nao_toca_o_resto()
+    teste_substituicao_sem_comodato_com_valor()
     teste_ordem_no_fonte()
     print(f"\n{'=' * 62}")
     print(f"{ok} verificações OK, {len(falhas)} falhas")

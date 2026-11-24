@@ -203,6 +203,70 @@ class TestOFluxoInteiro:
         q = cliente.get("/api/pagamento/quadro", headers=CAB).json()
         assert q["colunas"][4]["total"] == 1
 
+        # ---- TAREFA 2.5: reabrir na coluna 5 e GERAR DE NOVO
+        # 🔵 *"Reabrir na coluna 5 e gerar o arquivo de novo"*.
+        # 🚨 O CICLO INTEIRO, porque e isso que prova: reabre, confere que o
+        # arquivo SAIU do lote, monta outra vez e volta para a coluna 5. Medir
+        # so o "reabriu" deixaria a segunda metade (*"gerar de novo"*) sem
+        # prova -- e e nela que o `montar_arquivo` "aceita lote reaberto".
+        antes = r.json()  # o montar-arquivo do bloco acima
+        r = cliente.post("/api/pagamento/reabrir", headers=CAB,
+                         json={"lote_id": lote, "por": "Zz Teste"})
+        assert r.json()["ok"] is True, r.json()
+        assert r.json()["reabertos"] == 1
+        assert r.json()["para"] == "validacao"
+        q2 = cliente.get("/api/pagamento/quadro", headers=CAB).json()
+        assert q2["colunas"][4]["total"] == 0, q2["colunas"][4]
+        assert q2["colunas"][2]["total"] == 1, q2["colunas"][2]
+        # 🚨 NAO E DEVOLVER: o comprovante e o ciente FICAM. Se saissem, o
+        # operador refaria conferencia que estava boa.
+        item = q2["colunas"][2]["cards"][0]["artefatos"][0]
+        assert item["comprovante_arquivo"] == "recibo.pdf", item
+        assert item["semaforo"] == "verde", item
+        assert item["coluna"] == "validacao", item
+        # ⚠️ E O ARQUIVO SAIU DO LOTE: se ficasse, o `enviar` aceitaria mandar
+        # de novo sem ninguem ter gerado nada -- ele so confere que o campo
+        # existe.
+        r = cliente.post("/api/pagamento/enviar", headers=CAB,
+                         json={"lote_id": lote})
+        assert r.json()["ok"] is False, r.json()
+        # 🚨 E O "GERAR DE NOVO" FUNCIONA, com nome NOVO de arquivo.
+        r = cliente.post("/api/pagamento/montar-arquivo", headers=CAB,
+                         json={"lote_id": lote, "config": {}})
+        assert r.json()["ok"] is True, r.json()
+        assert r.json()["arquivo"] != antes["arquivo"], (
+            "o arquivo novo tem o mesmo nome do antigo")
+        assert cliente.post("/api/pagamento/enviar", headers=CAB,
+                            json={"lote_id": lote}).json()["ok"] is True
+        q2 = cliente.get("/api/pagamento/quadro", headers=CAB).json()
+        assert q2["colunas"][4]["total"] == 1
+
+        # ---- TAREFA 2.4: excluir o card inteiro, da ULTIMA coluna
+        # 🔵 *"Excluir o card inteiro devolvendo tudo a coluna 1, com
+        # justificativa unica"*.
+        # 🚨 Daqui, da coluna 5, de proposito: e o caso mais duro -- o arquivo
+        # ja foi montado e marcado como enviado, e e onde um "sempre para a
+        # anterior" estragaria tudo. 🔵 Dele: *"nao retorna para a anterior e
+        # sim para o 1"*.
+        r = cliente.post("/api/pagamento/devolver-lote", headers=CAB, json={
+            "lote_id": lote, "justificativa": "zz lote inteiro de volta",
+            "por": "Zz Teste"})
+        assert r.json()["ok"] is True, r.json()
+        assert r.json()["devolvidos"] == 1, r.json()
+        assert r.json()["para"] == "movimentacao"
+        q = cliente.get("/api/pagamento/quadro", headers=CAB).json()
+        # O lote SAI do quadro sozinho: os cards vem dos artefatos.
+        assert q["colunas"][4]["total"] == 0, q["colunas"][4]
+        assert q["colunas"][0]["total"] == 1, q["colunas"][0]
+        # 🚨 A JUSTIFICATIVA VAI NO ITEM, e o semaforo fica laranja: e o que o
+        # card da coluna 1 mostra. Guardar so no lote deixaria o item mudo.
+        item = q["colunas"][0]["cards"][0]["artefatos"][0]
+        assert item["semaforo"] == "laranja", item
+        assert item["justificativa"] == "zz lote inteiro de volta", item
+        # ⚠️ E o ciente SAI: o artefato volta ao comeco, e herdar um ciente
+        # dado sobre outro estado seria confirmar o que ninguem olhou.
+        assert not item.get("ciente_em"), item
+
 
 class TestAsRecusasSaoRESPOSTA:
     """🚨 Recusa devolve 200 com `ok: False` e **motivo por extenso** — nunca
@@ -220,6 +284,66 @@ class TestAsRecusasSaoRESPOSTA:
         assert r.status_code == 200
         assert r.json()["ok"] is False
         assert "justificativa" in r.json()["motivo"]
+
+    def test_devolver_LOTE_sem_justificativa(self, cliente):
+        """🔵 *"com justificativa unica"* -- e sem ela nao se devolve, igual ao
+        de um item: os itens ficariam laranjas e mudos na coluna 1."""
+        cliente.post("/api/pagamento/varrer", json={"horas": None},
+                     headers=CAB)
+        aid = _id_do_artefato()
+        lote = cliente.post("/api/pagamento/preparar", headers=CAB,
+                            json={"artefatos": [{"id": aid}]}
+                            ).json()["lotes"][0]
+        r = cliente.post("/api/pagamento/devolver-lote", headers=CAB,
+                         json={"lote_id": lote, "justificativa": "  "})
+        assert r.status_code == 200
+        assert r.json()["ok"] is False
+        assert "justificativa" in r.json()["motivo"]
+
+    def test_devolver_LOTE_que_nao_existe(self, cliente):
+        r = cliente.post("/api/pagamento/devolver-lote", headers=CAB,
+                         json={"lote_id": 999999, "justificativa": "zz"})
+        assert r.status_code == 200
+        assert r.json()["ok"] is False
+        assert "nao existe" in r.json()["motivo"]
+
+    def test_devolver_LOTE_vazio_diz_que_esta_vazio(self, cliente):
+        """⚠️ Nao e erro, e nao e "ok" tambem: um "ok" que nao mexeu em nada
+        faria o operador achar que devolveu."""
+        cliente.post("/api/pagamento/varrer", json={"horas": None},
+                     headers=CAB)
+        aid = _id_do_artefato()
+        lote = cliente.post("/api/pagamento/preparar", headers=CAB,
+                            json={"artefatos": [{"id": aid}]}
+                            ).json()["lotes"][0]
+        cliente.post("/api/pagamento/devolver", headers=CAB,
+                     json={"artefato_id": aid, "justificativa": "zz um"})
+        r = cliente.post("/api/pagamento/devolver-lote", headers=CAB,
+                         json={"lote_id": lote, "justificativa": "zz dois"})
+        assert r.json()["ok"] is False
+        assert r.json()["devolvidos"] == 0
+        assert "nao tem item" in r.json()["motivo"]
+
+    def test_reabrir_lote_que_nao_esta_na_coluna_5(self, cliente):
+        """🔵 Ele pediu reabrir NA COLUNA 5. De `procfy` o caminho e montar o
+        arquivo de novo, que ja existe; antes disso nao ha o que reabrir."""
+        cliente.post("/api/pagamento/varrer", json={"horas": None},
+                     headers=CAB)
+        aid = _id_do_artefato()
+        lote = cliente.post("/api/pagamento/preparar", headers=CAB,
+                            json={"artefatos": [{"id": aid}]}
+                            ).json()["lotes"][0]
+        r = cliente.post("/api/pagamento/reabrir", headers=CAB,
+                         json={"lote_id": lote})
+        assert r.status_code == 200
+        assert r.json()["ok"] is False
+        assert "coluna 5" in r.json()["motivo"]
+
+    def test_reabrir_lote_que_nao_existe(self, cliente):
+        r = cliente.post("/api/pagamento/reabrir", headers=CAB,
+                         json={"lote_id": 999999})
+        assert r.json()["ok"] is False
+        assert "nao existe" in r.json()["motivo"]
 
     def test_auditar_lote_que_nao_existe(self, cliente):
         r = cliente.post("/api/pagamento/auditar", headers=CAB,

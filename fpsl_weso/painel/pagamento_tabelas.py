@@ -184,6 +184,23 @@ def criar(conn) -> None:
         CREATE INDEX IF NOT EXISTS pagamento_evento_artefato_idx
             ON pagamento_evento (artefato_id, em)
     """)
+    # 🚨 **A `config`, QUE NÃO É NOSSA, E AINDA ASSIM ENTRA AQUI.** Ela é
+    # tabela do núcleo do FPSL e já existe em produção, então este `IF NOT
+    # EXISTS` nunca faz nada lá. Ele existe para o BANCO DE TESTE: desde 23/11
+    # a aba 2 lê `pagamento_servico_desde` dela (🔵 D6 dele), e as fixtures dos
+    # testes criam só as tabelas que o pagamento declara.
+    #
+    # ⚠️ A alternativa era um `try/except OperationalError` dentro do `desde()`,
+    # e ela é pior: mascararia em produção uma `config` que de fato faltasse,
+    # que é um problema de verdade, para resolver um problema de fixture.
+    # 📏 O schema é cópia do que está no `fpsl.db` (medido em 23/11).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            chave         TEXT PRIMARY KEY,
+            valor         TEXT NOT NULL,
+            atualizado_em TEXT NOT NULL
+        )
+    """)
 
 
 def migrar(conn) -> None:
