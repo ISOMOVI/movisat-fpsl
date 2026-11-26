@@ -171,6 +171,37 @@ def datascope(entrada: UmArtefato):
     return pagamento_servico.datascope_do_artefato(entrada.artefato_id)
 
 
+class EscritaNoDatascope(BaseModel):
+    ligada: bool
+
+
+@router.get("/datascope-escrita")
+def ler_escrita_no_datascope():
+    """O interruptor da escrita. ⚠️ Ausente = DESLIGADO."""
+    return {"ligada": pagamento_servico.escrita_no_datascope_ligada()}
+
+
+@router.post("/datascope-escrita")
+def gravar_escrita_no_datascope(entrada: EscritaNoDatascope):
+    """🚨 Ligar isto autoriza escrita em sistema de TERCEIRO, que dispara os
+    webhooks deles e manda push para o tecnico. Nasce desligado de proposito."""
+    return pagamento_servico.definir_escrita_no_datascope(entrada.ligada)
+
+
+@router.post("/datascope-aprovar")
+def datascope_aprovar(entrada: UmArtefato):
+    """Poe a resposta do DataScope desta OS em "Aprovado analise tecnica".
+
+    🔵 Ele: *"sim, aprovado - que tem como base as etapas de validacao que
+    permitem o card do pagamento tecnico avancar"* -- um estado so, e so a
+    partir da Validacao.
+    🚨 Escreve em sistema de terceiro: o interruptor e a modal da tela sao parte
+    da regra, nao enfeite.
+    """
+    return pagamento_servico.aprovar_no_datascope(entrada.artefato_id,
+                                                  por=entrada.por)
+
+
 class Comprovante(UmArtefato):
     arquivo: str | None = None
     valor: float | None = None

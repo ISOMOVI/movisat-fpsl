@@ -42,6 +42,8 @@ from datetime import datetime, timedelta, timezone
 # pacote mistura os dois estilos, e seguir o do vizinho é o que evita o
 # `ImportError` que o `py_compile` NÃO pega.
 from fpsl_weso import storage
+from fpsl_weso.datascope_client import (datascope_get,
+                                        datascope_post)
 from fpsl_weso.painel import pagamento_tabelas
 from fpsl_weso.painel.templates_config import (KM_DESLOCAMENTO_ID,
                                                PAGAMENTO_TECNICO_ID)
@@ -134,6 +136,13 @@ def _agora() -> str:
 CHAVE_DESDE = "pagamento_servico_desde"
 DESDE_PADRAO = "2026-11-16"
 
+# 🚨 QUANDO A VARREDURA OLHOU — a linha que mata a mentira da tela (`M12`).
+# Dizer *"serviço a partir de 16/11"* sem dizer **quando se olhou** deixa um
+# quadro de seis dias atrás com a mesma cara de um varrido hoje. Com o cron das
+# 05:10 isto passa a ter dono: a varredura carimba, o `quadro` devolve e a tela
+# escreve ao lado do corte.
+CHAVE_VARRIDO = "pagamento_servico_varrido_em"
+
 
 def _iso_da_data(bruto) -> str:
     """`dd/mm/aaaa HH:MM:SS` ou `aaaa-mm-dd...` -> `aaaa-mm-dd`.
@@ -192,6 +201,31 @@ def definir_desde(valor: str, *, por: str | None = None) -> dict:
     return {"ok": True, "desde": iso}
 
 
+def varrido_em(conn=None) -> str:
+    """Quando a varredura olhou pela última vez. `""` = nunca.
+
+    ⚠️ **NUNCA VARRIDO NÃO É ERRO**, é a tela não exibir a linha: antes da
+    primeira rodada não há o que afirmar, e inventar "agora" seria a mentira
+    que este campo nasceu para matar.
+    """
+    def _ler(c):
+        row = c.execute("SELECT valor FROM config WHERE chave = ?",
+                        (CHAVE_VARRIDO,)).fetchone()
+        return (row[0] if row else "") or ""
+
+    if conn is not None:
+        return _ler(conn)
+    with storage._connect() as c:
+        return _ler(c)
+
+
+def _marcar_varrido(conn) -> None:
+    """Carimba o fim da rodada. 🚨 Quem varreu é quem sabe que varreu."""
+    conn.execute(
+        "INSERT OR REPLACE INTO config (chave, valor, atualizado_em) "
+        "VALUES (?, ?, ?)", (CHAVE_VARRIDO, _agora(), _agora()))
+
+
 def varrer(*, horas: int | None = 24) -> dict:
     """Uma rodada da varredura. 🚨 NÃO fala com o Harmonit.
 
@@ -200,8 +234,12 @@ def varrer(*, horas: int | None = 24) -> dict:
 
     Devolve o resumo; os artefatos ficam em `pagamento_artefato`.
     """
+    # ⚠️ `adotados` e `conflito` nascem no resumo mesmo valendo zero: chave que
+    # só aparece quando acontece faz quem lê o log concluir que a versão velha
+    # estava rodando.
     resumo = {"lidas": 0, "com_valor": 0, "novos": 0, "ja_existiam": 0,
-              "sem_tecnico": 0, "tecnicos": 0, "sem_orcamento": 0}
+              "sem_tecnico": 0, "tecnicos": 0, "sem_orcamento": 0,
+              "adotados": 0, "conflito": 0}
     corte = None
     if horas is not None:
         corte = (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
@@ -276,6 +314,65 @@ def varrer(*, horas: int | None = 24) -> dict:
                 resumo["ja_existiam"] += 1
                 continue
 
+            # ===============================================================
+            # 🚨 O TÉCNICO QUE APARECE DEPOIS — e a OS NÃO nasce duas vezes
+            # ===============================================================
+            # 🔵 25/11, ele na tela: *"OS 17131 aparece sem tecnico no painel,
+            # mas não tem agendamento no harmonit corretamente?"* -- e tinha:
+            # `agendamentoId 970805`, `usuarioId 14262`, situação 15694.
+            #
+            # 🚨 **O DEFEITO:** a consulta acima procura o par
+            # `(numero_os, tecnico_id)`. Quando a OS entrou SEM técnico (o
+            # cache ainda não o trazia) e ele aparece depois, o par é outro --
+            # e, no SQLite, **NULL não colide com nada**, nem no UNIQUE. A OS
+            # 17131 ficou com duas linhas: a de 18/11 sem dono e a de 25/11 com
+            # o Franck. **Cada linha é dinheiro a pagar**: duas linhas da mesma
+            # OS em dois cards é pagar duas vezes o mesmo serviço.
+            #
+            # A regra, e ela é conservadora de propósito:
+            #   - a linha sem dono que **não andou** ADOTA o técnico (mesmo id,
+            #     mesmos eventos: ela só passa a ter dono);
+            #   - a que **já andou** não é tocada **e o segundo não nasce** --
+            #     conta em `conflito` e alguém resolve à mão, porque duplicar
+            #     dinheiro é pior que esperar.
+            if tid is not None:
+                orfao = conn.execute(
+                    "SELECT id, coluna, lote_id, ciente_em, "
+                    "       comprovante_arquivo, comprovante_dispensa, "
+                    "       devolvido_em, justificativa "
+                    "  FROM pagamento_artefato "
+                    " WHERE numero_os = ? AND tecnico_id IS NULL",
+                    (numero,)).fetchone()
+                if orfao:
+                    (orfao_id, coluna, lote_id, ciente_em, comprovante,
+                     dispensa, devolvido_em, justificativa) = orfao
+                    andou = (coluna != "movimentacao" or lote_id is not None
+                             or ciente_em or comprovante or dispensa
+                             or devolvido_em or justificativa)
+                    if andou:
+                        log.warning(
+                            "OS %s: artefato %s sem tecnico JA ANDOU (coluna "
+                            "%s, lote %s) e o tecnico %s apareceu depois -- "
+                            "nao adotei e nao criei o segundo",
+                            numero, orfao_id, coluna, lote_id, tid)
+                        resumo["conflito"] += 1
+                        continue
+                    conn.execute(
+                        "UPDATE pagamento_artefato "
+                        "   SET tecnico_id = ?, tecnico_nome = ?, "
+                        "       atualizado_em = ? "
+                        " WHERE id = ?",
+                        (tid, nome or None, _agora(), orfao_id))
+                    _evento(conn, artefato_id=orfao_id, acao="adotar_tecnico",
+                            de=None, para=str(tid),
+                            detalhe=f"o cache passou a trazer {nome or tid}; "
+                                    f"a linha sem dono adotou em vez de nascer "
+                                    f"uma segunda",
+                            por="varredura")
+                    resumo["adotados"] += 1
+                    tecnicos_vistos.add(tid)
+                    continue
+
             # 🚨 O ORÇAMENTO NÃO É DESTE LADO, e por isso nasce NULO aqui.
             # 🔵 Decisão dele: *"o orçamento do MoviZap"* -- a tabela
             # `orcamento`, com numeração nossa, que vive na outra base e liga
@@ -298,6 +395,11 @@ def varrer(*, horas: int | None = 24) -> dict:
             resumo["novos"] += 1
 
         resumo["tecnicos"] = len(tecnicos_vistos)
+        # 🚨 CARIMBA AO FIM, DENTRO DA MESMA TRANSAÇÃO: rodada que estourou no
+        # meio não deve dizer que olhou, e rodada que não criou nada
+        # (`ja_existiam`) **olhou sim** -- é o que a tela precisa dizer.
+        _marcar_varrido(conn)
+        resumo["varrido_em"] = varrido_em(conn)
         conn.commit()
     log.info("varredura de pagamento: %s", resumo)
     return resumo
@@ -329,6 +431,10 @@ def quadro() -> dict:
         # ⚠️ E artefato SEM data fica, pelo mesmo motivo da varredura: não se
         # prova anterior ao corte, e sumir com ele perderia dinheiro calado.
         corte_iso = desde(conn)
+        # 🚨 Lido na MESMA conexão do corte: a tela mostra os dois lado a lado
+        # ("a partir de ... · varrido às ..."), e lê-los em momentos
+        # diferentes é como nasce tela que discorda de si mesma.
+        carimbo = varrido_em(conn)
         escondidos = 0
         a_mostrar = []
         for a in linhas:
@@ -425,7 +531,8 @@ def quadro() -> dict:
     # 79 para 2 sem explicação é a tela mentindo por omissão -- e foi assim que
     # o "sumiço" de 19/11 pareceu defeito. 🔵 É a régua do `M12`.
     return {"colunas": colunas, "artefatos": len(linhas),
-            "desde": corte_iso, "escondidos_pela_data": escondidos}
+            "desde": corte_iso, "escondidos_pela_data": escondidos,
+            "varrido_em": carimbo}
 
 
 # ===========================================================================
@@ -814,6 +921,173 @@ def datascope_do_artefato(artefato_id: int) -> dict:
                        else "sem registro no DataScope para esta OS")}
 
 
+# ===========================================================================
+# A CORRECAO DA SITUACAO NO DATASCOPE — passo 5, 25/11
+# ===========================================================================
+# 🔵 Ele: *"sim, aprovado - que tem como base as etapas de validacao que
+# permitem o card do pagamento tecnico avancar"*.
+#
+# 📏 MEDIDO ANTES DE ESCREVER:
+#   · `74341` = "Aprovado analise tecnica" (tabela do `30_Painel_Financeiro`);
+#   · 🚨 o nosso CACHE **nao tem o `form_code`** -- guarda `form_answer_id`,
+#     `numero_os`, `form_state` e `updated_at`. Sem o `code` nao da para
+#     escrever, e inventa-lo seria pedir ao DataScope para mudar outra coisa.
+#     Medi uma resposta real do `/v5/answers`: ela **traz** `code` e
+#     `form_name`. Entao a escrita LE a resposta antes, e le fresco.
+#
+# 🚨 A CHAMADA DISPARA WEBHOOK DELES E PUSH PARA O TECNICO. Por isso:
+#   · interruptor proprio, que **nasce desligado** (a convencao desta frente e
+#     a chave na tela dela, nao no `/config` global);
+#   · **idempotente**: aprovar o que ja esta aprovado nao escreve nada -- seria
+#     notificar o tecnico sem fato novo;
+#   · e erro do lado deles **nao grava** estado nem trilha de sucesso: `ok`
+#     nosso nao e prova (licao de 19/11).
+CHAVE_DATASCOPE_ESCRITA = "pagamento_datascope_escrita_ativa"
+DATASCOPE_APROVADO = "Aprovado análise técnica"
+DATASCOPE_APROVADO_ID = 74341
+DATASCOPE_FORMULARIO = "Serviços Técnicos"
+# ⚠️ O nome do campo da OS na resposta deles, igual ao que a conferencia usa.
+DATASCOPE_CAMPO_OS = "Nº da O.S."
+
+
+def escrita_no_datascope_ligada(conn=None) -> bool:
+    """O interruptor. ⚠️ Ausente = DESLIGADO, nunca ligado por omissao."""
+    def _ler(c) -> bool:
+        row = c.execute("SELECT valor FROM config WHERE chave = ?",
+                        (CHAVE_DATASCOPE_ESCRITA,)).fetchone()
+        return bool(row) and str(row[0]).strip().lower() == "true"
+
+    if conn is not None:
+        return _ler(conn)
+    with storage._connect() as c:
+        return _ler(c)
+
+
+def definir_escrita_no_datascope(ligada: bool) -> dict:
+    with storage._connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO config (chave, valor, atualizado_em) "
+            "VALUES (?, ?, ?)",
+            (CHAVE_DATASCOPE_ESCRITA, "true" if ligada else "false", _agora()))
+        conn.commit()
+    return {"ok": True, "ligada": bool(ligada)}
+
+
+def _resposta_do_datascope(numero_os: int) -> dict | None:
+    """A resposta DELES para esta OS, lida agora -- e dai sai o `code`.
+
+    ⚠️ Le fresco de proposito: `code` guardado envelheceria, e escrever com
+    `code` velho mudaria o estado de uma resposta que nao e mais a atual.
+    """
+    import asyncio
+
+    async def _ler():
+        from fpsl_weso.datascope_client import (start_datascope_client,
+                                                stop_datascope_client)
+        await start_datascope_client()
+        try:
+            return await datascope_get("/v5/answers",
+                                       {"q[" + DATASCOPE_CAMPO_OS + "]":
+                                        str(numero_os)})
+        finally:
+            await stop_datascope_client()
+
+    try:
+        corpo = asyncio.run(_ler())
+    except Exception:
+        log.exception("datascope: nao li a resposta da OS %s", numero_os)
+        return None
+    itens = corpo if isinstance(corpo, list) else (corpo or {}).get("answers")
+    if isinstance(itens, dict):
+        itens = itens.get("data") or [itens]
+    for item in (itens or []):
+        bruto = str(item.get(DATASCOPE_CAMPO_OS) or "")
+        if "".join(ch for ch in bruto if ch.isdigit()) == str(numero_os):
+            return item
+    # ⚠️ Se a consulta nao filtrou, a primeira da lista NAO serve: seria
+    # aprovar a resposta de outra OS.
+    return None
+
+
+def aprovar_no_datascope(artefato_id: int, *, por: str | None = None) -> dict:
+    """Poe a resposta do DataScope desta OS em "Aprovado analise tecnica".
+
+    🔵 Um estado so, por decisao dele. E so a partir da VALIDACAO, que e a
+    etapa que libera o card a avancar.
+    """
+    with storage._connect() as conn:
+        pagamento_tabelas.criar(conn)
+        if not escrita_no_datascope_ligada(conn):
+            return {"ok": False,
+                    "motivo": "a escrita no DataScope está desligada nesta "
+                              "tela; ligue antes de corrigir situação"}
+        a = _artefato(conn, artefato_id)
+        if not a:
+            return {"ok": False, "motivo": "artefato nao existe"}
+        if a["coluna"] != "validacao":
+            return {"ok": False,
+                    "motivo": "a correção da situação é da Validação; este "
+                              "artefato está em " + str(a["coluna"])}
+        numero_os = a["numero_os"]
+        de = a.get("datascope_form_state")
+
+    resposta = _resposta_do_datascope(numero_os)
+    if not resposta:
+        return {"ok": False,
+                "motivo": "sem resposta no DataScope para esta OS, então não "
+                          "há o que corrigir lá"}
+    if str(resposta.get("form_state") or "").strip() == DATASCOPE_APROVADO:
+        # 🚨 IDEMPOTENTE: ja esta aprovado, e escrever de novo mandaria push
+        # para o tecnico sem fato novo.
+        with storage._connect() as conn:
+            conn.execute(
+                "UPDATE pagamento_artefato SET datascope_form_state = ?, "
+                "       datascope_lido_em = ?, atualizado_em = ? WHERE id = ?",
+                (DATASCOPE_APROVADO, _agora(), _agora(), artefato_id))
+            conn.commit()
+        return {"ok": True, "ja_estava": True, "form_state": DATASCOPE_APROVADO}
+
+    codigo = resposta.get("code")
+    if not codigo:
+        return {"ok": False,
+                "motivo": "a resposta do DataScope veio sem `code`, e sem ele "
+                          "a escrita mudaria o estado de outra coisa"}
+
+    import asyncio
+
+    async def _escrever():
+        from fpsl_weso.datascope_client import (start_datascope_client,
+                                                stop_datascope_client)
+        await start_datascope_client()
+        try:
+            return await datascope_post("/v5/change_state", {
+                "form_name": resposta.get("form_name") or DATASCOPE_FORMULARIO,
+                "form_code": str(codigo),
+                "form_state_id": DATASCOPE_APROVADO_ID,
+            })
+        finally:
+            await stop_datascope_client()
+
+    try:
+        asyncio.run(_escrever())
+    except Exception as exc:
+        log.exception("datascope: nao escrevi o estado da OS %s", numero_os)
+        return {"ok": False,
+                "motivo": "o DataScope recusou a mudança: %s" % exc}
+
+    with storage._connect() as conn:
+        pagamento_tabelas.criar(conn)
+        conn.execute(
+            "UPDATE pagamento_artefato SET datascope_form_state = ?, "
+            "       datascope_lido_em = ?, atualizado_em = ? WHERE id = ?",
+            (DATASCOPE_APROVADO, _agora(), _agora(), artefato_id))
+        _evento(conn, artefato_id=artefato_id, acao="datascope_aprovar",
+                de=de, para=DATASCOPE_APROVADO, detalhe=str(codigo), por=por)
+        conn.commit()
+    return {"ok": True, "form_state": DATASCOPE_APROVADO,
+            "form_code": str(codigo), "numero_os": numero_os}
+
+
 def guardar_comprovante(artefato_id: int, *, arquivo: str | None,
                         valor: float | None, dispensa: str | None = None,
                         por: str | None = None) -> dict:
@@ -1058,6 +1332,16 @@ def linhas_do_procfy(lote_id: int, config: dict) -> dict:
             "Tags (Por Marcação)": (config.get("procfy_tags") or ""),
         })
     return {"ok": True, "tecnico": lote[0], "linhas": linhas,
+            # 🚨 A REGRA ATRAVESSA A PONTE COMO DADO (25/11). Quem escreve o
+            # `.xlsx` e o MoviZap, e ele montava o cabecalho com
+            # `list(linhas[0].keys())` -- a ordem de insercao do primeiro
+            # dicionario. Funcionava por coincidencia: reordenar o dicionario
+            # aqui mudaria a ordem do arquivo EM SILENCIO e o Procfy recusaria
+            # a importacao. Agora a ordem sai daqui, que e onde a ordem do
+            # modelo foi medida, e o outro lado obedece.
+            # ⚠️ Mandar a lista e melhor que copiar a constante la: copia e o
+            # que faz os dois lados divergirem sem ninguem ver.
+            "colunas": list(PROCFY_COLUNAS),
             "total": sum(float(a["valor_pagamento"] or 0)
                          + float(a["valor_km"] or 0) for a in artefatos),
             "artefatos": len(artefatos),

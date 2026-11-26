@@ -784,3 +784,75 @@ O `gerar_cartoes` descartava em silêncio OS sem técnico real e OS sem linha de
 **Dados (não é código):** só 9 de 546 OS têm PAGAMENTO DE TÉCNICO (653939) lançado e 7 têm KM. Técnico aparece em 188 OS (34%); 85 têm só usuários internos. Só a conta admin tem a aba `financeiro`. A matriz `teste_roteadores_painel.py` não cobre `/painel/api/fechamento`.
 
 **08/10 18:20 — rotina da FIN_1.1 RELIGADA** com o OK dele (*"pode ligá-la"*). `conferencia_fechamento_ativa = true`, confirmado relendo o banco. Ficou desligada de 02/10 10:55 a 08/10. Ligar não roda na hora: o laço relê a chave a cada 1h, e o "Rodar agora" da tela adianta.
+
+---
+
+## 25/11/2026 — A TERCEIRA CAMADA DE "QUEM NÃO É TÉCNICO"
+
+🔵 Ele: *"bruna, vanessa e karla nao sao tecnicos"* · *"segue a regra de quem é
+ou não técnico"*.
+
+### O defeito, e por que as duas camadas antigas não o pegavam
+
+A `sync_tecnicos` separava técnico real de usuário do sistema por **duas**
+camadas: estar em `ObterUsuarios` **ou** ter o e-mail de um usuário do painel
+FPSL (9 e-mails). **Karla Alves (9617)** escapava das duas — não está em
+`ObterUsuarios` e o e-mail dela não é de usuário do painel — e por isso ela
+gerava artefato de pagamento como técnica de campo.
+
+### A medição que definiu a regra
+
+📏 **190 dos 191** técnicos não excluídos têm e-mail `@movisat.com.br`, porque o
+Harmonit usa **`telefone@movisat.com.br`** como e-mail sintético. 🚨 **O domínio
+não separa nada.** O que separa é a **parte antes do @**: número é o telefone do
+técnico de campo; nome é gente da casa.
+
+| local part | exemplo | é técnico? |
+|---|---|---|
+| só dígitos (com `+`, `-`, `(`, `)`, espaço) | `997394026@movisat.com.br` (Franck) | **sim** |
+| nominal, no domínio da empresa | `karla.alves@movisat.com.br` | **não** |
+| nominal, **fora** do domínio | `checklistpreenchidosoficial@gmail.com` | **sim** (a regra não opina) |
+| vazio ou torto | `""`, `semarroba`, `@movisat.com.br` | **sim** (não sei ≠ não é) |
+
+🚨 **A regra separa hoje exatamente os três que ele nomeou** — Karla Alves
+(9617), Vanessa Guimarães (7148), Bruna Souza (10909) — **e nenhum outro**.
+
+⚠️ **Só no domínio da empresa.** O único e-mail de fora é de "Teste tecnico":
+alfabético, mas de terceiro — julgar cadastro de fora por um padrão que é nosso
+seria inventar regra.
+⚠️ **"Não sei" não vira "não é técnico".** E-mail vazio ou torto devolve `False`:
+a falta de cadastro tiraria alguém do pagamento.
+
+### Onde a camada mora, e por que não é uma lista
+
+🚨 A camada entra **dentro do `sync_tecnicos`**, não numa lista paralela. A
+tabela `tecnicos` é reescrita todo dia por `INSERT OR REPLACE`
+(`storage.salvar_tecnico`): uma marca manual ali **seria apagada na próxima
+sincronização**. Eu havia proposto a lista local; foi medir o `salvar_tecnico`
+que mostrou o erro.
+
+✅ **E o log diz QUAL camada pegou cada um**, com nome e id: `excluido` sem
+motivo é um número que não se audita. O resultado da rotina carrega `da_casa=N`.
+
+### O estado, conferido depois (não o retorno da função)
+
+| medida | antes | depois |
+|---|---|---|
+| `tecnicos` com `excluido = 1` | 10 | **13** |
+| técnicos reais | 191 | **188** |
+| `GET /tecnicos?ativos=1` pela ponte | 191 | **188**, com Franck dentro e as três fora |
+| `pagamento_artefato` | 87 | **87** (varredura rodada: `novos=0`, nada perdido) |
+
+⚠️ **O que a regra NÃO desfaz, e está dito:** a Karla tem **um** artefato antigo
+— id 1, OS 16689, R$ 70,00, serviço de **05/08/2026**, criado em 18/11. Ele está
+**antes do corte de 16/11**, logo invisível na tela, e a varredura não apaga o
+que já existe (`ja_existiam` protege o que andou). Apagar linha que ele não vê é
+decisão dele, não minha.
+
+📏 **Regressão medida antes de mexer:** nenhum contato do MoviZap está vinculado
+às três (`harmonit_tecnico_id`), então nenhum vínculo quebrou; e a varredura
+`tecnico_vinculo` passa a não oferecê-las como candidatas, que é o efeito
+desejado. O `gravar_vinculo_do_tecnico` usa `ativos=False` e continua
+alcançando-as — a exceção manual dele segue possível.
+
+**Travas:** `tests/teste_quem_e_tecnico.py` (6), vermelhas antes do código.

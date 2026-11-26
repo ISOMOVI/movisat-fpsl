@@ -383,3 +383,131 @@ card aberto, e não há retentativa.
 🚨 **Consequência, e é a pior parte:** cada ocorrência só pode ser entendida
 **reproduzindo ao vivo**. Foi o que se fez aqui. Enquanto o `except` não
 registrar a causa, nenhum 502 da ficha é diagnosticável depois do fato.
+
+---
+
+## 25/11/2026 — o cron da varredura, o carimbo e o anexo do comprovante
+
+### A varredura passou a ter hora, e a tela passou a dizer qual
+
+🔵 24/11: *"o cron diário é quem traz o card da OS nova"*, e o corte segue pela
+**data da OS**, nunca pelo nascimento do card.
+
+`scripts/varrer_pagamento.py` + a linha `10 5 * * *` no `crontab` do usuário
+`claude` (cópia das 79 linhas anteriores em
+`/home/claude/crontab_copia_2026-11-25_antes_do_pagamento.txt`).
+
+🚨 **O HORÁRIO É A PARTE QUE IMPORTA, NÃO O CRON.** A varredura lê
+`os_historico`, que o **cache WESO escreve às 04:15** e o **Harmonit às 04:50**.
+Rodar antes varreria o cache de ONTEM; rodar em cima disputaria escrita no mesmo
+SQLite. **05:10 fica depois dos dois.**
+
+🟡 **`horas=None`, decisão minha declarada:** o padrão `horas=24` filtra por
+`atualizado_em`, então um dia de cron falho esconderia aquele serviço **para
+sempre**. Varrer o cache inteiro custa uma passada em ~650 linhas e
+`ja_existiam` protege o que já andou — artefato que já andou **não é
+sobrescrito** (o operador pode já ter dado ciente, anexado comprovante ou
+devolvido).
+
+⚠️ O `cd` e o `venv/bin/python` na linha do cron não são decoração: fora de
+`/home/claude/fpsl_weso` o `settings` estoura com `ValidationError:
+weso_api_key`, e com o python do MoviZap falta `pydantic_settings`.
+
+### `pagamento_servico_varrido_em` — a linha que mata a mentira (`M12`)
+
+A varredura **carimba o `config` dentro da mesma transação** que terminou
+(`_marcar_varrido`), o `quadro` devolve `varrido_em` ao lado de `desde` e
+`escondidos_pela_data`, e a tela escreve *"serviço a partir de 16/11/2026 ·
+varrido hoje às 05:10"*. Rodada que estourou no meio **não** carimba — e é isso
+que se quer: o quadro velho se anuncia velho.
+⚠️ **Nunca varrido devolve `""`** e a tela simplesmente não escreve a parte da
+hora: inventar "agora" seria a mentira que o campo nasceu para matar.
+
+E `pagamento_servico_desde` passou a existir **explícito** no `config`
+(`2026-11-16`), em vez de viver do `DESDE_PADRAO` — a lição do re-pareamento de
+19/11: o valor que importa fica explícito, não implícito num default que o
+próximo conserto atropela sem avisar.
+
+### O anexo do comprovante: o arquivo é do MoviZap, a referência é do FPSL
+
+🔵 *"haverá campo para que em cada 1 dos artefatos de pagamento seja inserido
+anexo que comprove o pagamento. Após o envio do anexo, abre o campo que pede o
+valor inserido no documento."* 🔵 24/11: **anexo completo, não só PDF**.
+
+| onde | o quê |
+|---|---|
+| MoviZap | `POST /api/paineis/servico-dos-tecnicos/anexo/{artefato_id}` → `{id, nome_original, bytes, referencia}` · `GET .../anexo/{anexo_id}` → o arquivo, **410** quando sumiu do disco |
+| MoviZap | tabela `pagamento_comprovante_arquivo` (migração 119) e a pasta `/home/claude/movizap_pagamento_comprovantes` |
+| FPSL | **nada de novo**: `anexo:<id>` vai no `comprovante_arquivo TEXT` que já existe, pelo `guardar_comprovante` que já existe |
+
+🚨 **NENHUM BYTE ATRAVESSA A PONTE.** Ela é JSON servidor-a-servidor; o arquivo
+fica no lado que o serve, e o FPSL guarda só a referência de texto.
+
+🚨 **E O ARTEFATO É CONFERIDO PELO QUADRO ANTES DE GRAVAR**: o `artefato_id` é
+do SQLite do FPSL e a tabela é Postgres, logo não há FK para recusar id
+inventado. A recusa é da rota — 404 "não está no quadro", 502 quando o FPSL não
+respondeu.
+
+📏 **Medido em 25/11, depois da primeira varredura em produção:** 646 OS no
+cache, 619 anteriores ao corte, **27 de 16/11 em diante** — 10 com valor de
+pagamento ou km (9 cards novos + 1 que já existia) e **17 sem nenhuma das duas
+linhas no corpo do material**, que a varredura descarta. Das 17, **nenhuma** tem
+a linha `PAGAMENTO DE TECNICO` (653939) nem `KM DESLOCAMENTO` (6971): não é
+filtro da tela, é que no ERP não há valor a pagar nelas.
+
+---
+
+## 25/11/2026 — a OS não nasce duas vezes quando o técnico aparece depois
+
+🔵 Ele, olhando o painel: *"OS 17131 aparece sem tecnico no painel, mas não tem
+agendamento no harmonit corretamente?"* — e tinha: `agendamentoId 970805`,
+início 18/11 09:00, `usuarioId 14262` (Franck), situação 15694.
+
+🚨 **O DEFEITO ERA MEU, da varredura de 25/11 11:07.** A trava de duplicidade é
+pelo par `(numero_os, tecnico_id)` e, no SQLite, **NULL não colide com nada** —
+nem no `UNIQUE`. A OS 17131 entrou em 18/11 **sem técnico** (o cache ainda não o
+trazia) e, quando ele apareceu, a varredura tratou como OS nova: duas linhas,
+`79` sem dono e `81` com o Franck. **Cada linha é dinheiro a pagar** — duas
+linhas da mesma OS em dois cards é pagar duas vezes o mesmo serviço.
+
+**A regra que entrou, conservadora de propósito:**
+
+| caso | o que a varredura faz |
+|---|---|
+| linha sem dono que **não andou** (`movimentacao`, sem lote, sem ciente, sem comprovante, sem dispensa, sem justificativa) | **ADOTA** o técnico: mesmo `id`, mesmos eventos — ela só passa a ter dono. Conta em `adotados` e grava evento `adotar_tecnico` |
+| linha sem dono que **já andou** | **não é tocada E o segundo não nasce**. Conta em `conflito`, com `log.warning` nomeando a OS — duplicar dinheiro é pior que esperar alguém resolver à mão |
+| OS que já tinha técnico | segue com uma linha só (`ja_existiam`) |
+
+⚠️ `adotados` e `conflito` nascem no resumo **valendo zero**: chave que só
+aparece quando acontece faz quem lê o log concluir que a versão velha está
+rodando.
+
+📏 **O estado consertado em produção, medido:** a linha `81` (a que eu criei) foi
+apagada sob guarda — só se fosse ela, da OS 17131, sem lote, sem ciente, sem
+comprovante e com **zero eventos** — e a varredura seguinte devolveu
+`adotados=1`: a linha `79` ficou com o Franck, com o evento da adoção. O quadro
+foi de 88 para **87 artefatos**, e a consulta de OS com mais de uma linha
+devolve **nenhuma**.
+
+🚨 **4 travas novas** (`tests/teste_pagamento_duplicidade.py`), vermelhas antes
+reproduzindo as duas linhas: a OS não nasce duas vezes · a adoção mantém o mesmo
+`id` · a terceira rodada não mexe em nada · e o que já andou não é adotado nem
+duplicado.
+
+---
+
+## 25/11/2026 — tres rotas novas na ponte do pagamento
+
+| rota | o que faz |
+|---|---|
+| GET/POST /datascope-escrita | o interruptor da ESCRITA no DataScope. Nasce DESLIGADO, e ausente = desligado |
+| POST /datascope-aprovar | poe a resposta do DataScope da OS em 74341 Aprovado analise tecnica |
+
+E o /previa e o /montar-arquivo passam a devolver **colunas** (as 14 do modelo,
+na ordem lida dele): a REGRA atravessa a ponte como DADO, porque quem escreve o
+.xlsx e o MoviZap e antes ele montava o cabecalho pela ordem de insercao do
+primeiro dicionario -- reordenar o dicionario aqui mudaria o arquivo em silencio.
+
+O change_state LE a resposta deles antes de escrever, porque o nosso cache NAO
+guarda o form_code; e a chamada dispara os webhooks deles e manda push para o
+tecnico, o que e a razao do interruptor e da modal.

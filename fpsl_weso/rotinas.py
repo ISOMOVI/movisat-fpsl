@@ -43,6 +43,11 @@ LACOS: dict[str, tuple[str, int]] = {
     # Nasce desligado, e por isso "desligada" é o resultado esperado da passada
     # até ele ligar na tela.
     "faturado": ("Espelho do faturado (Harmonit)", 86400),
+    # O 11o laco (25/11): a varredura da aba 2 do Financeiro, no cron das
+    # 05:10. Diaria, entao 48 h de tolerancia antes de chamar de muda.
+    # ⚠️ Ela e a unica fonte dos cards de pagamento de tecnico -- cron parado
+    # significa OS com valor que nunca aparece para ninguem pagar.
+    "pagamento_servico": ("Varredura do pagamento de tecnico", 86400),
 }
 
 TOLERANCIA = 2  # dobro do intervalo antes de chamar de atrasada

@@ -86,6 +86,40 @@ def _headers() -> dict:
     return {"Authorization": settings.datascope_api_key}
 
 
+async def datascope_post(path: str, dados: dict | None = None) -> dict:
+    """ESCREVE no DataScope. 🚨 Primeira escrita deste cliente, 25/11.
+
+    📏 Este arquivo era **GET-only por decisao de projeto**, nao por limite da
+    API: o `change_state` foi testado e documentado em
+    `docs/fpsl/30_Painel_Financeiro.md` -- funciona nos dois sentidos,
+    repetidamente, sem trava de prazo.
+
+    🚨 **A CHAMADA DISPARA OS WEBHOOKS DELES E MANDA PUSH PARA O TECNICO** que
+    enviou a resposta. Esta medido e documentado, e e por isso que quem chama
+    daqui tem interruptor proprio e modal antes.
+
+    ⚠️ **Formulario, nao JSON:** a API deles le `application/x-www-form-urlencoded`
+    (`form_name=...&form_code=...&form_state_id=...`), como esta no doc. Mandar
+    JSON daria 400 sem corpo, que e o pior tipo de recusa -- a que nao explica.
+    ⚠️ Passa pelo MESMO disjuntor do GET: servico de terceiro que cai nao pode
+    ser martelado, e escrita insistente e pior que leitura insistente.
+    """
+    _checar_disjuntor()
+    try:
+        r = await _client.post(path, data=dados or {}, headers=_headers())
+        r.raise_for_status()
+    except Exception as exc:
+        _registrar_falha("post %s: %s" % (path, exc))
+        raise
+    _registrar_sucesso()
+    try:
+        return r.json()
+    except ValueError:
+        # ⚠️ Resposta sem JSON nao e erro: o doc mostra 400 com corpo VAZIO.
+        # Devolver o texto cru deixa quem chamou dizer o que aconteceu.
+        return {"status": r.status_code, "texto": r.text}
+
+
 async def datascope_get(path: str, params: dict | None = None) -> dict | list:
     """GET com disjuntor. Só leitura -- não existe write neste cliente de
     propósito: a Conferência de Fechamento nunca escreve no DataScope."""
